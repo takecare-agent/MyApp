@@ -95,7 +95,7 @@ const App = () => {
       }
     );
 
-    // 監聽接收數據：此處執行【自動儲存】
+    // 監聽接收數據：此處執行自動儲存
     const handlerUpdate = bleManagerEmitter.addListener(
       'BleManagerDidUpdateValueForCharacteristic',
       (data) => {
