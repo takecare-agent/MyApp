@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@capacitor/toast": "^8.0.0"
+  }
+}

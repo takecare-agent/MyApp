@@ -1,0 +1,10 @@
+{
+  "appId": "com.example.app",
+  "appName": "demo",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true,
+    "allowNavigation": ["*"]
+  }
+}
