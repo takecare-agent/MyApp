@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { 
   NativeModules, NativeEventEmitter, PermissionsAndroid, Platform, 
   StyleSheet, Text, View, TextInput, TouchableOpacity, 
-  Alert, SafeAreaView, FlatList, Dimensions, Share, ActivityIndicator
+  Alert, SafeAreaView, FlatList, Dimensions, ActivityIndicator
 } from 'react-native';
+import Share from 'react-native-share';
 import RNFS from 'react-native-fs';
 import BleManager from 'react-native-ble-manager';
 import axios from 'axios';
@@ -77,13 +78,13 @@ const App = () => {
     const path = `${RNFS.TemporaryDirectoryPath}/BloodPressure_Records.csv`;
     try {
       await RNFS.writeFile(path, "\ufeff" + csvContent, 'utf8');
-      await Share.share({
-        url: Platform.OS === 'android' ? `file://${path}` : path,
-        title: '匯出血壓紀錄',
-        message: '這是我的血壓監控紀錄報表 (CSV 格式)',
-      });
-    } catch (error) {
-      Alert.alert("錯誤", "無法產生匯出檔案");
+      await Share.open({
+      url: `file://${path}`,
+      type: 'text/csv',
+      filename: '血壓紀錄報表', // 讓手機知道這是一個報表檔案
+    });
+  } catch (error) {
+    console.log('匯出取消或失敗');
     }
   };
 
@@ -248,7 +249,7 @@ const App = () => {
           </>
         }
         data={records}
-        keyExtractor={(item) => item.id.toString()}
+        keyExtractor={(item, index) => (item.id ? item.id.toString() : index.toString())}
         renderItem={({ item }) => (
           <View style={styles.recordItem}>
             <View style={styles.recordLeft}>
