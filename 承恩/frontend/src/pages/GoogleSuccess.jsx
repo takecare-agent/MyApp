@@ -5,27 +5,21 @@ export default function GoogleSuccess() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    // ⭐ 如果已經登入過，就不要再跑
-    const existingToken = localStorage.getItem("token")
-    if (existingToken) {
-      navigate("/patient", { replace: true })
-      return
-    }
-
     const params = new URLSearchParams(window.location.search)
     const token = params.get("token")
 
-    console.log("🔑 Google token:", token)
+    console.log("🔥 GoogleSuccess token:", token)
 
+    // ⭐ 如果有 token 才處理
     if (token) {
       localStorage.setItem("token", token)
-      localStorage.setItem("role", "patient")
-      navigate("/patient", { replace: true })
-    } else {
-      console.log("❌ 沒拿到 token")
-      navigate("/", { replace: true })
+      navigate("/role", { replace: true })
     }
-  }, [])
 
-  return <p>Google 登入中...</p>
+    // ❌ 不要在 token 為 null 時導回首頁
+    // 因為 StrictMode 會跑兩次
+
+  }, [navigate])
+
+  return <h2>Google 登入中...</h2>
 }

@@ -1,65 +1,91 @@
-import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
+
+const modules = [
+  {
+    title: "危險事件即時通知",
+    description: "查看跌倒、離床、久坐與異常行為即時推播。",
+    path: "/family/alerts"
+  },
+  {
+    title: "SOS 通知中心",
+    description: "集中處理看護或受顧者觸發的緊急求助事件。",
+    path: "/family/sos"
+  },
+  {
+    title: "照護紀錄瀏覽",
+    description: "依日期查看用藥、飲食、如廁與活動紀錄。",
+    path: "/family/care-records"
+  },
+  {
+    title: "危險事件查詢",
+    description: "用日期與事件類型查詢歷史事件與處理狀態。",
+    path: "/family/events"
+  },
+  {
+    title: "關懷語句庫",
+    description: "一鍵播放常用關懷語句，支援多語音版本。",
+    path: "/family/phrases"
+  }
+]
+
+const quickStats = [
+  { label: "今日事件", value: "3" },
+  { label: "未處理", value: "1" },
+  { label: "已完成", value: "6" }
+]
 
 export default function FamilyHome() {
   const navigate = useNavigate()
-  const [profile, setProfile] = useState(null)
-  const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    const token = localStorage.getItem("token")
-    if (!token) {
-      navigate("/")
-      return
-    }
-
-    fetch("http://localhost:5000/family/check-profile", {
-      headers: { Authorization: "Bearer " + token }
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (!data.completed) {
-          navigate("/family/setup")
-          return
-        }
-
-        return fetch("http://localhost:5000/family/profile", {
-          headers: { Authorization: "Bearer " + token }
-        })
-      })
-      .then(res => res?.json())
-      .then(profileData => {
-        if (profileData) {
-          setProfile(profileData)
-          setLoading(false)
-        }
-      })
-      .catch(() => navigate("/"))
-  }, [navigate])
-
-  if (loading) {
-    return (
-      <div className="page">
-        <div className="card"><h2>載入中...</h2></div>
-      </div>
-    )
+  const handleLogout = () => {
+    localStorage.removeItem("token")
+    localStorage.removeItem("role")
+    navigate("/")
   }
 
   return (
-    <div className="page">
-      <div className="card">
-        <h2>家屬首頁</h2>
+    <div className="home-page">
+      <div className="home-card wide-card">
+        <span className="section-kicker">家屬端</span>
+        <div className="home-header">
+          <h2 className="section-title">家屬功能總覽</h2>
+          <span className="status-chip">介面原型</span>
+        </div>
+        <p className="section-subtitle">
+          以下頁面依照簡報功能細項建立，先提供前端介面供組員串接後端與裝置資料。
+        </p>
 
-        <p><strong>姓名：</strong>{profile.name}</p>
-        <p><strong>電話：</strong>{profile.phone}</p>
-        <p><strong>關係：</strong>{profile.relationship}</p>
+        <div className="metric-row">
+          {quickStats.map(item => (
+            <div key={item.label} className="metric-card">
+              <div className="metric-label">{item.label}</div>
+              <div className="metric-value">{item.value}</div>
+            </div>
+          ))}
+        </div>
 
-        <button onClick={() => {
-          localStorage.removeItem("token")
-          navigate("/")
-        }}>
-          登出
-        </button>
+        <div className="feature-grid">
+          {modules.map(item => (
+            <button
+              key={item.title}
+              className="feature-card"
+              onClick={() => navigate(item.path)}
+            >
+              <div className="feature-title">{item.title}</div>
+              <div className="feature-desc">{item.description}</div>
+              <span className="feature-link">前往頁面</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="action-row">
+          <button className="secondary-btn" onClick={() => navigate("/family/setup")}>
+            編輯家屬資料
+          </button>
+          <button className="secondary-btn danger-btn" onClick={handleLogout}>
+            登出
+          </button>
+        </div>
       </div>
     </div>
   )

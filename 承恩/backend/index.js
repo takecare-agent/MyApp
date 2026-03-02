@@ -1,81 +1,93 @@
+require("dotenv").config()
+
 const express = require("express")
 const cors = require("cors")
-const session = require("express-session")
-const jwt = require("jsonwebtoken")
 const passport = require("passport")
+const jwt = require("jsonwebtoken")
 const mongoose = require("mongoose")
 
 require("./googleAuth")
 
 const app = express()
 
-// ================= MongoDB 連線 =================
-mongoose.connect("mongodb+srv://justin931027_db_user:k0tMeXaaPpbQukDP@cluster0.nzed5jr.mongodb.net/?appName=Cluster0")
+console.log("🔥 ACTIVE BACKEND FILE LOADED")
+
+// ================= MongoDB =================
+mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("✅ MongoDB connected"))
   .catch(err => console.log("❌ MongoDB error:", err.message))
 
-// ================= 中間件 =================
-app.use(cors())
+// ================= Middleware =================
+app.use(cors({
+  origin: "http://localhost:5173",
+  credentials: true
+}))
+
 app.use(express.json())
-
-app.use(
-  session({
-    secret: "google-login-secret",
-    resave: false,
-    saveUninitialized: false
-  })
-)
-
 app.use(passport.initialize())
-app.use(passport.session())
-
-const SECRET_KEY = "care-app-secret-key"
 
 // ================= User Schema =================
 const userSchema = new mongoose.Schema({
-  email: { type: String, unique: true },
+  email: {
+    type: String,
+    unique: true,
+    required: true
+  },
+
   name: String,
-  role: String,
-  profileCompleted: { type: Boolean, default: false }
-})
+
+  role: {
+    type: String,
+    enum: ["patient", "family", "caregiver"],
+    default: null
+  },
+
+  // ===== 受顧者資料 =====
+  birthDate: String,
+  age: Number,
+  idNumber: String,
+  gender: String,
+
+  // ===== 家屬資料 =====
+  phone: String,
+
+  // ===== 看護資料 =====
+  experience: String,
+
+  profileCompleted: {
+    type: Boolean,
+    default: false
+  }
+
+}, { timestamps: true })
 
 const User = mongoose.model("User", userSchema)
 
-// ================= 測試 =================
+// ================= 測試 API =================
 app.get("/", (req, res) => {
   res.send("Backend is running!")
 })
 
-// ================= Google OAuth 開始 =================
+// ================= Google 登入 =================
 app.get(
   "/auth/google",
   passport.authenticate("google", { scope: ["profile", "email"] })
 )
 
-// ================= Google Callback（方法一：每次都選角色） =================
 app.get(
   "/auth/google/callback",
   passport.authenticate("google", { session: false }),
   async (req, res) => {
-
-    console.log("🔥 Google callback hit")
-    console.log("req.user =", req.user)
-
     try {
       if (!req.user) {
-        console.log("❌ req.user 不存在")
-        return res.redirect("http://localhost:5173/")
+        return res.redirect("http://localhost:5173")
       }
 
       const { email, name } = req.user
 
-      // 查詢使用者
       let user = await User.findOne({ email })
 
-      // 第一次登入 → 建立使用者
       if (!user) {
-        console.log("🆕 建立新使用者")
-
         user = await User.create({
           email,
           name,
@@ -84,73 +96,181 @@ app.get(
         })
       }
 
-      // ⭐ 方法一：每次登入都進角色選擇頁
-      console.log("➡ 每次登入都導向角色選擇頁")
+      const token = jwt.sign(
+        { email: user.email, role: user.role },
+        process.env.JWT_SECRET,
+        { expiresIn: "1h" }
+      )
 
       return res.redirect(
-        `http://localhost:5173/role?email=${email}`
+        `http://localhost:5173/google-success?token=${token}`
       )
 
     } catch (err) {
       console.log("❌ callback error:", err.message)
-      return res.redirect("http://localhost:5173/")
+      return res.redirect("http://localhost:5173")
     }
   }
 )
 
 // ================= 設定角色 =================
 app.post("/set-role", async (req, res) => {
-  const { email, role } = req.body
+  try {
+    const { email, role } = req.body
 
-  const user = await User.findOne({ email })
+    const user = await User.findOne({ email })
+    if (!user) return res.status(404).json({ message: "使用者不存在" })
 
-  if (!user) {
-    return res.status(400).json({ message: "使用者不存在" })
-  }
-
-  user.role = role
-  await user.save()
-
-  const token = jwt.sign(
-    { email, role },
-    SECRET_KEY,
-    { expiresIn: "1h" }
-  )
-
-  res.json({ token, role })
-})
-
-// ================= 完成基本資料 =================
-app.post("/complete-profile", async (req, res) => {
-  const token = req.headers.authorization?.split(" ")[1]
-  if (!token) return res.status(401).json({ message: "未提供 token" })
-
-  jwt.verify(token, SECRET_KEY, async (err, decoded) => {
-    if (err) return res.status(403).json({ message: "token 無效" })
-
-    const user = await User.findOne({ email: decoded.email })
-    if (!user) return res.status(404).json({ message: "找不到使用者" })
-
-    user.profileCompleted = true
+    user.role = role
+    user.profileCompleted = false
     await user.save()
 
-    res.json({ message: "基本資料完成" })
-  })
+    const newToken = jwt.sign(
+      { email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" }
+    )
+
+    res.json({ token: newToken, role: user.role })
+
+  } catch (err) {
+    console.log("❌ set-role error:", err.message)
+    res.status(500).json({ message: "設定角色失敗" })
+  }
 })
 
-// ================= JWT 測試 =================
-app.get("/profile", (req, res) => {
+// ================= 共用驗證 =================
+function verifyToken(req, res) {
   const token = req.headers.authorization?.split(" ")[1]
-  if (!token) return res.status(401).json({ message: "未提供 token" })
+  if (!token) return null
+  try {
+    return jwt.verify(token, process.env.JWT_SECRET)
+  } catch {
+    return null
+  }
+}
 
-  jwt.verify(token, SECRET_KEY, (err, decoded) => {
-    if (err) return res.status(403).json({ message: "token 無效" })
+// ================= PATIENT =================
+app.get("/patient/check-profile", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
 
-    res.json({ message: "JWT 驗證成功", user: decoded })
+  const user = await User.findOne({ email: decoded.email })
+  res.json({ profileCompleted: user.profileCompleted })
+})
+
+app.get("/patient/profile", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+
+  res.json({
+    name: user.name,
+    birthDate: user.birthDate,
+    age: user.age,
+    idNumber: user.idNumber,
+    gender: user.gender
   })
 })
 
-// ================= 啟動伺服器 =================
+app.post("/patient/setup", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const { name, birthDate, age, idNumber, gender } = req.body
+
+  const user = await User.findOne({ email: decoded.email })
+
+  user.name = name
+  user.birthDate = birthDate
+  user.age = age
+  user.idNumber = idNumber
+  user.gender = gender
+  user.profileCompleted = true
+
+  await user.save()
+
+  res.json({ message: "基本資料已儲存" })
+})
+
+// ================= FAMILY =================
+app.get("/family/check-profile", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  res.json({ profileCompleted: user.profileCompleted })
+})
+
+app.get("/family/profile", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+
+  res.json({
+    name: user.name,
+    phone: user.phone
+  })
+})
+
+app.post("/family/setup", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const { name, phone } = req.body
+
+  const user = await User.findOne({ email: decoded.email })
+
+  user.name = name
+  user.phone = phone
+  user.profileCompleted = true
+
+  await user.save()
+
+  res.json({ message: "家屬資料已儲存" })
+})
+
+// ================= CAREGIVER =================
+app.get("/caregiver/check-profile", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  res.json({ profileCompleted: user.profileCompleted })
+})
+
+app.get("/caregiver/profile", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+
+  res.json({
+    name: user.name,
+    experience: user.experience
+  })
+})
+
+app.post("/caregiver/setup", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const { name, experience } = req.body
+
+  const user = await User.findOne({ email: decoded.email })
+
+  user.name = name
+  user.experience = experience
+  user.profileCompleted = true
+
+  await user.save()
+
+  res.json({ message: "看護資料已儲存" })
+})
+
+// ================= 啟動 =================
 app.listen(5000, () => {
   console.log("🚀 Backend running on http://localhost:5000")
 })

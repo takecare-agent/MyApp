@@ -1,101 +1,91 @@
-import { useEffect, useState } from "react"
-import { useLocation, useNavigate } from "react-router-dom"
+import { useState } from "react"
+import { useNavigate } from "react-router-dom"
 
 export default function CaregiverSetup() {
-  const location = useLocation()
   const navigate = useNavigate()
-
   const [name, setName] = useState("")
-  const [birthYear, setBirthYear] = useState("")
-  const [birthMonth, setBirthMonth] = useState("")
-  const [birthDay, setBirthDay] = useState("")
-  const [age, setAge] = useState("")
-  const [idNumber, setIdNumber] = useState("")
-  const [gender, setGender] = useState("")
-
-  // ⭐ 自動存 token
-  useEffect(() => {
-    const params = new URLSearchParams(location.search)
-    const token = params.get("token")
-    if (token) {
-      localStorage.setItem("token", token)
-    }
-  }, [location])
+  const [experience, setExperience] = useState("")
+  const [submitting, setSubmitting] = useState(false)
 
   const handleSubmit = async () => {
     const token = localStorage.getItem("token")
+    if (!token) {
+      navigate("/")
+      return
+    }
 
-    const res = await fetch("http://localhost:5000/complete-profile", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer " + token
+    if (!name.trim() || !experience.trim()) {
+      alert("Please complete all required fields.")
+      return
+    }
+
+    setSubmitting(true)
+
+    try {
+      const res = await fetch("http://localhost:5000/caregiver/setup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + token
+        },
+        body: JSON.stringify({ name, experience })
+      })
+
+      if (!res.ok) {
+        alert("Unable to save your profile. Please try again.")
+        return
       }
-    })
 
-    if (res.ok) {
-      alert("看護基本資料完成")
+      alert("Caregiver profile saved.")
       navigate("/caregiver")
-    } else {
-      alert("儲存失敗")
+    } catch (error) {
+      console.error(error)
+      alert("Network error. Please try again.")
+    } finally {
+      setSubmitting(false)
     }
   }
 
   return (
     <div className="page">
-      <div className="card">
-        <h2>看護基本資料</h2>
+      <div className="card setup-card">
+        <span className="section-kicker">Caregiver Profile</span>
+        <h2 className="section-title">Set up your caregiver account</h2>
+        <p className="section-subtitle">
+          Share your basic profile so families can quickly understand your background.
+        </p>
 
-        <input
-          placeholder="姓名"
-          value={name}
-          onChange={e => setName(e.target.value)}
-        />
+        <div className="form-grid">
+          <div>
+            <label className="input-label" htmlFor="caregiver-name">
+              Display name
+            </label>
+            <input
+              id="caregiver-name"
+              className="text-input"
+              placeholder="e.g. Alex Chen"
+              value={name}
+              onChange={e => setName(e.target.value)}
+            />
+          </div>
 
-        <div>
-          出生年月日：
-          <select onChange={e => setBirthYear(e.target.value)}>
-            <option>年</option>
-            {Array.from({ length: 100 }, (_, i) => 2024 - i).map(y => (
-              <option key={y}>{y}</option>
-            ))}
-          </select>
-
-          <select onChange={e => setBirthMonth(e.target.value)}>
-            <option>月</option>
-            {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
-              <option key={m}>{m}</option>
-            ))}
-          </select>
-
-          <select onChange={e => setBirthDay(e.target.value)}>
-            <option>日</option>
-            {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
-              <option key={d}>{d}</option>
-            ))}
-          </select>
+          <div>
+            <label className="input-label" htmlFor="caregiver-experience">
+              Caregiving experience
+            </label>
+            <input
+              id="caregiver-experience"
+              className="text-input"
+              placeholder="e.g. 5 years, dementia care"
+              value={experience}
+              onChange={e => setExperience(e.target.value)}
+            />
+          </div>
         </div>
 
-        <select onChange={e => setAge(e.target.value)}>
-          <option>年齡</option>
-          {Array.from({ length: 120 }, (_, i) => i + 1).map(a => (
-            <option key={a}>{a}</option>
-          ))}
-        </select>
-
-        <input
-          placeholder="身分證字號"
-          value={idNumber}
-          onChange={e => setIdNumber(e.target.value)}
-        />
-
-        <select onChange={e => setGender(e.target.value)}>
-          <option>性別</option>
-          <option>男</option>
-          <option>女</option>
-        </select>
-
-        <button onClick={handleSubmit}>送出</button>
+        <button className="primary-btn" onClick={handleSubmit} disabled={submitting}>
+          {submitting ? "Saving..." : "Save profile"}
+        </button>
       </div>
     </div>
   )

@@ -6,30 +6,36 @@ export default function Login() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
 
+  // ===== 一般登入 =====
   const handleLogin = async () => {
-  try {
-    const res = await fetch("http://localhost:5000/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password })
-    })
+    try {
+      const res = await fetch("http://localhost:5000/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password })
+      })
 
-    if (!res.ok) {
-      alert("登入失敗")
-      return
+      if (!res.ok) {
+        alert("登入失敗")
+        return
+      }
+
+      const data = await res.json()
+
+      // ⭐ 存 JWT
+      localStorage.setItem("token", data.token)
+      localStorage.setItem("role", data.role)
+
+      navigate(`/${data.role}`)
+    } catch (err) {
+      alert("無法連線到後端")
     }
-
-    const data = await res.json()
-
-    // ⭐ 存 JWT
-    localStorage.setItem("token", data.token)
-    localStorage.setItem("role", data.role)
-
-    navigate(`/${data.role}`)
-  } catch (err) {
-    alert("無法連線到後端")
   }
-}
+
+  // ===== Google 登入 =====
+  const handleGoogleLogin = () => {
+    window.location.href = "http://localhost:5000/auth/google"
+  }
 
   return (
     <div className="page">
@@ -49,16 +55,26 @@ export default function Login() {
           onChange={e => setPassword(e.target.value)}
         />
 
-        <button
-  onClick={() => {
-    window.location.href = "http://localhost:5000/auth/google"
-  }}
->
-  使用 Google 登入
-</button>
+        <button onClick={handleLogin}>
+          一般登入
+        </button>
 
+        <hr style={{ margin: "20px 0" }} />
+
+        <button
+          onClick={handleGoogleLogin}
+          style={{
+            backgroundColor: "#4285F4",
+            color: "white",
+            padding: "10px",
+            borderRadius: "5px",
+            border: "none",
+            cursor: "pointer"
+          }}
+        >
+          使用 Google 登入
+        </button>
       </div>
     </div>
   )
 }
-

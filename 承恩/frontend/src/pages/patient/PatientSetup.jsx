@@ -1,101 +1,137 @@
-import { useEffect, useState } from "react"
-import { useLocation, useNavigate } from "react-router-dom"
+import { useState } from "react"
+import { useNavigate } from "react-router-dom"
 
 export default function PatientSetup() {
-  const location = useLocation()
   const navigate = useNavigate()
-
-  const [name, setName] = useState("")
-  const [birthYear, setBirthYear] = useState("")
-  const [birthMonth, setBirthMonth] = useState("")
-  const [birthDay, setBirthDay] = useState("")
-  const [age, setAge] = useState("")
-  const [idNumber, setIdNumber] = useState("")
-  const [gender, setGender] = useState("")
-
-  // ⭐ 自動存 token
-  useEffect(() => {
-    const params = new URLSearchParams(location.search)
-    const token = params.get("token")
-    if (token) {
-      localStorage.setItem("token", token)
-    }
-  }, [location])
+  const [form, setForm] = useState({
+    name: "",
+    birthDate: "",
+    age: "",
+    idNumber: "",
+    gender: "male"
+  })
+  const [submitting, setSubmitting] = useState(false)
 
   const handleSubmit = async () => {
     const token = localStorage.getItem("token")
+    if (!token) {
+      navigate("/")
+      return
+    }
 
-    const res = await fetch("http://localhost:5000/complete-profile", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer " + token
+    if (!form.name.trim() || !form.birthDate || !form.age || !form.idNumber.trim()) {
+      alert("請填寫完整基本資料。")
+      return
+    }
+
+    setSubmitting(true)
+
+    try {
+      const res = await fetch("http://localhost:5000/patient/setup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + token
+        },
+        body: JSON.stringify({
+          ...form,
+          age: Number(form.age)
+        })
+      })
+
+      if (!res.ok) {
+        alert("儲存失敗，請稍後再試。")
+        return
       }
-    })
 
-    if (res.ok) {
-      alert("基本資料完成")
+      alert("受顧者基本資料已儲存。")
       navigate("/patient")
-    } else {
-      alert("儲存失敗")
+    } catch (error) {
+      console.error(error)
+      alert("網路異常，請稍後再試。")
+    } finally {
+      setSubmitting(false)
     }
   }
 
   return (
     <div className="page">
-      <div className="card">
-        <h2>受顧者基本資料</h2>
+      <div className="card setup-card">
+        <span className="section-kicker">受顧者資料</span>
+        <h2 className="section-title">建立受顧者基本檔案</h2>
+        <p className="section-subtitle">
+          此頁先為介面版本，後續可由組員擴充欄位驗證與資料同步流程。
+        </p>
 
-        <input
-          placeholder="姓名"
-          value={name}
-          onChange={e => setName(e.target.value)}
-        />
+        <div className="form-grid">
+          <div>
+            <label className="input-label" htmlFor="patient-name">
+              姓名
+            </label>
+            <input
+              id="patient-name"
+              value={form.name}
+              onChange={e => setForm({ ...form, name: e.target.value })}
+              placeholder="例如：王伯伯"
+            />
+          </div>
 
-        <div>
-          出生年月日：
-          <select onChange={e => setBirthYear(e.target.value)}>
-            <option>年</option>
-            {Array.from({ length: 100 }, (_, i) => 2024 - i).map(y => (
-              <option key={y}>{y}</option>
-            ))}
-          </select>
+          <div>
+            <label className="input-label" htmlFor="patient-birthdate">
+              生日
+            </label>
+            <input
+              id="patient-birthdate"
+              type="date"
+              value={form.birthDate}
+              onChange={e => setForm({ ...form, birthDate: e.target.value })}
+            />
+          </div>
 
-          <select onChange={e => setBirthMonth(e.target.value)}>
-            <option>月</option>
-            {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
-              <option key={m}>{m}</option>
-            ))}
-          </select>
+          <div>
+            <label className="input-label" htmlFor="patient-age">
+              年齡
+            </label>
+            <input
+              id="patient-age"
+              type="number"
+              min="1"
+              value={form.age}
+              onChange={e => setForm({ ...form, age: e.target.value })}
+              placeholder="例如：78"
+            />
+          </div>
 
-          <select onChange={e => setBirthDay(e.target.value)}>
-            <option>日</option>
-            {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
-              <option key={d}>{d}</option>
-            ))}
-          </select>
+          <div>
+            <label className="input-label" htmlFor="patient-id">
+              身分證字號
+            </label>
+            <input
+              id="patient-id"
+              value={form.idNumber}
+              onChange={e => setForm({ ...form, idNumber: e.target.value })}
+              placeholder="例如：A123456789"
+            />
+          </div>
+
+          <div>
+            <label className="input-label" htmlFor="patient-gender">
+              性別
+            </label>
+            <select
+              id="patient-gender"
+              value={form.gender}
+              onChange={e => setForm({ ...form, gender: e.target.value })}
+            >
+              <option value="male">男性</option>
+              <option value="female">女性</option>
+            </select>
+          </div>
         </div>
 
-        <select onChange={e => setAge(e.target.value)}>
-          <option>年齡</option>
-          {Array.from({ length: 120 }, (_, i) => i + 1).map(a => (
-            <option key={a}>{a}</option>
-          ))}
-        </select>
-
-        <input
-          placeholder="身分證字號"
-          value={idNumber}
-          onChange={e => setIdNumber(e.target.value)}
-        />
-
-        <select onChange={e => setGender(e.target.value)}>
-          <option>性別</option>
-          <option>男</option>
-          <option>女</option>
-        </select>
-
-        <button onClick={handleSubmit}>送出</button>
+        <button className="primary-btn" onClick={handleSubmit} disabled={submitting}>
+          {submitting ? "儲存中..." : "儲存資料"}
+        </button>
       </div>
     </div>
   )

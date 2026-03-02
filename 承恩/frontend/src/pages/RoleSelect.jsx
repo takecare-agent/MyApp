@@ -1,64 +1,65 @@
-import { useSearchParams, useNavigate } from "react-router-dom"
+import { useEffect, useState } from "react"
 
 export default function RoleSelect() {
-  const [searchParams] = useSearchParams()
-  const navigate = useNavigate()
+  const [email, setEmail] = useState("")
 
-  const email = searchParams.get("email")
+  useEffect(() => {
+    const token = localStorage.getItem("token")
 
-  const handleSelectRole = async (role) => {
-    if (!email) {
-      alert("找不到使用者 email")
+    if (!token) {
+      alert("未登入")
+      window.location.href = "/"
       return
     }
 
+    const payload = JSON.parse(atob(token.split(".")[1]))
+
+    if (!payload.email) {
+      alert("找不到使用者 email")
+      window.location.href = "/"
+      return
+    }
+
+    setEmail(payload.email)
+  }, [])
+
+  const handleSelectRole = async (role) => {
     try {
       const res = await fetch("http://localhost:5000/set-role", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({
-          email,
-          role
-        })
+        body: JSON.stringify({ email, role })
       })
 
       const data = await res.json()
 
-      if (!res.ok) {
-        alert(data.message)
-        return
-      }
-
-      // ✅ 存 JWT
       localStorage.setItem("token", data.token)
+      localStorage.setItem("role", role)
 
-      // ✅ 跳轉對應頁面
-      navigate(`/${role}`)
+      window.location.href = `/${role}`
 
     } catch (err) {
-      console.error("設定角色錯誤:", err)
+      alert("設定角色失敗")
     }
   }
 
   return (
-    <div className="page">
-      <div className="card">
-        <h2>請選擇您的身份</h2>
+    <div>
+      <h2>請選擇您的身份</h2>
 
-        <button onClick={() => handleSelectRole("patient")}>
-          👤 受顧者
-        </button>
+      <button onClick={() => handleSelectRole("patient")}>
+        受顧者
+      </button>
 
-        <button onClick={() => handleSelectRole("family")}>
-          👨‍👩‍👧 家屬端
-        </button>
+      <button onClick={() => handleSelectRole("family")}>
+        家屬端
+      </button>
 
-        <button onClick={() => handleSelectRole("caregiver")}>
-          👨‍⚕️ 看護端
-        </button>
-      </div>
+      <button onClick={() => handleSelectRole("caregiver")}>
+        看護端
+      </button>
     </div>
   )
 }
