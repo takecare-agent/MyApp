@@ -6,13 +6,12 @@ import {
 } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context'; // 👈 修正: 使用新的 SafeAreaView
 import BleManager from 'react-native-ble-manager';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LineChart } from "react-native-chart-kit";
 import Tts from 'react-native-tts';
-import Voice from '@react-native-voice/voice'; // 👈 新增：語音輸入套件
 
 // --- 定義資料型別 (TypeScript 專用) ---
 interface RecordItem {
@@ -35,7 +34,7 @@ interface BpState {
 const BleManagerModule = NativeModules.BleManager;
 const bleManagerEmitter = new NativeEventEmitter(BleManagerModule);
 
-// --- 輔助函數 ---
+// --- 輔助函數 (解決巢狀三元運算子問題) ---
 const getLevelColor = (level: string) => {
   if (level === '高血壓') return '#cf1322';
   if (level === '正常') return '#52c41a';
@@ -61,7 +60,7 @@ const getLangIcon = (lang: string) => {
 const BloodPressureScreen = () => {
   const [bp, setBp] = useState<BpState>({ sys: '', dia: '', pulse: '' });
   const [status, setStatus] = useState({ label: '等待輸入', color: '#d9d9d9', guide: '' });
-  const [records, setRecords] = useState<RecordItem[]>([]); 
+  const [records, setRecords] = useState<RecordItem[]>([]); // 👈 修正: 指定陣列型別
   const [isScanning, setIsScanning] = useState(false);
   const API_URL = 'https://bp-backend-server.onrender.com/api/bp';
 
@@ -101,7 +100,7 @@ const BloodPressureScreen = () => {
       await AsyncStorage.setItem('bp_records', JSON.stringify(newRecordsList));
       await axios.post(API_URL, newRecord, { timeout: 10000 });
     } catch (err) { 
-      console.log("雲端同步延遲，已先存於手機", err); 
+      console.log("雲端同步延遲，已先存於手機", err); // 👈 修正: 處理 err
     }
   };
 
@@ -156,6 +155,7 @@ const BloodPressureScreen = () => {
   const startScan = () => {
     if (!isScanning) {
       setIsScanning(true);
+      // 👈 修正: 強制轉換型別以避免 TS 誤判參數數量
       (BleManager.scan as any)([], 5, true).then(() => setTimeout(() => setIsScanning(false), 5000)).catch(() => setIsScanning(false));
     }
   };
@@ -218,7 +218,7 @@ const BloodPressureScreen = () => {
           </>
         }
         data={records}
-        keyExtractor={getRecordKey} 
+        keyExtractor={getRecordKey} // 👈 修正: 使用輔助函數
         renderItem={({ item }) => (
           <View style={styles.recordItem}>
             <View style={styles.recordLeft}>
@@ -236,14 +236,13 @@ const BloodPressureScreen = () => {
 };
 
 // ==========================================
-// 頁面 2：照護翻譯與溝通系統 (加入語音輸入)
+// 頁面 2：照護翻譯與溝通系統
 // ==========================================
 const TranslationScreen = () => {
   const [inputText, setInputText] = useState('');
   const [translatedText, setTranslatedText] = useState('');
   const [targetLang, setTargetLang] = useState('id'); 
   const [isLoading, setIsLoading] = useState(false);
-  const [isListening, setIsListening] = useState(false); // 👈 新增麥克風狀態
 
   const TRANSLATE_API_URL = 'https://bp-backend-server.onrender.com/api/translate'; 
 
@@ -254,37 +253,6 @@ const TranslationScreen = () => {
     { text: '該吃藥了', icon: '💊' },
     { text: '我要去洗手間', icon: '🚽' },
   ];
-
-  // 👈 新增：麥克風的生命週期與設定
-  useEffect(() => {
-    Voice.onSpeechStart = () => setIsListening(true);
-    Voice.onSpeechEnd = () => setIsListening(false);
-    Voice.onSpeechResults = (e: any) => {
-      if (e.value && e.value.length > 0) setInputText(e.value[0]);
-    };
-    Voice.onSpeechError = (e: any) => {
-      console.log('語音辨識錯誤:', e.error);
-      setIsListening(false);
-    };
-    return () => {
-      Voice.destroy().then(Voice.removeAllListeners);
-    };
-  }, []);
-
-  // 👈 新增：啟動麥克風的方法
-  const toggleListening = async () => {
-    try {
-      if (isListening) {
-        await Voice.stop();
-      } else {
-        setInputText(''); 
-        await Voice.start('zh-TW'); // 預設接收中文
-      }
-    } catch (e) {
-      console.error(e);
-      Alert.alert("錯誤", "無法啟動麥克風，請確認已給予權限");
-    }
-  };
 
   const handleTranslate = async (textToTranslate: string = inputText) => {
     if (!textToTranslate.trim()) {
@@ -336,28 +304,19 @@ const TranslationScreen = () => {
               onPress={() => setTargetLang(lang)}
             >
               <Text style={[styles.langText, targetLang === lang && styles.langTextActive]}>
-                {getLangIcon(lang)}
+                {getLangIcon(lang)} {/* 👈 修正: 使用輔助函數 */}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* 👈 修改：加入麥克風按鈕的輸入區塊 */}
-        <View style={styles.inputWrapper}>
-          <TextInput
-            style={styles.textAreaWithMic}
-            placeholder="請輸入或說出中文..."
-            multiline={true}
-            value={inputText}
-            onChangeText={setInputText}
-          />
-          <TouchableOpacity 
-            style={[styles.micBtn, isListening && styles.micBtnActive]} 
-            onPress={toggleListening}
-          >
-            <Text style={styles.micBtnText}>{isListening ? "🛑 停止" : "🎤 說話"}</Text>
-          </TouchableOpacity>
-        </View>
+        <TextInput
+          style={styles.textArea}
+          placeholder="請輸入中文..."
+          multiline={true}
+          value={inputText}
+          onChangeText={setInputText}
+        />
 
         <TouchableOpacity style={styles.actionBtn} onPress={() => handleTranslate(inputText)}>
           <Text style={styles.actionBtnText}>{isLoading ? "翻譯中..." : "🔄 翻譯 (Translate)"}</Text>
@@ -395,6 +354,7 @@ const TranslationScreen = () => {
 // ==========================================
 const Tab = createBottomTabNavigator();
 
+// 👈 修正: 將圖示元件移出父元件
 const TranslateIcon = () => <Text style={{fontSize: 20}}>🗣️</Text>;
 const BloodPressureIcon = () => <Text style={{fontSize: 20}}>🩸</Text>;
 
@@ -445,14 +405,7 @@ const styles = StyleSheet.create({
   langBtnActive: { backgroundColor: '#1890ff' },
   langText: { color: '#1890ff', fontWeight: 'bold' },
   langTextActive: { color: 'white' },
-  
-  // 👈 新增：麥克風專用樣式
-  inputWrapper: { position: 'relative', marginBottom: 15 },
-  textAreaWithMic: { backgroundColor: 'white', height: 100, borderRadius: 10, padding: 15, paddingRight: 80, fontSize: 16, textAlignVertical: 'top', borderWidth: 1, borderColor: '#ddd' },
-  micBtn: { position: 'absolute', right: 10, bottom: 10, backgroundColor: '#f0f0f0', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, elevation: 2 },
-  micBtnActive: { backgroundColor: '#ff4d4f' },
-  micBtnText: { color: '#333', fontWeight: 'bold' },
-  
+  textArea: { backgroundColor: 'white', height: 100, borderRadius: 10, padding: 15, fontSize: 16, textAlignVertical: 'top', marginBottom: 15, borderWidth: 1, borderColor: '#ddd' },
   actionBtn: { backgroundColor: '#52c41a', padding: 15, borderRadius: 10, alignItems: 'center', marginBottom: 20 },
   actionBtnText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
   resultBox: { backgroundColor: '#fffbe6', padding: 20, borderRadius: 10, borderWidth: 1, borderColor: '#ffe58f', alignItems: 'center' },
