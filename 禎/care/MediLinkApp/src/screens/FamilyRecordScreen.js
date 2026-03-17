@@ -8,7 +8,7 @@ export default function FamilyRecordScreen() {
 
   const fetchRecords = async () => {
     try {
-      const response = await client.get(`/care-records/${user_id}`);
+      // const response = await client.get(`/care-records/${user_id}`);
       setRecords(response.data);
     } catch (error) {
       console.log('取得紀錄失敗');

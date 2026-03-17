@@ -40,9 +40,7 @@ export default function CaregiverRecordScreen({ navigation }) {
       <TextInput style={styles.input} placeholder="體溫 (°C)" keyboardType="numeric" value={form.temperature} onChangeText={(v)=>setForm({...form, temperature:v})} />
 
       <Text style={styles.label}>生活觀察</Text>
-      <TextInput style={styles.input} placeholder="飲食狀況 (如：早餐食慾良好)" value={form.meals} onChangeText={(v)=>setForm({...form, meals:v})} />
-      <TextInput style={styles.input} placeholder="睡眠狀況" value={form.sleep} onChangeText={(v)=>setForm({...form, sleep:v})} />
-      
+      <TextInput style={styles.input} placeholder="飲食狀況 (如：早餐食慾良好)" value={form.meals} onChangeText={(v)=>setForm({...form, meals:v})} />      
       <Text style={styles.label}>其他備註</Text>
       <TextInput style={[styles.input, { height: 100 }]} placeholder="請輸入當日異常或特別觀察..." multiline value={form.note} onChangeText={(v)=>setForm({...form, note:v})} />
 

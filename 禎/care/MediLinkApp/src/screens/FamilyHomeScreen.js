@@ -1,131 +1,112 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import client from '../api/client';
+import { colors, radius, shadow, text } from '../theme';
+import DateFilterModal from './DateFilterModal';
+
+const QUICK_BTNS = [
+  { label: '異常紀錄', icon: '🚨', route: 'AbnormalList',       color: colors.danger,  bg: colors.dangerBg },
+  { label: '清單紀錄', icon: '📋', route: 'FamilyReminderList', color: colors.primary, bg: colors.primaryBg },
+];
 
 export default function FamilyHomeScreen({ navigation }) {
-  const [records, setRecords] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [records, setRecords]       = useState([]);
+  const [filtered, setFiltered]     = useState([]);
+  const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(null);
 
-  // 取得照護紀錄流水帳
   const fetchRecords = async () => {
     try {
-      const response = await client.get('/care-records');
-      setRecords(response.data);
-    } catch (error) {
-      console.error("抓取失敗:", error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      const res = await client.get('/care-records');
+      setRecords(res.data);
+      setFiltered(res.data);
+    } catch { console.error('抓取失敗'); }
+    finally { setLoading(false); setRefreshing(false); }
+  };
+
+  useEffect(() => { fetchRecords(); }, []);
+  const onRefresh = () => { setRefreshing(true); fetchRecords(); };
+
+  const toDateStr = d => {
+    const dt = new Date(d);
+    return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+  };
+
+  const handleDateSelect = (date) => {
+    setSelectedDate(date);
+    if (!date) {
+      setFiltered(records);
+    } else {
+      setFiltered(records.filter(r => toDateStr(r.createdAt) === date));
     }
   };
 
-  useEffect(() => {
-    fetchRecords();
-  }, []);
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchRecords();
-  };
-
   const renderItem = ({ item }) => (
-    <View style={styles.card}>
-      <Text style={styles.recordTitle}>🧾 項目：{item.meals || '未填寫'}</Text>
-      <Text style={styles.recordContent}>📝 內容：{item.note || '無詳細內容'}</Text>
-      
+    <TouchableOpacity style={s.card} activeOpacity={0.8}
+      onPress={() => navigation.navigate('RecordDetail', { record: item })}>
+      <View style={s.cardTop}>
+        <Text style={s.cardTitle} numberOfLines={1}>🧾 {item.meals || '未填寫'}</Text>
+        <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+      </View>
+      <Text style={s.cardNote} numberOfLines={1}>📝 {item.note || '無詳細內容'}</Text>
       {(item.bloodPressure || item.temperature) && (
-        <View style={styles.vitals}>
-          <Text style={styles.vitalsText}>🌡️ {item.temperature || '--'}°C</Text>
-          <Text style={styles.vitalsText}>💓 {item.heartRate || '--'} bpm</Text>
+        <View style={s.vitals}>
+          <Text style={s.vitalsText}>🌡️ {item.temperature || '--'}°C</Text>
+          <Text style={s.vitalsText}>💓 {item.heartRate || '--'} bpm</Text>
         </View>
       )}
-      <Text style={styles.recordTime}>
-        📅 {new Date(item.createdAt).toLocaleString()}
-      </Text>
-    </View>
+      <Text style={s.cardTime}>{new Date(item.createdAt).toLocaleString()}</Text>
+    </TouchableOpacity>
   );
 
   return (
-    <View style={styles.container}>
-      {/* 🚀 功能按鈕區：只保留兩個按鈕 */}
-      <View style={styles.actionHeader}>
-        <Text style={styles.sectionLabel}>管理與回報</Text>
-        <View style={styles.buttonRow}>
-          <TouchableOpacity 
-            style={[styles.actionBtn, { backgroundColor: '#fff5f5', borderColor: '#ffccc7' }]} 
-            onPress={() => navigation.navigate('AbnormalList')}
-          >
-            <Text style={styles.btnIcon}>🚨</Text>
-            <Text style={[styles.btnText, { color: '#ff4d4f' }]}>異常紀錄</Text>
+    <View style={s.container}>
+      {/* 快速按鈕 */}
+      <View style={s.quickRow}>
+        {QUICK_BTNS.map(btn => (
+          <TouchableOpacity key={btn.route} style={[s.quickBtn, { backgroundColor: btn.bg }]}
+            onPress={() => navigation.navigate(btn.route)}>
+            <Text style={s.quickIcon}>{btn.icon}</Text>
+            <Text style={[s.quickLabel, { color: btn.color }]}>{btn.label}</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.actionBtn, { backgroundColor: '#f0f7ff', borderColor: '#bae7ff' }]} 
-            onPress={() => navigation.navigate('FamilyReminderList')}
-          >
-            <Text style={styles.btnIcon}>📋</Text>
-            <Text style={[styles.btnText, { color: '#007AFF' }]}>清單紀錄</Text>
-          </TouchableOpacity>
-        </View>
+        ))}
       </View>
 
-      <View style={styles.divider} />
+      {/* 篩選列 */}
+      <View style={s.filterBar}>
+        <Text style={s.filterBarLabel}>照護紀錄</Text>
+        <DateFilterModal selectedDate={selectedDate} onSelect={handleDateSelect} />
+      </View>
 
-      {/* 下方的照護紀錄清單 */}
-      <Text style={styles.sectionLabel}>照護紀錄</Text>
-      {loading ? (
-        <ActivityIndicator size="large" color="#007AFF" style={{ marginTop: 50 }} />
-      ) : (
-        <FlatList
-          data={records}
-          keyExtractor={(item) => item._id}
-          renderItem={renderItem}
-          contentContainerStyle={{ padding: 15, paddingBottom: 30 }}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
-          ListEmptyComponent={<Text style={styles.empty}>目前還沒有照護紀錄喔！</Text>}
+      {loading ? <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} /> : (
+        <FlatList data={filtered} keyExtractor={i => i._id} renderItem={renderItem}
+          contentContainerStyle={{ padding: 16, paddingBottom: 30 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          ListEmptyComponent={<Text style={s.empty}>此日期沒有照護紀錄</Text>}
         />
       )}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8f9fa' },
-  actionHeader: { padding: 15, backgroundColor: '#fff' },
-  sectionLabel: { fontSize: 16, fontWeight: 'bold', color: '#8c8c8c', marginBottom: 12, marginLeft: 5 },
-  buttonRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  actionBtn: { 
-    flex: 1, 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'center',
-    padding: 15, 
-    borderRadius: 12, 
-    marginHorizontal: 5,
-    borderWidth: 1,
-    elevation: 1,
-  },
-  btnIcon: { fontSize: 20, marginRight: 8 },
-  btnText: { fontSize: 14, fontWeight: 'bold', textAlign: 'center' },
-  divider: { height: 8, backgroundColor: '#f0f2f5' },
-  card: {
-    backgroundColor: '#fff',
-    padding: 15,
-    borderRadius: 12,
-    marginBottom: 15,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-  },
-  recordTitle: { fontSize: 18, fontWeight: 'bold', color: '#2c3e50' },
-  recordContent: { fontSize: 16, color: '#555', marginVertical: 8 },
-  vitals: { flexDirection: 'row', justifyContent: 'space-around', backgroundColor: '#f0f7ff', padding: 8, borderRadius: 8, marginBottom: 8 },
-  vitalsText: { fontSize: 14, color: '#007AFF', fontWeight: '600' },
-  recordTime: { fontSize: 12, color: '#999', textAlign: 'right' },
-  empty: { textAlign: 'center', marginTop: 50, color: '#999', fontSize: 16 }
+const s = StyleSheet.create({
+  container:  { flex: 1, backgroundColor: colors.bg },
+  quickRow:   { flexDirection: 'row', backgroundColor: colors.card, padding: 16, gap: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
+  quickBtn:   { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 14, borderRadius: radius.md },
+  quickIcon:  { fontSize: 18 },
+  quickLabel: { fontSize: 13, fontWeight: '700' },
+
+  filterBar:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.card, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
+  filterBarLabel:  { ...text.h3 },
+
+  card:      { backgroundColor: colors.card, borderRadius: radius.md, padding: 15, marginBottom: 12, ...shadow.sm },
+  cardTop:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  cardTitle: { ...text.h3, flex: 1 },
+  cardNote:  { ...text.body, color: colors.textSub, marginBottom: 8 },
+  vitals:    { flexDirection: 'row', gap: 16, backgroundColor: colors.primaryBg, padding: 8, borderRadius: radius.sm, marginBottom: 8 },
+  vitalsText:{ fontSize: 13, color: colors.primary, fontWeight: '600' },
+  cardTime:  { ...text.xs, textAlign: 'right' },
+  empty:     { textAlign: 'center', marginTop: 50, color: colors.textMuted, fontSize: 15 },
 });

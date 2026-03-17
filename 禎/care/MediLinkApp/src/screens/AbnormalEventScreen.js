@@ -1,17 +1,16 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, ActivityIndicator } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
+import { Ionicons } from '@expo/vector-icons'; 
 import client from '../api/client';
 
 export default function AbnormalEventScreen({ navigation }) {
-  // 狀態管理
   const [type, setType] = useState('跌倒/受傷');
   const [detail, setDetail] = useState('');
   const [customDetail, setCustomDetail] = useState('');
-  const [severity, setSeverity] = useState('注意'); // 預設為「注意」
+  const [severity, setSeverity] = useState('注意'); 
   const [loading, setLoading] = useState(false);
 
-  // 📖 連動選單資料庫
   const eventTypes = ['跌倒/受傷', '生理異常', '情緒/行為', '飲食/排泄', '其他'];
   const detailPresets = {
     '跌倒/受傷': ['浴室滑倒', '下床跌倒', '行走時絆倒', '撞到傢俱', '皮膚擦傷/瘀青'],
@@ -21,33 +20,35 @@ export default function AbnormalEventScreen({ navigation }) {
     '其他': ['請手動描述異常狀況']
   };
 
-  // 🚦 嚴重程度定義 (給看護看的指導原則)
+  // 🚦 嚴重程度定義 (柔和化顏色)
   const severityLevels = [
     { 
       id:'輕微', 
       label: '🟢 輕微 (觀察)', 
       desc: '如：輕微擦傷、食慾稍差。無立即危險，持續觀察即可。',
       color: '#52c41a', 
-      bg: '#f6ffed' 
+      bg: '#f6ffed',
+      borderColor: '#b7eb8f'
     },
     { 
       id:'注意', 
       label: '🟠 注意 (需處置)', 
       desc: '如：發燒、持續腹瀉、跌倒。需家屬知情或安排就醫。',
       color: '#fa8c16', 
-      bg: '#fff7e6' 
+      bg: '#fff7e6',
+      borderColor: '#ffd591'
     },
     { 
       id:'緊急', 
       label: '🔴 緊急 (立即送醫)', 
       desc: '如：意識不清、呼吸困難、大出血。請直接撥打 119！',
       color: '#f5222d', 
-      bg: '#fff1f0' 
+      bg: '#fff1f0',
+      borderColor: '#ffa39e'
     }
   ];
 
   const handleSubmit = async () => {
-    // 組合描述內容
     const finalDescription = (detail === '其他' || type === '其他') ? customDetail : detail;
 
     if (!finalDescription) {
@@ -57,99 +58,100 @@ export default function AbnormalEventScreen({ navigation }) {
 
     setLoading(true);
     try {
-      // 1. 先在終端機檢查到底送了什麼（除錯用）
-      console.log("【準備通報】資料：", {
-        type: type,         
-        description: finalDescription,
-        severity: severity,  
-      });
-      // 傳送到 MongoDB
       const response = await client.post('/api/abnormal-events', {
         type: type,
         description: finalDescription,
-        severity: severity, // 儲存明確的嚴重等級
-        status: 'pending',  // 預設狀態為「待處理」
+        severity: severity, 
+        status: 'pending',  
         createdAt: new Date()
       });
-      if (response.data) {
-      Alert.alert('通報成功');
       if (response.status === 200 || response.status === 201) {
-      Alert.alert('⚠️ 通報成功', '系統已發送緊急通知給家屬！', [
+        Alert.alert('通報成功', '已發送通知給家屬！', [
           { text: '好的', onPress: () => navigation.goBack() }
         ]);
-      }}
+      }
     } catch (error) {
-    console.error(error); // 👈 這裡可以看到真正網址變成了什麼
-    Alert.alert('通報失敗', '網路不穩');
-  }
-};
+      console.error(error); 
+      Alert.alert('通報失敗', '網路不穩');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <ScrollView style={styles.container}>
-      {/* 紅色警示頂部 */}
-      <View style={styles.warningHeader}>
-        <Text style={styles.warningTitle}>⚠️ 異常事件通報</Text>
-        <Text style={styles.warningSub}>請依照下方說明，選擇正確的嚴重程度</Text>
+      {/* 🚀 柔和質感的頂部標題 */}
+      <View style={styles.header}>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>異常事件通報</Text>
+        </View>
+        <Text style={styles.subtitle}>請協助記錄長輩的突發狀況，系統將同步通知家屬。</Text>
       </View>
 
       <View style={styles.formCard}>
-        {/* 1. 事件類型 */}
-        <Text style={styles.label}>1. 發生什麼事？(類型)</Text>
-        <View style={styles.pickerContainer}>
+        {/* 1. 事件類別 */}
+        <Text style={styles.label}>1. 選擇事件類別</Text>
+        <View style={styles.pickerBox}>
           <Picker
             selectedValue={type}
             onValueChange={(val) => { setType(val); setDetail(''); setCustomDetail(''); }}
-            itemStyle={{ color: '#333' }}
+            itemStyle={{ color: '#333333' }}
           >
             {eventTypes.map(t => <Picker.Item key={t} label={t} value={t} />)}
           </Picker>
         </View>
-        {/* 2. 詳細狀況 */}
+
+        {/* 2. 狀況描述 */}
         <Text style={styles.label}>2. 詳細狀況描述</Text>
-        <View style={styles.pickerContainer}>
+        <View style={[styles.pickerBox, { marginTop: 5 }]}>
           <Picker
             selectedValue={detail}
             onValueChange={(val) => setDetail(val)}
-            itemStyle={{ color: '#333' }}
+            itemStyle={{ color: '#333333' }}
           >
             <Picker.Item label="請選擇具體狀況..." value="" />
             {(detailPresets[type] || []).map(d => <Picker.Item key={d} label={d} value={d} />)}
-            <Picker.Item label=" 其他" value="其他" />
+            <Picker.Item label=" 其他 (手動輸入)" value="其他" />
           </Picker>
         </View>
 
-        {/* 手動輸入框 */}
+        {/* 手動輸入框 (改為柔和綠色系) */}
         {(detail === '其他' || type === '其他') && (
           <TextInput
             style={styles.customInput}
             placeholder="請詳細描述發生經過..."
+            placeholderTextColor="#999"
             value={customDetail}
             onChangeText={setCustomDetail}
             multiline
           />
         )}
 
-        {/* 🚀 3. 嚴重程度選擇 (視覺化按鈕) */}
-        <Text style={styles.label}>3. 嚴重程度判斷 (點擊選擇)</Text>
+        {/* 3. 嚴重程度選擇 */}
+        <Text style={styles.label}>3. 嚴重程度判斷</Text>
         <View style={styles.severityContainer}>
-          {severityLevels.map((level) => (
-            <TouchableOpacity
-              key={level.id}
-              style={[
-                styles.severityBtn,
-                // 選中時顯示深色邊框與背景
-                severity === level.id ? { borderColor: level.color, backgroundColor: level.bg, borderWidth: 2 } : { borderColor: '#ddd' }
-              ]}
-              onPress={() => setSeverity(level.id)}
-            >
-              <Text style={[styles.severityLabel, { color: level.color }]}>
-                {level.label}
-              </Text>
-              <Text style={styles.severityDesc}>{level.desc}</Text>
-            </TouchableOpacity>
-          ))}
+          {severityLevels.map((level) => {
+            const isActive = severity === level.id;
+            return (
+              <TouchableOpacity
+                key={level.id}
+                style={[
+                  styles.severityBtn,
+                  isActive ? { backgroundColor: level.bg, borderColor: level.borderColor, borderWidth: 2 } : null
+                ]}
+                onPress={() => setSeverity(level.id)}
+              >
+                <View style={styles.severityHeader}>
+                  <Text style={[styles.severityLabel, { color: level.color }]}>{level.label}</Text>
+                  {isActive && <Ionicons name="checkmark-circle" size={20} color={level.color} />}
+                </View>
+                <Text style={styles.severityDesc}>{level.desc}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
+        {/* 確認按鈕 (對齊截圖的綠色) */}
         <TouchableOpacity 
           style={[styles.submitBtn, loading && { opacity: 0.6 }]} 
           onPress={handleSubmit}
@@ -158,7 +160,7 @@ export default function AbnormalEventScreen({ navigation }) {
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.submitText}>🚨 立即通報</Text>
+            <Text style={styles.submitText}>確認通報</Text>
           )}
         </TouchableOpacity>
       </View>
@@ -167,22 +169,32 @@ export default function AbnormalEventScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f0f2f5' },
-  warningHeader: { backgroundColor: '#cf1322', padding: 25, alignItems: 'center', borderBottomLeftRadius: 20, borderBottomRightRadius: 20 },
-  warningTitle: { color: '#fff', fontSize: 22, fontWeight: 'bold', marginBottom: 5 },
-  warningSub: { color: '#ffccc7', fontSize: 14 },
+  container: { flex: 1, backgroundColor: '#f5f7fa' },
   
-  formCard: { backgroundColor: '#fff', margin: 15, padding: 20, borderRadius: 15, marginTop: -20, elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
-  label: { fontSize: 16, fontWeight: 'bold', color: '#333', marginTop: 20, marginBottom: 8 },
-  pickerContainer: { borderWidth: 1, borderColor: '#d9d9d9', borderRadius: 8, backgroundColor: '#fafafa',height: 150, overflow: 'hidden', justifyContent: 'center' },
-  customInput: { borderWidth: 1, borderColor: '#cf1322', padding: 12, borderRadius: 8, marginTop: 10, height: 80, textAlignVertical: 'top', backgroundColor: '#fff1f0' },
+  // 清爽的頂部設計
+  header: { padding: 25, paddingTop: 30, backgroundColor: '#ffffff', borderBottomWidth: 1, borderColor: '#eeeeee' },
+  titleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  title: { fontSize: 24, fontWeight: 'bold', color: '#2c3e50', marginLeft: 8 },
+  subtitle: { fontSize: 14, color: '#7f8c8d', lineHeight: 20 },
   
-  // 🚀 嚴重程度按鈕樣式
-  severityContainer: { flexDirection: 'column', gap: 10 },
-  severityBtn: { padding: 15, borderRadius: 10, borderWidth: 1, backgroundColor: '#fff', marginBottom: 8 },
-  severityLabel: { fontSize: 16, fontWeight: 'bold', marginBottom: 4 },
-  severityDesc: { fontSize: 13, color: '#666', lineHeight: 18 },
+  // 乾淨的白色卡片
+  formCard: { backgroundColor: '#ffffff', margin: 15, padding: 20, borderRadius: 16, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3 },
+  label: { fontSize: 16, fontWeight: 'bold', color: '#34495e', marginTop: 15, marginBottom: 10 },
+  
+  // 統一的滾輪框
+  pickerBox: { borderWidth: 1, borderColor: '#e0e0e0', borderRadius: 10, backgroundColor: '#fafafa', height: 150, overflow: 'hidden', justifyContent: 'center' },
+  
+  // 手動輸入框 (拿掉紅色)
+  customInput: { borderWidth: 1, borderColor: '#d9d9d9', padding: 15, borderRadius: 10, marginTop: 15, height: 100, textAlignVertical: 'top', backgroundColor: '#fafafa', fontSize: 15, color: '#333' },
+  
+  // 嚴重程度按鈕
+  severityContainer: { flexDirection: 'column', gap: 12 },
+  severityBtn: { padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#e0e0e0', backgroundColor: '#ffffff' },
+  severityHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  severityLabel: { fontSize: 16, fontWeight: 'bold' },
+  severityDesc: { fontSize: 13, color: '#7f8c8d', lineHeight: 18 },
 
-  submitBtn: { backgroundColor: '#cf1322', padding: 16, borderRadius: 10, alignItems: 'center', marginTop: 30, shadowColor: '#cf1322', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5 },
-  submitText: { color: '#fff', fontSize: 18, fontWeight: 'bold' }
+  // 送出按鈕 (與截圖一致的綠色)
+  submitBtn: { backgroundColor: '#389e0d', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 35, elevation: 2 },
+  submitText: { color: '#ffffff', fontSize: 18, fontWeight: 'bold' }
 });

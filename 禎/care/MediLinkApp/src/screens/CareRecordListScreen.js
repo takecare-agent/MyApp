@@ -1,139 +1,148 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl, TouchableOpacity } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import client from '../api/client';
+import { colors, radius, shadow, text } from '../theme';
+import DateFilterModal from './DateFilterModal';
 
-export default function CareRecordListScreen() {
-  const [records, setRecords] = useState([]);
-  const [loading, setLoading] = useState(false);
+export default function CareRecordListScreen({ navigation }) {
+  const [records, setRecords]       = useState([]);
+  const [filtered, setFiltered]     = useState([]);
+  const [loading, setLoading]       = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(null);
 
-  // 📥 抓取資料
   const fetchRecords = async () => {
     try {
-      // 根據你的 server.js，路徑是 /care-records
-      const response = await client.get('/care-records');
-      setRecords(response.data);
-    } catch (error) {
-      console.error("無法取得照護紀錄:", error);
-    }
+      const res = await client.get('/care-records');
+      setRecords(res.data); setFiltered(res.data);
+    } catch { console.error('無法取得照護紀錄'); }
   };
 
-  useFocusEffect(
-    useCallback(() => {
-      setLoading(true);
-      fetchRecords().finally(() => setLoading(false));
-    }, [])
-  );
+  useFocusEffect(useCallback(() => {
+    setLoading(true);
+    fetchRecords().finally(() => setLoading(false));
+  }, []));
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await fetchRecords();
-    setRefreshing(false);
+  const onRefresh = async () => { setRefreshing(true); await fetchRecords(); setRefreshing(false); };
+
+  const toDateStr = iso => {
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   };
 
-  // 🕒 時間格式化
-  const formatTime = (isoString) => {
-    if (!isoString) return '--/-- --:--';
-    const date = new Date(isoString);
-    return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  const handleDateSelect = (date) => {
+    setSelectedDate(date);
+    if (!date) setFiltered(records);
+    else setFiltered(records.filter(r => toDateStr(r.createdAt) === date));
   };
 
-  // 🎨 渲染每一張卡片
+  const formatTime = iso => {
+    if (!iso) return '--';
+    const d = new Date(iso);
+    return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  };
+
+  const VITALS = [
+    { mci: 'water-outline', label: '血壓', key: 'bloodPressure', fmt: v => v },
+    { mci: 'heart-pulse',   label: '心率', key: 'heartRate',     fmt: v => `${v} bpm` },
+    { mci: 'thermometer',   label: '體溫', key: 'temperature',   fmt: v => `${v}°C` },
+  ];
+
   const renderItem = ({ item }) => (
-    <View style={styles.card}>
-      {/* 1. 頂部時間與人員 */}
-      <View style={styles.cardHeader}>
-        <View style={styles.timeBadge}>
-          <Ionicons name="calendar-outline" size={14} color="#fff" />
-          <Text style={styles.timeText}>{formatTime(item.createdAt)}</Text>
+    <TouchableOpacity style={s.card} activeOpacity={0.8}
+      onPress={() => navigation.navigate('RecordDetail', { record: item })}>
+      <View style={s.cardHeader}>
+        <View style={s.timeBadge}>
+          <Ionicons name="calendar-outline" size={13} color="#fff" />
+          <Text style={s.timeText}>{formatTime(item.createdAt)}</Text>
         </View>
-        {item.caregiverName && <Text style={styles.caregiverText}>紀錄者: {item.caregiverName}</Text>}
-      </View>
-
-      {/* 2. 生理數值區 (血壓、心率、體溫) */}
-      <View style={styles.vitalsContainer}>
-        <View style={styles.vitalItem}>
-          <MaterialCommunityIcons name="water-outline" size={20} color="#ff4d4f" />
-          <Text style={styles.vitalLabel}>血壓</Text>
-          <Text style={styles.vitalValue}>{item.bloodPressure || '--'}</Text>
-        </View>
-        <View style={styles.vitalItem}>
-          <MaterialCommunityIcons name="heart-pulse" size={20} color="#ff4d4f" />
-          <Text style={styles.vitalLabel}>心率</Text>
-          <Text style={styles.vitalValue}>{item.heartRate || '--'}</Text>
-        </View>
-        <View style={styles.vitalItem}>
-          <MaterialCommunityIcons name="thermometer" size={20} color="#ff4d4f" />
-          <Text style={styles.vitalLabel}>體溫</Text>
-          <Text style={styles.vitalValue}>{item.temperature || '--'}°C</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {item.caregiverName ? <Text style={s.caregiverText}>{item.caregiverName}</Text> : null}
+          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
         </View>
       </View>
 
-      {/* 3. 飲食與備註區 */}
-      <View style={styles.detailContainer}>
+      <View style={s.vitalsBox}>
+        <View style={s.vitalsHeader}>
+          <Ionicons name="bluetooth" size={12} color={colors.primary} />
+          <Text style={s.vitalsHeaderText}>藍牙裝置回傳</Text>
+        </View>
+        <View style={s.vitalsRow}>
+          {VITALS.map((v, i) => (
+            <React.Fragment key={v.label}>
+              <View style={s.vitalItem}>
+                <MaterialCommunityIcons name={v.mci} size={18} color={colors.danger} />
+                <Text style={s.vitalLabel}>{v.label}</Text>
+                <Text style={s.vitalValue}>{item[v.key] ? v.fmt(item[v.key]) : '--'}</Text>
+              </View>
+              {i < VITALS.length - 1 && <View style={s.vitalDivider} />}
+            </React.Fragment>
+          ))}
+        </View>
+      </View>
+
+      <View style={{ gap: 4 }}>
         {item.meals ? (
-          <View style={styles.detailRow}>
-            <Ionicons name="restaurant-outline" size={18} color="#389e0d" />
-            <Text style={styles.detailText}><Text style={styles.bold}>飲食：</Text>{item.meals}</Text>
+          <View style={s.detailRow}>
+            <Ionicons name="clipboard-outline" size={15} color={colors.success} />
+            <Text style={s.detailText} numberOfLines={1}><Text style={s.bold}>項目：</Text>{item.meals}</Text>
           </View>
         ) : null}
-        
         {item.note ? (
-          <View style={styles.detailRow}>
-            <Ionicons name="document-text-outline" size={18} color="#666" />
-            <Text style={styles.detailText}><Text style={styles.bold}>備註：</Text>{item.note}</Text>
+          <View style={s.detailRow}>
+            <Ionicons name="document-text-outline" size={15} color={colors.textSub} />
+            <Text style={s.detailText} numberOfLines={1}><Text style={s.bold}>內容：</Text>{item.note}</Text>
           </View>
         ) : null}
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   return (
-    <View style={styles.container}>
-      {loading && !refreshing ? (
-        <ActivityIndicator size="large" color="#389e0d" style={{ marginTop: 20 }} />
-      ) : (
-        <FlatList
-          data={records}
-          keyExtractor={item => item._id}
-          renderItem={renderItem}
-          contentContainerStyle={{ padding: 15 }}
+    <View style={s.container}>
+      {/* 篩選列 */}
+      <View style={s.filterBar}>
+        <Text style={s.filterBarLabel}>
+          {selectedDate ? `${selectedDate} 的紀錄` : '全部紀錄'}
+        </Text>
+        <DateFilterModal selectedDate={selectedDate} onSelect={handleDateSelect} />
+      </View>
+
+      {loading && !refreshing ? <ActivityIndicator size="large" color={colors.success} style={{ marginTop: 30 }} /> : (
+        <FlatList data={filtered} keyExtractor={i => i._id} renderItem={renderItem}
+          contentContainerStyle={{ padding: 16 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>目前沒有照護紀錄</Text>
-            </View>
-          }
+          ListEmptyComponent={<Text style={s.empty}>此日期沒有照護紀錄</Text>}
         />
       )}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f0f2f5' },
-  card: { backgroundColor: '#fff', borderRadius: 12, marginBottom: 15, padding: 15, elevation: 3 },
-  
-  // 頂部樣式
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 10 },
-  timeBadge: { flexDirection: 'row', backgroundColor: '#389e0d', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 15, alignItems: 'center' },
-  timeText: { color: '#fff', fontSize: 13, fontWeight: 'bold', marginLeft: 4 },
-  caregiverText: { color: '#999', fontSize: 12 },
+const s = StyleSheet.create({
+  container:  { flex: 1, backgroundColor: colors.bg },
+  filterBar:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.card, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
+  filterBarLabel: { ...text.h3 },
 
-  // 生理數值樣式
-  vitalsContainer: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 15, backgroundColor: '#f9f9f9', padding: 10, borderRadius: 8 },
-  vitalItem: { alignItems: 'center' },
-  vitalLabel: { fontSize: 12, color: '#666', marginTop: 4 },
-  vitalValue: { fontSize: 16, fontWeight: 'bold', color: '#333', marginTop: 2 },
+  card:         { backgroundColor: colors.card, borderRadius: radius.md, marginBottom: 12, padding: 14, ...shadow.sm },
+  cardHeader:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
+  timeBadge:    { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.success, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.full, gap: 4 },
+  timeText:     { color: '#fff', fontSize: 12, fontWeight: '600' },
+  caregiverText:{ ...text.xs },
 
-  // 詳細內容樣式
-  detailContainer: { gap: 8 },
-  detailRow: { flexDirection: 'row', alignItems: 'center' },
-  detailText: { fontSize: 15, color: '#333', marginLeft: 8, flex: 1 },
-  bold: { fontWeight: 'bold', color: '#555' },
+  vitalsBox:    { backgroundColor: '#F8FAFF', borderRadius: radius.sm, borderWidth: 1, borderColor: '#DBEAFE', marginBottom: 10, overflow: 'hidden' },
+  vitalsHeader: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#EFF6FF', paddingHorizontal: 10, paddingVertical: 4, gap: 5 },
+  vitalsHeaderText: { fontSize: 11, color: colors.primary, fontWeight: '600' },
+  vitalsRow:    { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 8 },
+  vitalItem:    { alignItems: 'center', flex: 1 },
+  vitalDivider: { width: 1, backgroundColor: '#DBEAFE', marginVertical: 2 },
+  vitalLabel:   { fontSize: 10, color: colors.textMuted, marginTop: 3 },
+  vitalValue:   { fontSize: 13, fontWeight: '700', color: colors.text, marginTop: 1 },
 
-  emptyContainer: { alignItems: 'center', marginTop: 50 },
-  emptyText: { color: '#999', fontSize: 16 }
+  detailRow:  { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  detailText: { fontSize: 13, color: colors.text, flex: 1 },
+  bold:       { fontWeight: '600', color: colors.textSub },
+  empty:      { textAlign: 'center', marginTop: 50, color: colors.textMuted, fontSize: 15 },
 });
