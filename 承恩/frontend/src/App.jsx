@@ -6,7 +6,11 @@ import Register from "./pages/Register"
 import RoleSelect from "./pages/RoleSelect"
 
 import CaregiverHome from "./pages/caregiver/CaregiverHome"
+import CaregiverAlerts from "./pages/caregiver/CaregiverAlerts"
+import CaregiverCareLogs from "./pages/caregiver/CaregiverCareLogs"
+import CaregiverLanguageSupport from "./pages/caregiver/CaregiverLanguageSupport"
 import CaregiverSetup from "./pages/caregiver/CaregiverSetup"
+import CaregiverSystemCenter from "./pages/caregiver/CaregiverSystemCenter"
 
 import FamilyAlerts from "./pages/family/FamilyAlerts"
 import FamilyCareRecords from "./pages/family/FamilyCareRecords"
@@ -126,6 +130,38 @@ export default function App() {
         element={
           <ProtectedRoute>
             <CaregiverHome />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/caregiver/alerts"
+        element={
+          <ProtectedRoute>
+            <CaregiverAlerts />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/caregiver/care-logs"
+        element={
+          <ProtectedRoute>
+            <CaregiverCareLogs />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/caregiver/language"
+        element={
+          <ProtectedRoute>
+            <CaregiverLanguageSupport />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/caregiver/system"
+        element={
+          <ProtectedRoute>
+            <CaregiverSystemCenter />
           </ProtectedRoute>
         }
       />

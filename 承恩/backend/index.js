@@ -54,6 +54,46 @@ const userSchema = new mongoose.Schema({
   // ===== 看護資料 =====
   experience: String,
 
+  wearableSampleCursor: {
+    type: Number,
+    default: 0
+  },
+
+  familyAlertsCursor: {
+    type: Number,
+    default: 0
+  },
+
+  familyCareRecordsCursor: {
+    type: Number,
+    default: 0
+  },
+
+  familyEventsCursor: {
+    type: Number,
+    default: 0
+  },
+
+  caregiverAlertsCursor: {
+    type: Number,
+    default: 0
+  },
+
+  caregiverCareLogsCursor: {
+    type: Number,
+    default: 0
+  },
+
+  caregiverLanguageCursor: {
+    type: Number,
+    default: 0
+  },
+
+  caregiverSystemCursor: {
+    type: Number,
+    default: 0
+  },
+
   profileCompleted: {
     type: Boolean,
     default: false
@@ -63,7 +103,372 @@ const userSchema = new mongoose.Schema({
 
 const User = mongoose.model("User", userSchema)
 
+const wearableRecordSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+    index: true
+  },
+  heartRate: {
+    type: Number,
+    required: true
+  },
+  spo2: {
+    type: Number,
+    required: true
+  },
+  steps: {
+    type: Number,
+    required: true
+  },
+  note: String,
+  isAbnormal: {
+    type: Boolean,
+    default: false
+  },
+  source: {
+    type: String,
+    default: "mock-seed"
+  },
+  recordedAt: {
+    type: Date,
+    default: Date.now
+  }
+}, { timestamps: true })
+
+const WearableRecord = mongoose.model("WearableRecord", wearableRecordSchema)
+
+const MOCK_WEARABLE_SAMPLES = [
+  { heartRate: 74, spo2: 97, steps: 4132, note: "daily range", isAbnormal: false },
+  { heartRate: 83, spo2: 98, steps: 6288, note: "normal movement", isAbnormal: false },
+  { heartRate: 102, spo2: 96, steps: 9020, note: "heart rate high", isAbnormal: true },
+  { heartRate: 58, spo2: 97, steps: 2800, note: "heart rate low", isAbnormal: true },
+  { heartRate: 77, spo2: 93, steps: 5100, note: "spo2 low", isAbnormal: true },
+  { heartRate: 89, spo2: 95, steps: 11234, note: "high activity", isAbnormal: false },
+  { heartRate: 69, spo2: 99, steps: 1980, note: "low activity", isAbnormal: true },
+  { heartRate: 92, spo2: 94, steps: 7450, note: "possible fatigue", isAbnormal: true },
+  { heartRate: 80, spo2: 97, steps: 5360, note: "stable", isAbnormal: false },
+  { heartRate: 72, spo2: 98, steps: 4688, note: "recovered", isAbnormal: false }
+]
+
+const familyAlertSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+    index: true
+  },
+  alertId: String,
+  type: String,
+  level: String,
+  happenedAt: Date,
+  location: String,
+  status: String,
+  source: {
+    type: String,
+    default: "mock-seed"
+  }
+}, { timestamps: true })
+
+const familyCareRecordSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+    index: true
+  },
+  recordDate: Date,
+  time: String,
+  medicine: String,
+  meal: String,
+  toilet: String,
+  activity: String,
+  source: {
+    type: String,
+    default: "mock-seed"
+  }
+}, { timestamps: true })
+
+const familyEventSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+    index: true
+  },
+  eventId: String,
+  type: String,
+  description: String,
+  media: String,
+  status: String,
+  happenedAt: Date,
+  source: {
+    type: String,
+    default: "mock-seed"
+  }
+}, { timestamps: true })
+
+const FamilyAlert = mongoose.model("FamilyAlert", familyAlertSchema)
+const FamilyCareRecord = mongoose.model("FamilyCareRecord", familyCareRecordSchema)
+const FamilyEvent = mongoose.model("FamilyEvent", familyEventSchema)
+
+const MOCK_FAMILY_ALERTS = [
+  { alertId: "AL-2501", type: "跌倒", level: "高", happenedAt: "2026-03-16T08:21:00+08:00", location: "客廳", status: "未處理" },
+  { alertId: "AL-2502", type: "離床", level: "中", happenedAt: "2026-03-16T07:42:00+08:00", location: "臥室", status: "處理中" },
+  { alertId: "AL-2503", type: "久坐不動", level: "低", happenedAt: "2026-03-15T21:18:00+08:00", location: "餐桌區", status: "已完成" },
+  { alertId: "AL-2504", type: "呼救手勢", level: "高", happenedAt: "2026-03-15T15:05:00+08:00", location: "浴室", status: "未處理" },
+  { alertId: "AL-2505", type: "異常行為", level: "中", happenedAt: "2026-03-15T10:34:00+08:00", location: "走廊", status: "處理中" },
+  { alertId: "AL-2506", type: "離床", level: "中", happenedAt: "2026-03-14T23:12:00+08:00", location: "臥室", status: "已完成" },
+  { alertId: "AL-2507", type: "跌倒", level: "高", happenedAt: "2026-03-14T19:48:00+08:00", location: "客廳", status: "處理中" },
+  { alertId: "AL-2508", type: "久坐不動", level: "低", happenedAt: "2026-03-14T13:09:00+08:00", location: "陽台", status: "已完成" },
+  { alertId: "AL-2509", type: "異常行為", level: "中", happenedAt: "2026-03-13T17:41:00+08:00", location: "門口", status: "未處理" },
+  { alertId: "AL-2510", type: "呼救手勢", level: "高", happenedAt: "2026-03-13T09:22:00+08:00", location: "臥室", status: "已完成" }
+]
+
+const MOCK_FAMILY_CARE_RECORDS = [
+  { recordDate: "2026-03-16T08:10:00+08:00", time: "08:10", medicine: "已完成", meal: "已完成", toilet: "正常", activity: "散步 20 分鐘" },
+  { recordDate: "2026-03-16T12:35:00+08:00", time: "12:35", medicine: "已完成", meal: "完成 80%", toilet: "正常", activity: "午休" },
+  { recordDate: "2026-03-16T19:15:00+08:00", time: "19:15", medicine: "未執行", meal: "已完成", toilet: "待確認", activity: "客廳活動" },
+  { recordDate: "2026-03-15T08:05:00+08:00", time: "08:05", medicine: "已完成", meal: "已完成", toilet: "正常", activity: "早晨伸展" },
+  { recordDate: "2026-03-15T12:22:00+08:00", time: "12:22", medicine: "已完成", meal: "已完成", toilet: "正常", activity: "午睡" },
+  { recordDate: "2026-03-15T18:44:00+08:00", time: "18:44", medicine: "已完成", meal: "完成 70%", toilet: "正常", activity: "看電視" },
+  { recordDate: "2026-03-14T08:18:00+08:00", time: "08:18", medicine: "未執行", meal: "已完成", toilet: "待確認", activity: "床邊復健" },
+  { recordDate: "2026-03-14T13:02:00+08:00", time: "13:02", medicine: "已完成", meal: "已完成", toilet: "正常", activity: "靜坐" },
+  { recordDate: "2026-03-14T19:33:00+08:00", time: "19:33", medicine: "已完成", meal: "已完成", toilet: "正常", activity: "室內走動" },
+  { recordDate: "2026-03-13T09:01:00+08:00", time: "09:01", medicine: "已完成", meal: "完成 60%", toilet: "正常", activity: "陽台活動" }
+]
+
+const MOCK_FAMILY_EVENTS = [
+  { eventId: "EV-3401", type: "跌倒", description: "客廳偵測到跌倒，已通知看護與家屬。", media: "截圖 + 10 秒短片", status: "已完成", happenedAt: "2026-03-16T08:21:00+08:00" },
+  { eventId: "EV-3402", type: "離床", description: "夜間離床，已推播家屬與看護。", media: "短片", status: "處理中", happenedAt: "2026-03-16T02:16:00+08:00" },
+  { eventId: "EV-3403", type: "久坐不動", description: "超過 1 小時未移動，觸發提醒。", media: "截圖", status: "已完成", happenedAt: "2026-03-15T21:18:00+08:00" },
+  { eventId: "EV-3404", type: "呼救手勢", description: "辨識到呼救手勢，啟動高優先流程。", media: "截圖 + 短片", status: "未處理", happenedAt: "2026-03-15T15:05:00+08:00" },
+  { eventId: "EV-3405", type: "異常行為", description: "偵測到焦躁來回走動，通知家屬。", media: "短片", status: "處理中", happenedAt: "2026-03-15T10:34:00+08:00" },
+  { eventId: "EV-3406", type: "離床", description: "凌晨離床，已由看護回報安全。", media: "短片", status: "已完成", happenedAt: "2026-03-14T23:12:00+08:00" },
+  { eventId: "EV-3407", type: "跌倒", description: "浴室疑似滑倒事件，已協助回床。", media: "截圖 + 10 秒短片", status: "已完成", happenedAt: "2026-03-14T19:48:00+08:00" },
+  { eventId: "EV-3408", type: "久坐不動", description: "午後久坐提醒，已恢復活動。", media: "截圖", status: "已完成", happenedAt: "2026-03-14T13:09:00+08:00" },
+  { eventId: "EV-3409", type: "異常行為", description: "門口徘徊超過門檻時間。", media: "短片", status: "未處理", happenedAt: "2026-03-13T17:41:00+08:00" },
+  { eventId: "EV-3410", type: "呼救手勢", description: "清晨手勢求助，已聯繫看護。", media: "截圖", status: "已完成", happenedAt: "2026-03-13T09:22:00+08:00" }
+]
+
 // ================= 測試 API =================
+const caregiverAlertSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+    index: true
+  },
+  alertId: String,
+  type: String,
+  riskLevel: String,
+  status: String,
+  actionTaken: String,
+  happenedAt: Date,
+  source: {
+    type: String,
+    default: "mock-seed"
+  }
+}, { timestamps: true })
+
+const caregiverCareLogSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+    index: true
+  },
+  logId: String,
+  tasks: [
+    {
+      task: String,
+      status: String,
+      time: String
+    }
+  ],
+  vitals: {
+    heartRate: Number,
+    bloodPressure: String,
+    spo2: Number,
+    heartRateState: String,
+    bloodPressureState: String,
+    spo2State: String
+  },
+  happenedAt: Date,
+  source: {
+    type: String,
+    default: "mock-seed"
+  }
+}, { timestamps: true })
+
+const caregiverLanguageSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+    index: true
+  },
+  sessionId: String,
+  language: String,
+  voice: String,
+  translatedAlerts: [
+    {
+      original: String,
+      translated: String,
+      locale: String
+    }
+  ],
+  phrases: [
+    {
+      text: String,
+      lang: String
+    }
+  ],
+  happenedAt: Date,
+  source: {
+    type: String,
+    default: "mock-seed"
+  }
+}, { timestamps: true })
+
+const caregiverSystemSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+    index: true
+  },
+  systemId: String,
+  healthScore: Number,
+  networkRows: [
+    {
+      area: String,
+      status: String,
+      signal: String
+    }
+  ],
+  backupRows: [
+    {
+      event: String,
+      capturedAt: String,
+      media: String
+    }
+  ],
+  happenedAt: Date,
+  source: {
+    type: String,
+    default: "mock-seed"
+  }
+}, { timestamps: true })
+
+const CaregiverAlert = mongoose.model("CaregiverAlert", caregiverAlertSchema)
+const CaregiverCareLog = mongoose.model("CaregiverCareLog", caregiverCareLogSchema)
+const CaregiverLanguage = mongoose.model("CaregiverLanguage", caregiverLanguageSchema)
+const CaregiverSystem = mongoose.model("CaregiverSystem", caregiverSystemSchema)
+
+const MOCK_CAREGIVER_ALERTS = [
+  { alertId: "CG-AL-501", type: "Fall", riskLevel: "High", status: "Pending", actionTaken: "Assisted standing", happenedAt: "2026-03-16T09:23:00+08:00" },
+  { alertId: "CG-AL-502", type: "Bed exit", riskLevel: "Medium", status: "Processing", actionTaken: "Helped back to bed", happenedAt: "2026-03-16T08:41:00+08:00" },
+  { alertId: "CG-AL-503", type: "Long sitting", riskLevel: "Low", status: "Done", actionTaken: "Guided movement", happenedAt: "2026-03-16T07:55:00+08:00" },
+  { alertId: "CG-AL-504", type: "Fall", riskLevel: "High", status: "Pending", actionTaken: "Called nurse", happenedAt: "2026-03-15T22:12:00+08:00" },
+  { alertId: "CG-AL-505", type: "Abnormal behavior", riskLevel: "Medium", status: "Processing", actionTaken: "Observed nearby", happenedAt: "2026-03-15T19:06:00+08:00" },
+  { alertId: "CG-AL-506", type: "Bed exit", riskLevel: "Medium", status: "Done", actionTaken: "Safety check", happenedAt: "2026-03-15T16:31:00+08:00" },
+  { alertId: "CG-AL-507", type: "Long sitting", riskLevel: "Low", status: "Done", actionTaken: "Stretch reminder", happenedAt: "2026-03-15T13:20:00+08:00" },
+  { alertId: "CG-AL-508", type: "Fall", riskLevel: "High", status: "Processing", actionTaken: "Bandage support", happenedAt: "2026-03-15T10:42:00+08:00" },
+  { alertId: "CG-AL-509", type: "Abnormal behavior", riskLevel: "Medium", status: "Pending", actionTaken: "Family notified", happenedAt: "2026-03-15T08:11:00+08:00" },
+  { alertId: "CG-AL-510", type: "Bed exit", riskLevel: "Low", status: "Done", actionTaken: "Monitor cleared", happenedAt: "2026-03-14T23:58:00+08:00" }
+]
+
+const MOCK_CAREGIVER_CARE_LOGS = [
+  {
+    logId: "CG-LOG-101",
+    tasks: [{ task: "Medicine", status: "Done", time: "08:05" }, { task: "Meal", status: "Done", time: "12:20" }, { task: "Walk", status: "Skipped", time: "17:40" }],
+    vitals: { heartRate: 102, bloodPressure: "142/92", spo2: 97, heartRateState: "abnormal", bloodPressureState: "abnormal", spo2State: "normal" },
+    happenedAt: "2026-03-16T18:00:00+08:00"
+  },
+  {
+    logId: "CG-LOG-102",
+    tasks: [{ task: "Medicine", status: "Done", time: "08:00" }, { task: "Meal", status: "Done", time: "12:15" }, { task: "Walk", status: "Done", time: "16:35" }],
+    vitals: { heartRate: 88, bloodPressure: "126/82", spo2: 98, heartRateState: "normal", bloodPressureState: "normal", spo2State: "normal" },
+    happenedAt: "2026-03-15T18:00:00+08:00"
+  },
+  {
+    logId: "CG-LOG-103",
+    tasks: [{ task: "Medicine", status: "Done", time: "08:10" }, { task: "Meal", status: "Done", time: "12:34" }, { task: "Walk", status: "Done", time: "16:55" }],
+    vitals: { heartRate: 76, bloodPressure: "120/78", spo2: 99, heartRateState: "normal", bloodPressureState: "normal", spo2State: "normal" },
+    happenedAt: "2026-03-14T18:00:00+08:00"
+  },
+  {
+    logId: "CG-LOG-104",
+    tasks: [{ task: "Medicine", status: "Skipped", time: "08:20" }, { task: "Meal", status: "Done", time: "12:05" }, { task: "Walk", status: "Skipped", time: "17:20" }],
+    vitals: { heartRate: 58, bloodPressure: "96/64", spo2: 95, heartRateState: "abnormal", bloodPressureState: "normal", spo2State: "normal" },
+    happenedAt: "2026-03-13T18:00:00+08:00"
+  },
+  {
+    logId: "CG-LOG-105",
+    tasks: [{ task: "Medicine", status: "Done", time: "08:07" }, { task: "Meal", status: "Done", time: "12:26" }, { task: "Walk", status: "Done", time: "16:10" }],
+    vitals: { heartRate: 94, bloodPressure: "132/86", spo2: 96, heartRateState: "normal", bloodPressureState: "abnormal", spo2State: "normal" },
+    happenedAt: "2026-03-12T18:00:00+08:00"
+  },
+  {
+    logId: "CG-LOG-106",
+    tasks: [{ task: "Medicine", status: "Done", time: "08:09" }, { task: "Meal", status: "Done", time: "12:31" }, { task: "Walk", status: "Done", time: "16:45" }],
+    vitals: { heartRate: 82, bloodPressure: "124/80", spo2: 97, heartRateState: "normal", bloodPressureState: "normal", spo2State: "normal" },
+    happenedAt: "2026-03-11T18:00:00+08:00"
+  },
+  {
+    logId: "CG-LOG-107",
+    tasks: [{ task: "Medicine", status: "Done", time: "08:12" }, { task: "Meal", status: "Done", time: "12:44" }, { task: "Walk", status: "Skipped", time: "17:02" }],
+    vitals: { heartRate: 108, bloodPressure: "146/94", spo2: 94, heartRateState: "abnormal", bloodPressureState: "abnormal", spo2State: "abnormal" },
+    happenedAt: "2026-03-10T18:00:00+08:00"
+  },
+  {
+    logId: "CG-LOG-108",
+    tasks: [{ task: "Medicine", status: "Done", time: "08:03" }, { task: "Meal", status: "Done", time: "12:18" }, { task: "Walk", status: "Done", time: "16:20" }],
+    vitals: { heartRate: 79, bloodPressure: "118/76", spo2: 99, heartRateState: "normal", bloodPressureState: "normal", spo2State: "normal" },
+    happenedAt: "2026-03-09T18:00:00+08:00"
+  },
+  {
+    logId: "CG-LOG-109",
+    tasks: [{ task: "Medicine", status: "Done", time: "08:16" }, { task: "Meal", status: "Done", time: "12:39" }, { task: "Walk", status: "Done", time: "16:33" }],
+    vitals: { heartRate: 86, bloodPressure: "128/84", spo2: 98, heartRateState: "normal", bloodPressureState: "normal", spo2State: "normal" },
+    happenedAt: "2026-03-08T18:00:00+08:00"
+  },
+  {
+    logId: "CG-LOG-110",
+    tasks: [{ task: "Medicine", status: "Skipped", time: "08:22" }, { task: "Meal", status: "Done", time: "12:11" }, { task: "Walk", status: "Skipped", time: "17:25" }],
+    vitals: { heartRate: 61, bloodPressure: "100/66", spo2: 96, heartRateState: "normal", bloodPressureState: "normal", spo2State: "normal" },
+    happenedAt: "2026-03-07T18:00:00+08:00"
+  }
+]
+
+const MOCK_CAREGIVER_LANGUAGE = [
+  { sessionId: "CG-LANG-001", language: "id", voice: "female", translatedAlerts: [{ original: "Night bed exit alert", translated: "Peringatan keluar dari tempat tidur malam hari", locale: "Indonesian" }], phrases: [{ text: "Please take medicine", lang: "ZH / ID / EN" }, { text: "Are you okay?", lang: "ZH / ID / VI" }], happenedAt: "2026-03-16T09:00:00+08:00" },
+  { sessionId: "CG-LANG-002", language: "vi", voice: "female", translatedAlerts: [{ original: "Fall high risk event", translated: "Canh bao nguy co nga cao", locale: "Vietnamese" }], phrases: [{ text: "Please sit down", lang: "ZH / VI / EN" }, { text: "I will help you", lang: "ZH / VI / ID" }], happenedAt: "2026-03-15T09:00:00+08:00" },
+  { sessionId: "CG-LANG-003", language: "en", voice: "male", translatedAlerts: [{ original: "Abnormal behavior detected", translated: "Abnormal behavior detected", locale: "English" }], phrases: [{ text: "Time to eat", lang: "ZH / EN / ID" }, { text: "Need help?", lang: "ZH / EN / VI" }], happenedAt: "2026-03-14T09:00:00+08:00" },
+  { sessionId: "CG-LANG-004", language: "id", voice: "male", translatedAlerts: [{ original: "Fall warning", translated: "Peringatan jatuh", locale: "Indonesian" }], phrases: [{ text: "Please rest now", lang: "ZH / ID / EN" }, { text: "Do not stand alone", lang: "ZH / ID / VI" }], happenedAt: "2026-03-13T09:00:00+08:00" },
+  { sessionId: "CG-LANG-005", language: "vi", voice: "female", translatedAlerts: [{ original: "Bed exit warning", translated: "Canh bao roi giuong", locale: "Vietnamese" }], phrases: [{ text: "Please drink water", lang: "ZH / VI / EN" }, { text: "Please wait a moment", lang: "ZH / VI / ID" }], happenedAt: "2026-03-12T09:00:00+08:00" },
+  { sessionId: "CG-LANG-006", language: "en", voice: "female", translatedAlerts: [{ original: "Long sitting warning", translated: "Long sitting warning", locale: "English" }], phrases: [{ text: "Let's walk slowly", lang: "ZH / EN / ID" }, { text: "Take a deep breath", lang: "ZH / EN / VI" }], happenedAt: "2026-03-11T09:00:00+08:00" },
+  { sessionId: "CG-LANG-007", language: "id", voice: "female", translatedAlerts: [{ original: "Emergency hand gesture", translated: "Gerakan tangan darurat terdeteksi", locale: "Indonesian" }], phrases: [{ text: "I am calling family", lang: "ZH / ID / EN" }, { text: "Stay calm", lang: "ZH / ID / VI" }], happenedAt: "2026-03-10T09:00:00+08:00" },
+  { sessionId: "CG-LANG-008", language: "vi", voice: "male", translatedAlerts: [{ original: "Need caregiver check", translated: "Can kiem tra ho tro ngay", locale: "Vietnamese" }], phrases: [{ text: "Please lie down", lang: "ZH / VI / EN" }, { text: "Medicine first", lang: "ZH / VI / ID" }], happenedAt: "2026-03-09T09:00:00+08:00" },
+  { sessionId: "CG-LANG-009", language: "en", voice: "male", translatedAlerts: [{ original: "System unstable warning", translated: "System unstable warning", locale: "English" }], phrases: [{ text: "Network is unstable", lang: "ZH / EN / ID" }, { text: "Please wait for support", lang: "ZH / EN / VI" }], happenedAt: "2026-03-08T09:00:00+08:00" },
+  { sessionId: "CG-LANG-010", language: "id", voice: "female", translatedAlerts: [{ original: "Medication reminder", translated: "Pengingat minum obat", locale: "Indonesian" }], phrases: [{ text: "Take medicine now", lang: "ZH / ID / EN" }, { text: "How do you feel now?", lang: "ZH / ID / VI" }], happenedAt: "2026-03-07T09:00:00+08:00" }
+]
+
+const MOCK_CAREGIVER_SYSTEM = [
+  { systemId: "CG-SYS-001", healthScore: 87, networkRows: [{ area: "Living room camera", status: "Stable", signal: "98%" }, { area: "Bedroom sensor", status: "Unstable", signal: "62%" }, { area: "Wearable bridge", status: "Stable", signal: "91%" }], backupRows: [{ event: "Fall event", capturedAt: "2026-03-16 09:23", media: "10s clip + screenshot" }, { event: "Bed exit warning", capturedAt: "2026-03-16 08:41", media: "10s clip" }], happenedAt: "2026-03-16T09:30:00+08:00" },
+  { systemId: "CG-SYS-002", healthScore: 93, networkRows: [{ area: "Living room camera", status: "Stable", signal: "96%" }, { area: "Bedroom sensor", status: "Stable", signal: "92%" }, { area: "Wearable bridge", status: "Stable", signal: "89%" }], backupRows: [{ event: "Long sitting warning", capturedAt: "2026-03-15 15:21", media: "Screenshot" }, { event: "Abnormal behavior", capturedAt: "2026-03-15 14:52", media: "10s clip" }], happenedAt: "2026-03-15T15:30:00+08:00" },
+  { systemId: "CG-SYS-003", healthScore: 82, networkRows: [{ area: "Living room camera", status: "Stable", signal: "94%" }, { area: "Bedroom sensor", status: "Unstable", signal: "58%" }, { area: "Wearable bridge", status: "Stable", signal: "87%" }], backupRows: [{ event: "Fall event", capturedAt: "2026-03-14 20:10", media: "10s clip + screenshot" }, { event: "Emergency gesture", capturedAt: "2026-03-14 19:58", media: "Screenshot" }], happenedAt: "2026-03-14T20:30:00+08:00" },
+  { systemId: "CG-SYS-004", healthScore: 90, networkRows: [{ area: "Living room camera", status: "Stable", signal: "95%" }, { area: "Bedroom sensor", status: "Stable", signal: "88%" }, { area: "Wearable bridge", status: "Stable", signal: "90%" }], backupRows: [{ event: "Bed exit warning", capturedAt: "2026-03-13 23:30", media: "10s clip" }, { event: "Long sitting warning", capturedAt: "2026-03-13 13:03", media: "Screenshot" }], happenedAt: "2026-03-13T23:45:00+08:00" },
+  { systemId: "CG-SYS-005", healthScore: 85, networkRows: [{ area: "Living room camera", status: "Stable", signal: "93%" }, { area: "Bedroom sensor", status: "Unstable", signal: "64%" }, { area: "Wearable bridge", status: "Stable", signal: "88%" }], backupRows: [{ event: "Abnormal behavior", capturedAt: "2026-03-12 11:18", media: "10s clip" }, { event: "Fall event", capturedAt: "2026-03-12 10:02", media: "10s clip + screenshot" }], happenedAt: "2026-03-12T11:30:00+08:00" },
+  { systemId: "CG-SYS-006", healthScore: 92, networkRows: [{ area: "Living room camera", status: "Stable", signal: "97%" }, { area: "Bedroom sensor", status: "Stable", signal: "90%" }, { area: "Wearable bridge", status: "Stable", signal: "86%" }], backupRows: [{ event: "Medication reminder", capturedAt: "2026-03-11 08:02", media: "Screenshot" }, { event: "Bed exit warning", capturedAt: "2026-03-11 02:13", media: "10s clip" }], happenedAt: "2026-03-11T08:30:00+08:00" },
+  { systemId: "CG-SYS-007", healthScore: 80, networkRows: [{ area: "Living room camera", status: "Unstable", signal: "61%" }, { area: "Bedroom sensor", status: "Stable", signal: "86%" }, { area: "Wearable bridge", status: "Unstable", signal: "57%" }], backupRows: [{ event: "System unstable warning", capturedAt: "2026-03-10 16:41", media: "Log + screenshot" }, { event: "Emergency gesture", capturedAt: "2026-03-10 16:35", media: "10s clip" }], happenedAt: "2026-03-10T16:50:00+08:00" },
+  { systemId: "CG-SYS-008", healthScore: 89, networkRows: [{ area: "Living room camera", status: "Stable", signal: "92%" }, { area: "Bedroom sensor", status: "Stable", signal: "87%" }, { area: "Wearable bridge", status: "Stable", signal: "84%" }], backupRows: [{ event: "Long sitting warning", capturedAt: "2026-03-09 14:11", media: "Screenshot" }, { event: "Bed exit warning", capturedAt: "2026-03-09 03:46", media: "10s clip" }], happenedAt: "2026-03-09T14:30:00+08:00" },
+  { systemId: "CG-SYS-009", healthScore: 91, networkRows: [{ area: "Living room camera", status: "Stable", signal: "95%" }, { area: "Bedroom sensor", status: "Stable", signal: "89%" }, { area: "Wearable bridge", status: "Stable", signal: "88%" }], backupRows: [{ event: "Fall event", capturedAt: "2026-03-08 18:55", media: "10s clip + screenshot" }, { event: "Abnormal behavior", capturedAt: "2026-03-08 17:40", media: "10s clip" }], happenedAt: "2026-03-08T19:10:00+08:00" },
+  { systemId: "CG-SYS-010", healthScore: 86, networkRows: [{ area: "Living room camera", status: "Stable", signal: "90%" }, { area: "Bedroom sensor", status: "Unstable", signal: "63%" }, { area: "Wearable bridge", status: "Stable", signal: "83%" }], backupRows: [{ event: "Emergency gesture", capturedAt: "2026-03-07 09:20", media: "Screenshot" }, { event: "Bed exit warning", capturedAt: "2026-03-07 04:31", media: "10s clip" }], happenedAt: "2026-03-07T09:35:00+08:00" }
+]
+
 app.get("/", (req, res) => {
   res.send("Backend is running!")
 })
@@ -194,7 +599,263 @@ app.post("/patient/setup", async (req, res) => {
   res.json({ message: "基本資料已儲存" })
 })
 
+app.get("/patient/wearable/latest", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "找不到使用者" })
+
+  const record = await WearableRecord.findOne({ userId: user._id })
+    .sort({ recordedAt: -1, _id: -1 })
+
+  res.json({ record })
+})
+
+app.get("/patient/wearable/history", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "找不到使用者" })
+
+  const requestedLimit = Number(req.query.limit)
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(Math.max(requestedLimit, 1), 50)
+    : 10
+
+  const records = await WearableRecord.find({ userId: user._id })
+    .sort({ recordedAt: -1, _id: -1 })
+    .limit(limit)
+
+  res.json({ records })
+})
+
+app.post("/patient/wearable/sync", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "找不到使用者" })
+
+  const totalSamples = MOCK_WEARABLE_SAMPLES.length
+  const cursor = Number.isInteger(user.wearableSampleCursor)
+    ? user.wearableSampleCursor
+    : 0
+  const sampleIndex = ((cursor % totalSamples) + totalSamples) % totalSamples
+  const sample = MOCK_WEARABLE_SAMPLES[sampleIndex]
+
+  const record = await WearableRecord.create({
+    userId: user._id,
+    heartRate: sample.heartRate,
+    spo2: sample.spo2,
+    steps: sample.steps,
+    note: sample.note,
+    isAbnormal: sample.isAbnormal,
+    source: "mock-seed",
+    recordedAt: new Date()
+  })
+
+  user.wearableSampleCursor = (sampleIndex + 1) % totalSamples
+  await user.save()
+
+  res.json({
+    message: "已寫入一筆虛擬穿戴資料",
+    sampleIndex,
+    nextCursor: user.wearableSampleCursor,
+    record
+  })
+})
+
 // ================= FAMILY =================
+app.get("/family/alerts/history", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "找不到使用者" })
+
+  const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 50)
+  const records = await FamilyAlert.find({ userId: user._id })
+    .sort({ happenedAt: -1, _id: -1 })
+    .limit(limit)
+
+  res.json({ records })
+})
+
+app.post("/family/alerts/sync", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "找不到使用者" })
+
+  const total = MOCK_FAMILY_ALERTS.length
+  const cursor = Number.isInteger(user.familyAlertsCursor) ? user.familyAlertsCursor : 0
+  const sampleIndex = ((cursor % total) + total) % total
+  const sample = MOCK_FAMILY_ALERTS[sampleIndex]
+
+  const record = await FamilyAlert.create({
+    userId: user._id,
+    alertId: sample.alertId,
+    type: sample.type,
+    level: sample.level,
+    happenedAt: new Date(sample.happenedAt),
+    location: sample.location,
+    status: sample.status,
+    source: "mock-seed"
+  })
+
+  user.familyAlertsCursor = (sampleIndex + 1) % total
+  await user.save()
+
+  res.json({
+    message: "已寫入一筆虛擬即時通知資料",
+    sampleIndex,
+    nextCursor: user.familyAlertsCursor,
+    record
+  })
+})
+
+app.get("/family/care-records/history", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "找不到使用者" })
+
+  const filter = { userId: user._id }
+  if (req.query.date) {
+    const date = new Date(req.query.date)
+    if (!Number.isNaN(date.getTime())) {
+      const start = new Date(date)
+      start.setHours(0, 0, 0, 0)
+      const end = new Date(date)
+      end.setHours(23, 59, 59, 999)
+      filter.recordDate = { $gte: start, $lte: end }
+    }
+  }
+
+  const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 50)
+  const records = await FamilyCareRecord.find(filter)
+    .sort({ recordDate: -1, _id: -1 })
+    .limit(limit)
+
+  res.json({ records })
+})
+
+app.post("/family/care-records/sync", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "找不到使用者" })
+
+  const total = MOCK_FAMILY_CARE_RECORDS.length
+  const cursor = Number.isInteger(user.familyCareRecordsCursor) ? user.familyCareRecordsCursor : 0
+  const sampleIndex = ((cursor % total) + total) % total
+  const sample = MOCK_FAMILY_CARE_RECORDS[sampleIndex]
+
+  const record = await FamilyCareRecord.create({
+    userId: user._id,
+    recordDate: new Date(sample.recordDate),
+    time: sample.time,
+    medicine: sample.medicine,
+    meal: sample.meal,
+    toilet: sample.toilet,
+    activity: sample.activity,
+    source: "mock-seed"
+  })
+
+  user.familyCareRecordsCursor = (sampleIndex + 1) % total
+  await user.save()
+
+  res.json({
+    message: "已寫入一筆虛擬照護紀錄資料",
+    sampleIndex,
+    nextCursor: user.familyCareRecordsCursor,
+    record
+  })
+})
+
+app.get("/family/events/history", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "找不到使用者" })
+
+  const filter = { userId: user._id }
+
+  if (req.query.type && req.query.type !== "all") {
+    filter.type = req.query.type
+  }
+
+  const hasStart = Boolean(req.query.startDate)
+  const hasEnd = Boolean(req.query.endDate)
+  if (hasStart || hasEnd) {
+    filter.happenedAt = {}
+    if (hasStart) {
+      const start = new Date(req.query.startDate)
+      if (!Number.isNaN(start.getTime())) {
+        start.setHours(0, 0, 0, 0)
+        filter.happenedAt.$gte = start
+      }
+    }
+    if (hasEnd) {
+      const end = new Date(req.query.endDate)
+      if (!Number.isNaN(end.getTime())) {
+        end.setHours(23, 59, 59, 999)
+        filter.happenedAt.$lte = end
+      }
+    }
+    if (Object.keys(filter.happenedAt).length === 0) {
+      delete filter.happenedAt
+    }
+  }
+
+  const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 50)
+  const records = await FamilyEvent.find(filter)
+    .sort({ happenedAt: -1, _id: -1 })
+    .limit(limit)
+
+  res.json({ records })
+})
+
+app.post("/family/events/sync", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "找不到使用者" })
+
+  const total = MOCK_FAMILY_EVENTS.length
+  const cursor = Number.isInteger(user.familyEventsCursor) ? user.familyEventsCursor : 0
+  const sampleIndex = ((cursor % total) + total) % total
+  const sample = MOCK_FAMILY_EVENTS[sampleIndex]
+
+  const record = await FamilyEvent.create({
+    userId: user._id,
+    eventId: sample.eventId,
+    type: sample.type,
+    description: sample.description,
+    media: sample.media,
+    status: sample.status,
+    happenedAt: new Date(sample.happenedAt),
+    source: "mock-seed"
+  })
+
+  user.familyEventsCursor = (sampleIndex + 1) % total
+  await user.save()
+
+  res.json({
+    message: "已寫入一筆虛擬危險事件查詢資料",
+    sampleIndex,
+    nextCursor: user.familyEventsCursor,
+    record
+  })
+})
+
 app.get("/family/check-profile", async (req, res) => {
   const decoded = verifyToken(req, res)
   if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
@@ -233,6 +894,207 @@ app.post("/family/setup", async (req, res) => {
 })
 
 // ================= CAREGIVER =================
+app.get("/caregiver/alerts/history", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "User not found" })
+
+  const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 50)
+  const records = await CaregiverAlert.find({ userId: user._id })
+    .sort({ happenedAt: -1, _id: -1 })
+    .limit(limit)
+
+  res.json({ records })
+})
+
+app.post("/caregiver/alerts/sync", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "User not found" })
+
+  const total = MOCK_CAREGIVER_ALERTS.length
+  const cursor = Number.isInteger(user.caregiverAlertsCursor)
+    ? user.caregiverAlertsCursor
+    : 0
+  const sampleIndex = ((cursor % total) + total) % total
+  const sample = MOCK_CAREGIVER_ALERTS[sampleIndex]
+
+  const record = await CaregiverAlert.create({
+    userId: user._id,
+    alertId: sample.alertId,
+    type: sample.type,
+    riskLevel: sample.riskLevel,
+    status: sample.status,
+    actionTaken: sample.actionTaken,
+    happenedAt: new Date(sample.happenedAt),
+    source: "mock-seed"
+  })
+
+  user.caregiverAlertsCursor = (sampleIndex + 1) % total
+  await user.save()
+
+  res.json({
+    message: "Caregiver alert mock synced",
+    sampleIndex,
+    nextCursor: user.caregiverAlertsCursor,
+    record
+  })
+})
+
+app.get("/caregiver/care-logs/history", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "User not found" })
+
+  const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 50)
+  const records = await CaregiverCareLog.find({ userId: user._id })
+    .sort({ happenedAt: -1, _id: -1 })
+    .limit(limit)
+
+  res.json({ records })
+})
+
+app.post("/caregiver/care-logs/sync", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "User not found" })
+
+  const total = MOCK_CAREGIVER_CARE_LOGS.length
+  const cursor = Number.isInteger(user.caregiverCareLogsCursor)
+    ? user.caregiverCareLogsCursor
+    : 0
+  const sampleIndex = ((cursor % total) + total) % total
+  const sample = MOCK_CAREGIVER_CARE_LOGS[sampleIndex]
+
+  const record = await CaregiverCareLog.create({
+    userId: user._id,
+    logId: sample.logId,
+    tasks: sample.tasks,
+    vitals: sample.vitals,
+    happenedAt: new Date(sample.happenedAt),
+    source: "mock-seed"
+  })
+
+  user.caregiverCareLogsCursor = (sampleIndex + 1) % total
+  await user.save()
+
+  res.json({
+    message: "Caregiver care log mock synced",
+    sampleIndex,
+    nextCursor: user.caregiverCareLogsCursor,
+    record
+  })
+})
+
+app.get("/caregiver/language/history", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "User not found" })
+
+  const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 50)
+  const records = await CaregiverLanguage.find({ userId: user._id })
+    .sort({ happenedAt: -1, _id: -1 })
+    .limit(limit)
+
+  res.json({ records })
+})
+
+app.post("/caregiver/language/sync", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "User not found" })
+
+  const total = MOCK_CAREGIVER_LANGUAGE.length
+  const cursor = Number.isInteger(user.caregiverLanguageCursor)
+    ? user.caregiverLanguageCursor
+    : 0
+  const sampleIndex = ((cursor % total) + total) % total
+  const sample = MOCK_CAREGIVER_LANGUAGE[sampleIndex]
+
+  const record = await CaregiverLanguage.create({
+    userId: user._id,
+    sessionId: sample.sessionId,
+    language: sample.language,
+    voice: sample.voice,
+    translatedAlerts: sample.translatedAlerts,
+    phrases: sample.phrases,
+    happenedAt: new Date(sample.happenedAt),
+    source: "mock-seed"
+  })
+
+  user.caregiverLanguageCursor = (sampleIndex + 1) % total
+  await user.save()
+
+  res.json({
+    message: "Caregiver language mock synced",
+    sampleIndex,
+    nextCursor: user.caregiverLanguageCursor,
+    record
+  })
+})
+
+app.get("/caregiver/system/history", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "User not found" })
+
+  const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 50)
+  const records = await CaregiverSystem.find({ userId: user._id })
+    .sort({ happenedAt: -1, _id: -1 })
+    .limit(limit)
+
+  res.json({ records })
+})
+
+app.post("/caregiver/system/sync", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "User not found" })
+
+  const total = MOCK_CAREGIVER_SYSTEM.length
+  const cursor = Number.isInteger(user.caregiverSystemCursor)
+    ? user.caregiverSystemCursor
+    : 0
+  const sampleIndex = ((cursor % total) + total) % total
+  const sample = MOCK_CAREGIVER_SYSTEM[sampleIndex]
+
+  const record = await CaregiverSystem.create({
+    userId: user._id,
+    systemId: sample.systemId,
+    healthScore: sample.healthScore,
+    networkRows: sample.networkRows,
+    backupRows: sample.backupRows,
+    happenedAt: new Date(sample.happenedAt),
+    source: "mock-seed"
+  })
+
+  user.caregiverSystemCursor = (sampleIndex + 1) % total
+  await user.save()
+
+  res.json({
+    message: "Caregiver system mock synced",
+    sampleIndex,
+    nextCursor: user.caregiverSystemCursor,
+    record
+  })
+})
+
 app.get("/caregiver/check-profile", async (req, res) => {
   const decoded = verifyToken(req, res)
   if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
