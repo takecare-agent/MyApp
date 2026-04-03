@@ -17,12 +17,10 @@ const mongoURI = process.env.MONGO_URI;
 const mongoose = require('mongoose');
 
 
-// 連接資料庫 (請將網址換成你在第一階段複製的那串)
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('MongoDB 連線成功！'))
   .catch(err => console.error('連線失敗：', err));
 
-// 定義資料結構 (Schema)
 const RecordSchema = new mongoose.Schema({
   sys: String,
   dia: String,
@@ -32,7 +30,6 @@ const RecordSchema = new mongoose.Schema({
 
 const Record = mongoose.model('Record', RecordSchema);
 
-// 修改 POST 路由：存入資料庫
 app.post('/api/bp', async (req, res) => {
   try {
     const newRecord = new Record(req.body);
@@ -43,10 +40,9 @@ app.post('/api/bp', async (req, res) => {
   }
 });
 
-// 修改 GET 路由：從資料庫讀取
 app.get('/api/bp', async (req, res) => {
   try {
-    const records = await Record.find().sort({ _id: -1 }); // 取得所有紀錄並倒序排列
+    const records = await Record.find().sort({ _id: -1 });
     res.json(records);
   } catch (err) {
     res.status(500).send(err);
