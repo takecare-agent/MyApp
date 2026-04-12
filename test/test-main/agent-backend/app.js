@@ -9,6 +9,55 @@ app.use(cors());
 app.use(express.json());
 
 const MONGO_URI = 'mongodb://localhost:27017/demo';
+const fs = require('fs');
+const axios = require('axios');
+
+const GOOGLE_API_KEY = 'AIzaSyCNuHziWnihp-KqAKENHcqym8uCiJvDwhM';
+
+// 語音辨識 API
+app.post('/speech-to-text', async (req, res) => {
+  const { audioBase64, langCode } = req.body;
+  console.log('收到語音辨識請求, langCode:', langCode);
+  console.log('audioBase64 長度:', audioBase64?.length);
+
+  // 語言碼對應
+  const langMap = {
+    zh: 'zh-TW', en: 'en-US', id: 'id-ID',
+    vi: 'vi-VN', tl: 'fil-PH', th: 'th-TH'
+  };
+  const languageCode = langMap[langCode] || 'zh-TW';
+
+  try {
+    console.log('送出 Google STT 請求...');
+    const response = await axios.post(
+      `https://speech.googleapis.com/v1/speech:recognize?key=${GOOGLE_API_KEY}`,
+      {
+        config: {
+          encoding: 'MP3',
+          sampleRateHertz: 16000,
+          languageCode,
+          model: 'default',
+          enableAutomaticPunctuation: true,
+        },
+        audio: {
+          content: audioBase64,
+        },
+      }
+    );
+    console.log('Google STT 回應:', JSON.stringify(response.data));
+
+    const results = response.data.results;
+    if (results && results.length > 0) {
+      const transcript = results[0].alternatives[0].transcript;
+      res.json({ success: true, text: transcript });
+    } else {
+      res.json({ success: false, text: '' });
+    }
+  } catch (e) {
+    console.log('STT 錯誤:', e.response?.data || e.message);
+    res.json({ success: false, text: '' });
+  }
+});
 
 mongoose.connect(MONGO_URI)
     .then(() => console.log('MongoDB連線成功(DB: demo)'))
@@ -140,10 +189,18 @@ app.get('/bp', async (req, res) => {
 });
 
 app.post('/translate', async (req, res) => {
-    try {
-        const result = await translate(req.body.text, { to: req.body.targetLang, forceBatch: false });
-        res.json({ translatedText: result.text });
-    } catch (error) { res.json({ translatedText: req.body.text }); }
+  try {
+    const langMap = {
+      zh: 'zh-TW', en: 'en', id: 'id',
+      vi: 'vi', tl: 'tl', th: 'th'
+    };
+    const targetLang = langMap[req.body.targetLang] || req.body.targetLang;
+    const result = await translate(req.body.text, { to: targetLang, forceBatch: false });
+    res.json({ translatedText: result.text });
+  } catch (error) {
+    console.log('翻譯 API 發生錯誤:', error.message);
+    res.json({ translatedText: req.body.text });
+  }
 });
 
 app.post('/track-phrase', async (req, res) => {
@@ -154,9 +211,12 @@ app.post('/track-phrase', async (req, res) => {
         if(isDangerous && user) {
             const newLog = new Log({ senderUsername: user.username, senderName: user.name, phrase, isDangerous: true });
             await newLog.save();
+            console.log(`[危險警告] 已記錄 ${user.name} 的危險語句: ${phrase}`);
         }
         res.json({ success: true });
-    } catch (e) { res.json({ success: false }); }
+    } catch (e) {
+        console.error('記錄語句失敗:', e); 
+        res.json({ success: false }); }
 });
 
 app.get('/logs', async (req, res) => {
