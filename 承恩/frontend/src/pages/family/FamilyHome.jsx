@@ -25,6 +25,11 @@ const modules = [
     title: "關懷語句庫",
     description: "一鍵播放常用關懷語句，支援多語音版本。",
     path: "/family/phrases"
+  },
+  {
+    title: "家屬提醒清單",
+    description: "建立照護提醒並同步到照顧者執行端。",
+    path: "/family/reminders"
   }
 ]
 

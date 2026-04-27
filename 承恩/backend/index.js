@@ -59,6 +59,11 @@ const userSchema = new mongoose.Schema({
     default: 0
   },
 
+  bloodPressureCursor: {
+    type: Number,
+    default: 0
+  },
+
   familyAlertsCursor: {
     type: Number,
     default: 0
@@ -150,6 +155,17 @@ const MOCK_WEARABLE_SAMPLES = [
   { heartRate: 92, spo2: 94, steps: 7450, note: "possible fatigue", isAbnormal: true },
   { heartRate: 80, spo2: 97, steps: 5360, note: "stable", isAbnormal: false },
   { heartRate: 72, spo2: 98, steps: 4688, note: "recovered", isAbnormal: false }
+]
+
+const MOCK_BP_SAMPLES = [
+  { sys: 128, dia: 82, pulse: 76 },
+  { sys: 118, dia: 76, pulse: 73 },
+  { sys: 142, dia: 92, pulse: 84 },
+  { sys: 108, dia: 68, pulse: 67 },
+  { sys: 135, dia: 86, pulse: 79 },
+  { sys: 146, dia: 95, pulse: 88 },
+  { sys: 124, dia: 80, pulse: 74 },
+  { sys: 98, dia: 62, pulse: 64 }
 ]
 
 const familyAlertSchema = new mongoose.Schema({
@@ -367,6 +383,196 @@ const CaregiverCareLog = mongoose.model("CaregiverCareLog", caregiverCareLogSche
 const CaregiverLanguage = mongoose.model("CaregiverLanguage", caregiverLanguageSchema)
 const CaregiverSystem = mongoose.model("CaregiverSystem", caregiverSystemSchema)
 
+const sosEventSchema = new mongoose.Schema({
+  eventId: {
+    type: String,
+    required: true,
+    unique: true,
+    index: true
+  },
+  patientUserId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+    index: true
+  },
+  patientName: String,
+  patientEmail: String,
+  patientPhone: String,
+  message: String,
+  locationLabel: String,
+  latitude: Number,
+  longitude: Number,
+  status: {
+    type: String,
+    enum: ["active", "resolved"],
+    default: "active",
+    index: true
+  },
+  triggeredAt: {
+    type: Date,
+    default: Date.now,
+    index: true
+  },
+  resolvedAt: Date,
+  resolvedByEmail: String,
+  source: {
+    type: String,
+    default: "manual-sos"
+  }
+}, { timestamps: true })
+
+const SosEvent = mongoose.model("SosEvent", sosEventSchema)
+
+const abnormalEventSchema = new mongoose.Schema({
+  eventId: {
+    type: String,
+    required: true,
+    unique: true,
+    index: true
+  },
+  patientUserId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+    index: true
+  },
+  reporterUserId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    index: true
+  },
+  reporterRole: {
+    type: String,
+    enum: ["patient", "family", "caregiver", "system"],
+    default: "caregiver"
+  },
+  type: {
+    type: String,
+    required: true
+  },
+  severity: {
+    type: String,
+    enum: ["低", "中", "高"],
+    default: "中",
+    index: true
+  },
+  status: {
+    type: String,
+    enum: ["未處理", "處理中", "已完成"],
+    default: "未處理",
+    index: true
+  },
+  location: String,
+  description: String,
+  happenedAt: {
+    type: Date,
+    default: Date.now,
+    index: true
+  },
+  source: {
+    type: String,
+    default: "manual-report"
+  }
+}, { timestamps: true })
+
+const reminderSchema = new mongoose.Schema({
+  reminderId: {
+    type: String,
+    required: true,
+    unique: true,
+    index: true
+  },
+  patientUserId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+    index: true
+  },
+  createdByUserId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+    index: true
+  },
+  createdByRole: {
+    type: String,
+    enum: ["patient", "family", "caregiver", "system"],
+    default: "family"
+  },
+  assignedToRole: {
+    type: String,
+    enum: ["patient", "family", "caregiver"],
+    default: "caregiver",
+    index: true
+  },
+  category: {
+    type: String,
+    required: true
+  },
+  content: {
+    type: String,
+    required: true
+  },
+  time: {
+    type: Date,
+    required: true,
+    index: true
+  },
+  note: String,
+  isCompleted: {
+    type: Boolean,
+    default: false,
+    index: true
+  },
+  completedAt: Date,
+  completedByUserId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User"
+  },
+  completedByRole: String,
+  source: {
+    type: String,
+    default: "manual-reminder"
+  }
+}, { timestamps: true })
+
+const bloodPressureRecordSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+    index: true
+  },
+  sys: {
+    type: Number,
+    required: true
+  },
+  dia: {
+    type: Number,
+    required: true
+  },
+  pulse: Number,
+  level: {
+    type: String,
+    enum: ["正常", "偏高", "高血壓", "低血壓"],
+    required: true
+  },
+  measuredAt: {
+    type: Date,
+    default: Date.now,
+    index: true
+  },
+  source: {
+    type: String,
+    default: "manual-entry"
+  }
+}, { timestamps: true })
+
+const AbnormalEvent = mongoose.model("AbnormalEvent", abnormalEventSchema)
+const Reminder = mongoose.model("Reminder", reminderSchema)
+const BloodPressureRecord = mongoose.model("BloodPressureRecord", bloodPressureRecordSchema)
+
 const MOCK_CAREGIVER_ALERTS = [
   { alertId: "CG-AL-501", type: "Fall", riskLevel: "High", status: "Pending", actionTaken: "Assisted standing", happenedAt: "2026-03-16T09:23:00+08:00" },
   { alertId: "CG-AL-502", type: "Bed exit", riskLevel: "Medium", status: "Processing", actionTaken: "Helped back to bed", happenedAt: "2026-03-16T08:41:00+08:00" },
@@ -555,6 +761,52 @@ function verifyToken(req, res) {
   }
 }
 
+function normalizeLimit(value, fallback = 10, max = 50) {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.min(Math.max(parsed, 1), max)
+}
+
+function createSosEventId() {
+  return `SOS-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`
+}
+
+function createAbnormalEventId() {
+  return `AB-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`
+}
+
+function createReminderId() {
+  return `RM-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`
+}
+
+function normalizeSeverity(value) {
+  if (value === "高" || value === "中" || value === "低") return value
+  if (value === "High") return "高"
+  if (value === "Medium") return "中"
+  if (value === "Low") return "低"
+  return "中"
+}
+
+function normalizeAlertStatus(value) {
+  if (value === "未處理" || value === "處理中" || value === "已完成") return value
+  if (value === "Pending") return "未處理"
+  if (value === "Processing") return "處理中"
+  if (value === "Done") return "已完成"
+  return "未處理"
+}
+
+function judgeBloodPressureLevel(sys, dia) {
+  if (sys >= 140 || dia >= 90) return "高血壓"
+  if (sys < 90 || dia < 60) return "低血壓"
+  if (sys >= 120 || dia >= 80) return "偏高"
+  return "正常"
+}
+
+async function resolveTargetPatient(fallbackUserId) {
+  const patient = await User.findOne({ role: "patient" }).sort({ updatedAt: -1, _id: -1 })
+  return patient?._id || fallbackUserId
+}
+
 // ================= PATIENT =================
 app.get("/patient/check-profile", async (req, res) => {
   const decoded = verifyToken(req, res)
@@ -575,7 +827,8 @@ app.get("/patient/profile", async (req, res) => {
     birthDate: user.birthDate,
     age: user.age,
     idNumber: user.idNumber,
-    gender: user.gender
+    gender: user.gender,
+    phone: user.phone
   })
 })
 
@@ -583,7 +836,7 @@ app.post("/patient/setup", async (req, res) => {
   const decoded = verifyToken(req, res)
   if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
 
-  const { name, birthDate, age, idNumber, gender } = req.body
+  const { name, birthDate, age, idNumber, gender, phone } = req.body
 
   const user = await User.findOne({ email: decoded.email })
 
@@ -592,11 +845,102 @@ app.post("/patient/setup", async (req, res) => {
   user.age = age
   user.idNumber = idNumber
   user.gender = gender
+  user.phone = typeof phone === "string" ? phone.trim() : user.phone
   user.profileCompleted = true
 
   await user.save()
 
   res.json({ message: "基本資料已儲存" })
+})
+
+app.get("/patient/blood-pressure/history", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "找不到使用者" })
+
+  const limit = normalizeLimit(req.query.limit, 20, 100)
+  const records = await BloodPressureRecord.find({ userId: user._id })
+    .sort({ measuredAt: -1, _id: -1 })
+    .limit(limit)
+
+  const latest = records.length > 0 ? records[0] : null
+
+  res.json({ records, latest })
+})
+
+app.post("/patient/blood-pressure/record", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "找不到使用者" })
+
+  const sys = Number(req.body?.sys)
+  const dia = Number(req.body?.dia)
+  const pulseRaw = req.body?.pulse
+  const pulse = pulseRaw === "" || pulseRaw === null || pulseRaw === undefined
+    ? undefined
+    : Number(pulseRaw)
+
+  if (!Number.isFinite(sys) || !Number.isFinite(dia)) {
+    return res.status(400).json({ message: "請提供有效的 SYS 與 DIA 數值" })
+  }
+
+  if (pulseRaw !== "" && pulseRaw !== null && pulseRaw !== undefined && !Number.isFinite(pulse)) {
+    return res.status(400).json({ message: "Pulse 格式錯誤" })
+  }
+
+  const level = judgeBloodPressureLevel(sys, dia)
+
+  const record = await BloodPressureRecord.create({
+    userId: user._id,
+    sys,
+    dia,
+    pulse,
+    level,
+    measuredAt: new Date(),
+    source: "manual-entry"
+  })
+
+  res.status(201).json({
+    message: "血壓紀錄已新增",
+    record
+  })
+})
+
+app.post("/patient/blood-pressure/sync", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "找不到使用者" })
+
+  const total = MOCK_BP_SAMPLES.length
+  const cursor = Number.isInteger(user.bloodPressureCursor) ? user.bloodPressureCursor : 0
+  const sampleIndex = ((cursor % total) + total) % total
+  const sample = MOCK_BP_SAMPLES[sampleIndex]
+
+  const record = await BloodPressureRecord.create({
+    userId: user._id,
+    sys: sample.sys,
+    dia: sample.dia,
+    pulse: sample.pulse,
+    level: judgeBloodPressureLevel(sample.sys, sample.dia),
+    measuredAt: new Date(),
+    source: "mock-seed"
+  })
+
+  user.bloodPressureCursor = (sampleIndex + 1) % total
+  await user.save()
+
+  res.json({
+    message: "已寫入一筆虛擬血壓資料",
+    sampleIndex,
+    nextCursor: user.bloodPressureCursor,
+    record
+  })
 })
 
 app.get("/patient/wearable/latest", async (req, res) => {
@@ -667,6 +1011,69 @@ app.post("/patient/wearable/sync", async (req, res) => {
   })
 })
 
+app.get("/patient/sos/history", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "找不到使用者" })
+
+  const limit = normalizeLimit(req.query.limit, 10, 50)
+  const records = await SosEvent.find({ patientUserId: user._id })
+    .sort({ triggeredAt: -1, _id: -1 })
+    .limit(limit)
+
+  res.json({ records })
+})
+
+app.post("/patient/sos/trigger", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "找不到使用者" })
+
+  const {
+    message,
+    locationLabel,
+    latitude,
+    longitude,
+    patientPhone
+  } = req.body || {}
+
+  const lat = Number(latitude)
+  const lng = Number(longitude)
+  const normalizedPhone = typeof patientPhone === "string" ? patientPhone.trim() : ""
+  if (normalizedPhone) {
+    user.phone = normalizedPhone
+    await user.save()
+  }
+
+  const record = await SosEvent.create({
+    eventId: createSosEventId(),
+    patientUserId: user._id,
+    patientName: user.name || "未命名受顧者",
+    patientEmail: user.email,
+    patientPhone: normalizedPhone || user.phone || "",
+    message: typeof message === "string" && message.trim()
+      ? message.trim()
+      : "受顧者手動觸發 SOS",
+    locationLabel: typeof locationLabel === "string" && locationLabel.trim()
+      ? locationLabel.trim()
+      : "定位資訊未提供",
+    latitude: Number.isFinite(lat) ? lat : undefined,
+    longitude: Number.isFinite(lng) ? lng : undefined,
+    status: "active",
+    triggeredAt: new Date(),
+    source: "patient-manual-sos"
+  })
+
+  res.status(201).json({
+    message: "SOS 已送出",
+    record
+  })
+})
+
 // ================= FAMILY =================
 app.get("/family/alerts/history", async (req, res) => {
   const decoded = verifyToken(req, res)
@@ -675,8 +1082,16 @@ app.get("/family/alerts/history", async (req, res) => {
   const user = await User.findOne({ email: decoded.email })
   if (!user) return res.status(404).json({ message: "找不到使用者" })
 
-  const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 50)
-  const records = await FamilyAlert.find({ userId: user._id })
+  const filter = {}
+  if (req.query.severity) {
+    filter.severity = normalizeSeverity(req.query.severity)
+  }
+  if (req.query.status) {
+    filter.status = normalizeAlertStatus(req.query.status)
+  }
+
+  const limit = normalizeLimit(req.query.limit, 20, 100)
+  const records = await AbnormalEvent.find(filter)
     .sort({ happenedAt: -1, _id: -1 })
     .limit(limit)
 
@@ -694,15 +1109,19 @@ app.post("/family/alerts/sync", async (req, res) => {
   const cursor = Number.isInteger(user.familyAlertsCursor) ? user.familyAlertsCursor : 0
   const sampleIndex = ((cursor % total) + total) % total
   const sample = MOCK_FAMILY_ALERTS[sampleIndex]
+  const patientUserId = await resolveTargetPatient(user._id)
 
-  const record = await FamilyAlert.create({
-    userId: user._id,
-    alertId: sample.alertId,
+  const record = await AbnormalEvent.create({
+    eventId: createAbnormalEventId(),
+    patientUserId,
+    reporterUserId: user._id,
+    reporterRole: "system",
     type: sample.type,
-    level: sample.level,
+    severity: normalizeSeverity(sample.level),
     happenedAt: new Date(sample.happenedAt),
     location: sample.location,
-    status: sample.status,
+    status: normalizeAlertStatus(sample.status),
+    description: `${sample.type}事件，請家屬確認`,
     source: "mock-seed"
   })
 
@@ -710,9 +1129,28 @@ app.post("/family/alerts/sync", async (req, res) => {
   await user.save()
 
   res.json({
-    message: "已寫入一筆虛擬即時通知資料",
+    message: "已寫入一筆虛擬異常事件資料",
     sampleIndex,
     nextCursor: user.familyAlertsCursor,
+    record
+  })
+})
+
+app.patch("/family/alerts/:id/status", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "找不到使用者" })
+
+  const record = await AbnormalEvent.findById(req.params.id)
+  if (!record) return res.status(404).json({ message: "找不到異常事件" })
+
+  record.status = normalizeAlertStatus(req.body?.status)
+  await record.save()
+
+  res.json({
+    message: "事件狀態已更新",
     record
   })
 })
@@ -856,6 +1294,52 @@ app.post("/family/events/sync", async (req, res) => {
   })
 })
 
+app.get("/family/sos/history", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "找不到使用者" })
+
+  const statusFilter = req.query.status
+  const filter = {}
+  if (statusFilter === "active" || statusFilter === "resolved") {
+    filter.status = statusFilter
+  }
+
+  const limit = normalizeLimit(req.query.limit, 20, 100)
+  const records = await SosEvent.find(filter)
+    .sort({ triggeredAt: -1, _id: -1 })
+    .limit(limit)
+
+  res.json({ records })
+})
+
+app.patch("/family/sos/:id/resolve", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "找不到使用者" })
+
+  const record = await SosEvent.findById(req.params.id)
+  if (!record) return res.status(404).json({ message: "找不到 SOS 事件" })
+
+  if (record.status === "resolved") {
+    return res.json({ message: "SOS 事件已結案", record })
+  }
+
+  record.status = "resolved"
+  record.resolvedAt = new Date()
+  record.resolvedByEmail = user.email
+  await record.save()
+
+  res.json({
+    message: "已將 SOS 事件標記為完成",
+    record
+  })
+})
+
 app.get("/family/check-profile", async (req, res) => {
   const decoded = verifyToken(req, res)
   if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
@@ -893,6 +1377,109 @@ app.post("/family/setup", async (req, res) => {
   res.json({ message: "家屬資料已儲存" })
 })
 
+app.get("/family/reminders", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "找不到使用者" })
+
+  const filter = { assignedToRole: "caregiver" }
+  if (req.query.completed === "true") filter.isCompleted = true
+  if (req.query.completed === "false") filter.isCompleted = false
+
+  const limit = normalizeLimit(req.query.limit, 30, 100)
+  const records = await Reminder.find(filter)
+    .sort({ isCompleted: 1, time: 1, _id: -1 })
+    .limit(limit)
+
+  res.json({ records })
+})
+
+app.post("/family/reminders", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "找不到使用者" })
+
+  const { category, content, time, note } = req.body || {}
+  if (!category || !String(category).trim()) {
+    return res.status(400).json({ message: "請提供提醒類別" })
+  }
+  if (!content || !String(content).trim()) {
+    return res.status(400).json({ message: "請提供提醒內容" })
+  }
+
+  const parsedTime = new Date(time)
+  if (!time || Number.isNaN(parsedTime.getTime())) {
+    return res.status(400).json({ message: "提醒時間格式錯誤" })
+  }
+
+  const patientUserId = await resolveTargetPatient(user._id)
+
+  const record = await Reminder.create({
+    reminderId: createReminderId(),
+    patientUserId,
+    createdByUserId: user._id,
+    createdByRole: "family",
+    assignedToRole: "caregiver",
+    category: String(category).trim(),
+    content: String(content).trim(),
+    time: parsedTime,
+    note: typeof note === "string" ? note.trim() : "",
+    source: "family-manual"
+  })
+
+  res.status(201).json({
+    message: "提醒已新增",
+    record
+  })
+})
+
+app.patch("/family/reminders/:id", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "找不到使用者" })
+
+  const record = await Reminder.findById(req.params.id)
+  if (!record) return res.status(404).json({ message: "找不到提醒事項" })
+
+  const { category, content, time, note } = req.body || {}
+  if (typeof category === "string" && category.trim()) record.category = category.trim()
+  if (typeof content === "string" && content.trim()) record.content = content.trim()
+  if (typeof note === "string") record.note = note.trim()
+  if (time) {
+    const parsedTime = new Date(time)
+    if (Number.isNaN(parsedTime.getTime())) {
+      return res.status(400).json({ message: "提醒時間格式錯誤" })
+    }
+    record.time = parsedTime
+  }
+
+  await record.save()
+
+  res.json({
+    message: "提醒已更新",
+    record
+  })
+})
+
+app.delete("/family/reminders/:id", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "找不到使用者" })
+
+  const record = await Reminder.findByIdAndDelete(req.params.id)
+  if (!record) return res.status(404).json({ message: "找不到提醒事項" })
+
+  res.json({ message: "提醒已刪除", record })
+})
+
 // ================= CAREGIVER =================
 app.get("/caregiver/alerts/history", async (req, res) => {
   const decoded = verifyToken(req, res)
@@ -901,12 +1488,82 @@ app.get("/caregiver/alerts/history", async (req, res) => {
   const user = await User.findOne({ email: decoded.email })
   if (!user) return res.status(404).json({ message: "User not found" })
 
-  const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 50)
-  const records = await CaregiverAlert.find({ userId: user._id })
+  const filter = {}
+  if (req.query.severity) {
+    filter.severity = normalizeSeverity(req.query.severity)
+  }
+  if (req.query.status) {
+    filter.status = normalizeAlertStatus(req.query.status)
+  }
+
+  const limit = normalizeLimit(req.query.limit, 20, 100)
+  const records = await AbnormalEvent.find(filter)
     .sort({ happenedAt: -1, _id: -1 })
     .limit(limit)
 
   res.json({ records })
+})
+
+app.post("/caregiver/alerts", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "User not found" })
+
+  const {
+    type,
+    severity,
+    status,
+    location,
+    description,
+    happenedAt
+  } = req.body || {}
+
+  if (!type || !String(type).trim()) {
+    return res.status(400).json({ message: "請提供事件類型" })
+  }
+
+  const patientUserId = await resolveTargetPatient(user._id)
+
+  const record = await AbnormalEvent.create({
+    eventId: createAbnormalEventId(),
+    patientUserId,
+    reporterUserId: user._id,
+    reporterRole: "caregiver",
+    type: String(type).trim(),
+    severity: normalizeSeverity(severity),
+    status: normalizeAlertStatus(status),
+    location: typeof location === "string" ? location.trim() : "",
+    description: typeof description === "string" ? description.trim() : "",
+    happenedAt: happenedAt ? new Date(happenedAt) : new Date(),
+    source: "caregiver-manual"
+  })
+
+  res.status(201).json({
+    message: "異常事件已建立",
+    record
+  })
+})
+
+app.patch("/caregiver/alerts/:id/status", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "User not found" })
+
+  const record = await AbnormalEvent.findById(req.params.id)
+  if (!record) return res.status(404).json({ message: "找不到異常事件" })
+
+  const nextStatus = normalizeAlertStatus(req.body?.status)
+  record.status = nextStatus
+  await record.save()
+
+  res.json({
+    message: "事件狀態已更新",
+    record
+  })
 })
 
 app.post("/caregiver/alerts/sync", async (req, res) => {
@@ -922,14 +1579,17 @@ app.post("/caregiver/alerts/sync", async (req, res) => {
     : 0
   const sampleIndex = ((cursor % total) + total) % total
   const sample = MOCK_CAREGIVER_ALERTS[sampleIndex]
+  const patientUserId = await resolveTargetPatient(user._id)
 
-  const record = await CaregiverAlert.create({
-    userId: user._id,
-    alertId: sample.alertId,
+  const record = await AbnormalEvent.create({
+    eventId: createAbnormalEventId(),
+    patientUserId,
+    reporterUserId: user._id,
+    reporterRole: "system",
     type: sample.type,
-    riskLevel: sample.riskLevel,
-    status: sample.status,
-    actionTaken: sample.actionTaken,
+    severity: normalizeSeverity(sample.riskLevel),
+    status: normalizeAlertStatus(sample.status),
+    description: sample.actionTaken,
     happenedAt: new Date(sample.happenedAt),
     source: "mock-seed"
   })
@@ -938,9 +1598,76 @@ app.post("/caregiver/alerts/sync", async (req, res) => {
   await user.save()
 
   res.json({
-    message: "Caregiver alert mock synced",
+    message: "Caregiver abnormal event mock synced",
     sampleIndex,
     nextCursor: user.caregiverAlertsCursor,
+    record
+  })
+})
+
+app.get("/caregiver/reminders", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "User not found" })
+
+  const filter = { assignedToRole: "caregiver" }
+  if (req.query.completed === "true") filter.isCompleted = true
+  if (req.query.completed === "false") filter.isCompleted = false
+
+  const limit = normalizeLimit(req.query.limit, 30, 100)
+  const records = await Reminder.find(filter)
+    .sort({ isCompleted: 1, time: 1, _id: -1 })
+    .limit(limit)
+
+  res.json({ records })
+})
+
+app.patch("/caregiver/reminders/:id/complete", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "User not found" })
+
+  const record = await Reminder.findById(req.params.id)
+  if (!record) return res.status(404).json({ message: "Reminder not found" })
+
+  if (record.isCompleted) {
+    return res.json({ message: "Reminder already completed", record })
+  }
+
+  record.isCompleted = true
+  record.completedAt = new Date()
+  record.completedByUserId = user._id
+  record.completedByRole = "caregiver"
+  await record.save()
+
+  res.json({
+    message: "Reminder marked as completed",
+    record
+  })
+})
+
+app.patch("/caregiver/reminders/:id/reset", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "User not found" })
+
+  const record = await Reminder.findById(req.params.id)
+  if (!record) return res.status(404).json({ message: "Reminder not found" })
+
+  record.isCompleted = false
+  record.completedAt = undefined
+  record.completedByUserId = undefined
+  record.completedByRole = undefined
+  await record.save()
+
+  res.json({
+    message: "Reminder reset to pending",
     record
   })
 })
@@ -1091,6 +1818,52 @@ app.post("/caregiver/system/sync", async (req, res) => {
     message: "Caregiver system mock synced",
     sampleIndex,
     nextCursor: user.caregiverSystemCursor,
+    record
+  })
+})
+
+app.get("/caregiver/sos/history", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "User not found" })
+
+  const statusFilter = req.query.status
+  const filter = {}
+  if (statusFilter === "active" || statusFilter === "resolved") {
+    filter.status = statusFilter
+  }
+
+  const limit = normalizeLimit(req.query.limit, 20, 100)
+  const records = await SosEvent.find(filter)
+    .sort({ triggeredAt: -1, _id: -1 })
+    .limit(limit)
+
+  res.json({ records })
+})
+
+app.patch("/caregiver/sos/:id/resolve", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "User not found" })
+
+  const record = await SosEvent.findById(req.params.id)
+  if (!record) return res.status(404).json({ message: "SOS event not found" })
+
+  if (record.status === "resolved") {
+    return res.json({ message: "SOS event already resolved", record })
+  }
+
+  record.status = "resolved"
+  record.resolvedAt = new Date()
+  record.resolvedByEmail = user.email
+  await record.save()
+
+  res.json({
+    message: "SOS event resolved",
     record
   })
 })

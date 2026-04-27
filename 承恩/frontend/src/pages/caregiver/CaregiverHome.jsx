@@ -3,6 +3,11 @@ import { useNavigate } from "react-router-dom"
 
 const modules = [
   {
+    title: "SOS 指揮中心",
+    description: "接收受顧者一鍵求救、快速導航與結案處理。",
+    path: "/caregiver/sos"
+  },
+  {
     title: "危險行為偵測與即時警示",
     description: "事件分級、處理流程與快速處置入口。",
     path: "/caregiver/alerts"
@@ -11,6 +16,11 @@ const modules = [
     title: "日常照護紀錄",
     description: "用藥、飲食、活動與生理資訊回報面板。",
     path: "/caregiver/care-logs"
+  },
+  {
+    title: "提醒任務清單",
+    description: "接收家屬提醒，完成後回報任務狀態。",
+    path: "/caregiver/reminders"
   },
   {
     title: "跨語言與溝通支援",

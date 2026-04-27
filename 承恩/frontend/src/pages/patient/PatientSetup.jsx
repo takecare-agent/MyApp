@@ -8,7 +8,8 @@ export default function PatientSetup() {
     birthDate: "",
     age: "",
     idNumber: "",
-    gender: "male"
+    gender: "male",
+    phone: ""
   })
   const [submitting, setSubmitting] = useState(false)
 
@@ -35,7 +36,8 @@ export default function PatientSetup() {
         },
         body: JSON.stringify({
           ...form,
-          age: Number(form.age)
+          age: Number(form.age),
+          phone: form.phone.trim()
         })
       })
 
@@ -111,6 +113,18 @@ export default function PatientSetup() {
               value={form.idNumber}
               onChange={e => setForm({ ...form, idNumber: e.target.value })}
               placeholder="例如：A123456789"
+            />
+          </div>
+
+          <div>
+            <label className="input-label" htmlFor="patient-phone">
+              聯絡電話
+            </label>
+            <input
+              id="patient-phone"
+              value={form.phone}
+              onChange={e => setForm({ ...form, phone: e.target.value })}
+              placeholder="例如：0912345678"
             />
           </div>
 

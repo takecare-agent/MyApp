@@ -9,6 +9,8 @@ import CaregiverHome from "./pages/caregiver/CaregiverHome"
 import CaregiverAlerts from "./pages/caregiver/CaregiverAlerts"
 import CaregiverCareLogs from "./pages/caregiver/CaregiverCareLogs"
 import CaregiverLanguageSupport from "./pages/caregiver/CaregiverLanguageSupport"
+import CaregiverReminders from "./pages/caregiver/CaregiverReminders"
+import CaregiverSosCenter from "./pages/caregiver/CaregiverSosCenter"
 import CaregiverSetup from "./pages/caregiver/CaregiverSetup"
 import CaregiverSystemCenter from "./pages/caregiver/CaregiverSystemCenter"
 
@@ -17,6 +19,7 @@ import FamilyCareRecords from "./pages/family/FamilyCareRecords"
 import FamilyEventHistory from "./pages/family/FamilyEventHistory"
 import FamilyHome from "./pages/family/FamilyHome"
 import FamilyPhraseLibrary from "./pages/family/FamilyPhraseLibrary"
+import FamilyReminders from "./pages/family/FamilyReminders"
 import FamilySetup from "./pages/family/FamilySetup"
 import FamilySosCenter from "./pages/family/FamilySosCenter"
 
@@ -124,12 +127,28 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/family/reminders"
+        element={
+          <ProtectedRoute>
+            <FamilyReminders />
+          </ProtectedRoute>
+        }
+      />
 
       <Route
         path="/caregiver"
         element={
           <ProtectedRoute>
             <CaregiverHome />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/caregiver/sos"
+        element={
+          <ProtectedRoute>
+            <CaregiverSosCenter />
           </ProtectedRoute>
         }
       />
@@ -162,6 +181,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <CaregiverSystemCenter />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/caregiver/reminders"
+        element={
+          <ProtectedRoute>
+            <CaregiverReminders />
           </ProtectedRoute>
         }
       />
