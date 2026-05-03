@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "689653004439",
+    "project_id": "cpr-app-fe902",
+    "storage_bucket": "cpr-app-fe902.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:689653004439:android:f3a4128ca0d7ef16ec51d2",
+        "android_client_info": {
+          "package_name": "com.hao.migrantaid"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "689653004439-0rce8hd17bfr6sjg8g9ifm9qsop6pojg.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.hao.migrantaid",
+            "certificate_hash": "282786c5be95e8ae325effdf9ad065f4d7643321"
+          }
+        },
+        {
+          "client_id": "689653004439-ae0n88frsctlspdjk5m5f6nkpv4kstc1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDqpKfleFhCVTi9ZRDWblvn5mUR02OXYb0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "689653004439-ae0n88frsctlspdjk5m5f6nkpv4kstc1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
