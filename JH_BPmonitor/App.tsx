@@ -406,6 +406,41 @@ const getBpRecordIdentityKeys = (record: BpRecord): string[] =>
 const getBpRecordPrimaryKey = (record: BpRecord) =>
   getBpRecordIdentity(record).primaryKey || record.id;
 
+const mergeUniqueRecords = (items: BpRecord[]) => {
+  const recordsByKey = new Map<string, BpRecord>();
+  const mergedRecords: BpRecord[] = [];
+
+  const rememberRecord = (record: BpRecord) => {
+    const identity = getBpRecordIdentity(record);
+    const matchedKey = identity.keys.find((key) => recordsByKey.has(key));
+    const existingRecord = matchedKey ? recordsByKey.get(matchedKey) : undefined;
+
+    if (!existingRecord) {
+      mergedRecords.push(record);
+      identity.keys.forEach((key) => recordsByKey.set(key, record));
+      return;
+    }
+
+    const mergedRecord = {
+      ...existingRecord,
+      ...record,
+      mood: isMarkedMood(record.mood) ? record.mood : (existingRecord.mood ?? record.mood ?? UNMARKED_MOOD),
+      pulse: record.pulse ?? existingRecord.pulse,
+      syncKey: record.syncKey ?? existingRecord.syncKey,
+      userId: record.userId ?? existingRecord.userId,
+    };
+    const index = mergedRecords.indexOf(existingRecord);
+    if (index >= 0) mergedRecords[index] = mergedRecord;
+
+    [...getBpRecordIdentityKeys(existingRecord), ...identity.keys].forEach((key) => {
+      recordsByKey.set(key, mergedRecord);
+    });
+  };
+
+  sortRecordsNewestFirst(items).forEach(rememberRecord);
+  return sortRecordsNewestFirst(mergedRecords);
+};
+
 const mergeRecordsPreservingLocalMood = (remoteRecords: BpRecord[], localRecords: BpRecord[]) => {
   const localMoodByKey = new Map<string, Mood>();
   const localPulseByKey = new Map<string, string>();
@@ -421,7 +456,7 @@ const mergeRecordsPreservingLocalMood = (remoteRecords: BpRecord[], localRecords
     }
   });
 
-  return remoteRecords.map((record) => {
+  const enrichedRemoteRecords = remoteRecords.map((record) => {
     const keys = getBpRecordIdentity(record).keys;
     const preservedMood = keys
       .map((key) => localMoodByKey.get(key))
@@ -436,6 +471,8 @@ const mergeRecordsPreservingLocalMood = (remoteRecords: BpRecord[], localRecords
       pulse: record.pulse ?? preservedPulse,
     };
   });
+
+  return mergeUniqueRecords([...enrichedRemoteRecords, ...localRecords]);
 };
 
 const getBpRecordDateKey = (record: BpRecord): string | null => {
@@ -651,6 +688,12 @@ const getSampledTrendSummaries = (items: DailyBpSummary[], maxPoints = 12) => {
   if (items.length <= maxPoints) return items;
   const step = Math.ceil(items.length / maxPoints);
   return items.filter((_, index) => index % step === 0).slice(-maxPoints);
+};
+
+const fetchRemoteBpRecords = async (userId?: string): Promise<BpRecord[]> => {
+  if (!userId) return [];
+  const res = await axios.get(`${API_URL}?userId=${encodeURIComponent(userId)}`);
+  return mergeUniqueRecords(sortRecordsNewestFirst(res.data));
 };
 
 const HomeScreen = ({
@@ -1367,6 +1410,7 @@ const App = () => {
   const [pendingMoodRecords, setPendingMoodRecords] = useState<BpRecord[]>([]);
   const [isSyncMoodModalVisible, setIsSyncMoodModalVisible] = useState(false);
   const syncMoodModalTranslateY = useRef(new Animated.Value(0)).current;
+  const [isCloudLoading, setIsCloudLoading] = useState(false);
   const syncMoodModalPanResponder = useMemo(
     () => createSwipeDownDismissPanResponder(syncMoodModalTranslateY, () => setIsSyncMoodModalVisible(false)),
     [syncMoodModalTranslateY]
@@ -1469,21 +1513,25 @@ const App = () => {
     if (!user) return;
     const loadData = async () => {
       let local: BpRecord[] = [];
+      setIsCloudLoading(true);
       try {
         const saved = await AsyncStorage.getItem(`bp_records_${user.uid}`);
         if (saved) {
-          local = sortRecordsNewestFirst(JSON.parse(saved));
+          local = mergeUniqueRecords(JSON.parse(saved));
           setRecords(local);
           analyzeHealth(local);
         }
       } catch {}
       try {
-        const res = await axios.get(`${API_URL}?userId=${user.uid}`);
-        const remote: BpRecord[] = mergeRecordsPreservingLocalMood(sortRecordsNewestFirst(res.data), local);
+        const remoteRecords = await fetchRemoteBpRecords(user.uid);
+        const remote: BpRecord[] = mergeRecordsPreservingLocalMood(remoteRecords, local);
         setRecords(remote);
         analyzeHealth(remote);
+        await AsyncStorage.setItem(`bp_records_${user.uid}`, JSON.stringify(remote));
       } catch {
         console.log('[API] 雲端獲取失敗，使用本地數據');
+      } finally {
+        setIsCloudLoading(false);
       }
     };
     loadData();
@@ -1503,6 +1551,17 @@ const App = () => {
     setIsSyncing(true);
 
     try {
+      let baselineRecords = records;
+      try {
+        const remoteRecords = await fetchRemoteBpRecords(user?.uid);
+        baselineRecords = mergeRecordsPreservingLocalMood(remoteRecords, records);
+        setRecords(baselineRecords);
+        analyzeHealth(baselineRecords);
+        await AsyncStorage.setItem(`bp_records_${user?.uid}`, JSON.stringify(baselineRecords));
+      } catch (e) {
+        console.warn('[API] 同步前雲端基準載入失敗，使用目前本機資料去重：', e);
+      }
+
       // ── 步驟 A：先檢查現有權限，避免每次都彈出授權視窗 ──
       let alreadyGranted = false;
       try {
@@ -1602,8 +1661,8 @@ const App = () => {
         .filter((r): r is BpRecord => r !== null);
 
       // ── 步驟 E：去重（metadata id + 穩定的時間/數值 key）──
-      const existingKeys = new Set(records.flatMap(getBpRecordIdentityKeys));
-      let updatedExistingRecords = records;
+      const existingKeys = new Set(baselineRecords.flatMap(getBpRecordIdentityKeys));
+      let updatedExistingRecords = baselineRecords;
       let pulseBackfillCount = 0;
       const toSave: BpRecord[] = [];
 
@@ -1635,7 +1694,7 @@ const App = () => {
       }
 
       // ── 步驟 F：儲存 ──
-      const updated = sortRecordsNewestFirst([...toSave, ...updatedExistingRecords]);
+      const updated = mergeUniqueRecords([...toSave, ...updatedExistingRecords]);
       setRecords(updated);
       analyzeHealth(updated);
 
@@ -1814,10 +1873,10 @@ const App = () => {
       lastRecord={records[0]}
       recentRecords={records}
       onSync={syncHealthData}
-      isSyncing={isSyncing}
+      isSyncing={isSyncing || isCloudLoading}
       onUpdateMood={updateRecordMood}
     />
-  ), [autoSaveRecord, bp, handleOCR, isSyncing, records, syncHealthData, updateRecordMood, user]);
+  ), [autoSaveRecord, bp, handleOCR, isCloudLoading, isSyncing, records, syncHealthData, updateRecordMood, user]);
 
   const renderTrendScreen = useCallback(() => (
     <TrendScreen records={records} healthAdvice={healthAdvice} userId={user?.uid} />

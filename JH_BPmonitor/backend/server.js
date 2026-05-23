@@ -74,6 +74,31 @@ const getRecordDateKey = (record) => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
 
+const getRecordIdentityConditions = (record) => {
+  const conditions = [];
+  if (record.syncKey) conditions.push({ syncKey: record.syncKey });
+  if (record.id) conditions.push({ id: record.id });
+  if (record.time && record.sys && record.dia) {
+    conditions.push({
+      time: record.time,
+      sys: String(record.sys),
+      dia: String(record.dia)
+    });
+  }
+  return conditions;
+};
+
+const mergeIncomingRecord = (existingRecord, incomingRecord) => ({
+  ...existingRecord,
+  ...incomingRecord,
+  mood: isStressMood(incomingRecord.mood) || incomingRecord.mood === '開心' || incomingRecord.mood === '平靜'
+    ? incomingRecord.mood
+    : (existingRecord.mood || incomingRecord.mood || UNMARKED_MOOD),
+  pulse: incomingRecord.pulse || existingRecord.pulse,
+  syncKey: incomingRecord.syncKey || existingRecord.syncKey,
+  userId: incomingRecord.userId || existingRecord.userId
+});
+
 const getRiskCategory = (record) => {
   const sys = toFiniteNumber(record.sys);
   const dia = toFiniteNumber(record.dia);
@@ -192,15 +217,41 @@ const getScopedMemoryRecords = (userId) =>
 
 app.post('/api/bp', async (req, res) => {
   try {
+    const identityConditions = getRecordIdentityConditions(req.body);
     if (!isMongoReady) {
-      const newRecord = {
-        ...req.body,
-        _id: `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        id: req.body.id || Date.now().toString(),
-      };
+      const duplicateIndex = identityConditions.length > 0
+        ? memoryRecords.findIndex((record) =>
+            identityConditions.some((condition) =>
+              Object.entries(condition).every(([key, value]) => record[key] === value)
+            )
+          )
+        : -1;
+
+      if (duplicateIndex >= 0) {
+        memoryRecords[duplicateIndex] = mergeIncomingRecord(memoryRecords[duplicateIndex], req.body);
+        res.status(200).send(memoryRecords[duplicateIndex]);
+        return;
+      }
+
+      const newRecord = { ...req.body, _id: `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, id: req.body.id || Date.now().toString() };
       memoryRecords.unshift(newRecord);
       res.status(201).send(newRecord);
       return;
+    }
+
+    if (identityConditions.length > 0) {
+      const scopeQuery = buildUserRecordQuery(req.body.userId);
+      const duplicateQuery = Object.keys(scopeQuery).length > 0
+        ? { $and: [scopeQuery, { $or: identityConditions }] }
+        : { $or: identityConditions };
+      const existingRecord = await Record.findOne(duplicateQuery);
+
+      if (existingRecord) {
+        Object.assign(existingRecord, mergeIncomingRecord(existingRecord.toObject(), req.body));
+        await existingRecord.save();
+        res.status(200).send(existingRecord);
+        return;
+      }
     }
 
     const newRecord = new Record(req.body);
