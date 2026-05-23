@@ -23,7 +23,7 @@ import {
 } from 'react-native-health-connect';
 
 // ─── 月曆中文設定 ────────────────────────────────────────────────────────────
-LocaleConfig.locales['zh'] = {
+LocaleConfig.locales.zh = {
   monthNames: ['一月','二月','三月','四月','五月','六月','七月','八月','九月','十月','十一月','十二月'],
   monthNamesShort: ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'],
   dayNames: ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'],
@@ -33,7 +33,9 @@ LocaleConfig.locales['zh'] = {
 LocaleConfig.defaultLocale = 'zh';
 
 const Tab = createBottomTabNavigator();
-const API_URL = 'https://bp-backend-server.onrender.com/api/bp';
+const API_BASE_URL = 'http://192.168.0.10:5000';
+const API_URL = `${API_BASE_URL}/api/bp`;
+const SUMMARY_API_URL = `${API_URL}/summary`;
 const MOOD_ANALYSIS_SOURCE_URL = 'https://www.heart.org/en/health-topics/high-blood-pressure/changes-you-can-make-to-manage-high-blood-pressure/managing-stress-to-control-high-blood-pressure';
 const PULSE_ANALYSIS_SOURCE_URL = 'https://www.health.harvard.edu/healthy-aging-and-longevity/understanding-the-stress-response';
 const HEALTH_CONNECT_PERMISSIONS = [
@@ -41,6 +43,12 @@ const HEALTH_CONNECT_PERMISSIONS = [
   { accessType: 'read', recordType: 'HeartRate' },
 ] as const;
 const PULSE_MATCH_WINDOW_MS = 15 * 60 * 1000;
+const BP_LEVEL_COLORS = {
+  normal: '#52c41a',
+  warning: '#faad14',
+  danger: '#cf1322',
+  low: '#722ed1',
+} as const;
 
 const createSwipeDownDismissPanResponder = (translateY: Animated.Value, onDismiss: () => void) =>
   PanResponder.create({
@@ -75,6 +83,7 @@ interface BpStatus {
   color: string;
   isAbnormal: boolean;
   isCritical: boolean;
+  icon: string;
 }
 
 const MOOD_OPTIONS: Array<{ value: Mood; emoji: string; label: string }> = [
@@ -101,18 +110,18 @@ const getMoodEmoji = (mood?: string) =>
 
 const getBpStatusFromValues = (sys: number, dia: number): BpStatus => {
   if (sys >= 180 || dia >= 120) {
-    return { level: '超高血壓', color: '#7f1d1d', isAbnormal: true, isCritical: true };
+    return { level: '超高血壓', color: BP_LEVEL_COLORS.danger, isAbnormal: true, isCritical: true, icon: '🔥' };
   }
   if (sys >= 140 || dia >= 90) {
-    return { level: '高血壓', color: '#cf1322', isAbnormal: true, isCritical: false };
+    return { level: '高血壓', color: BP_LEVEL_COLORS.danger, isAbnormal: true, isCritical: false, icon: '🔥' };
   }
   if (sys < 90 || dia < 60) {
-    return { level: '偏低', color: '#722ed1', isAbnormal: true, isCritical: false };
+    return { level: '偏低', color: BP_LEVEL_COLORS.low, isAbnormal: true, isCritical: false, icon: '⚠️' };
   }
   if (sys >= 120 || dia >= 80) {
-    return { level: '血壓前期', color: '#faad14', isAbnormal: false, isCritical: false };
+    return { level: '血壓前期', color: BP_LEVEL_COLORS.warning, isAbnormal: false, isCritical: false, icon: '⚠️' };
   }
-  return { level: '正常', color: '#52c41a', isAbnormal: false, isCritical: false };
+  return { level: '正常', color: BP_LEVEL_COLORS.normal, isAbnormal: false, isCritical: false, icon: '' };
 };
 
 const getBpLevel = (sys: number, dia: number): BpLevel =>
@@ -124,6 +133,17 @@ const getBpLevelColor = (level?: string) => {
   if (level === '偏低') return getBpStatusFromValues(89, 59).color;
   if (level === '血壓前期') return getBpStatusFromValues(120, 80).color;
   return getBpStatusFromValues(110, 70).color;
+};
+
+const getBpLevelIcon = (level?: string) => {
+  if (level === '高血壓' || level === '超高血壓') return '🔥';
+  if (level === '血壓前期' || level === '偏低') return '⚠️';
+  return '';
+};
+
+const getBpLevelDisplay = (level?: string) => {
+  const icon = getBpLevelIcon(level);
+  return icon ? `${icon} ${level}` : level;
 };
 
 const getMoodStressAnalysis = (items: BpRecord[]) => {
@@ -326,6 +346,25 @@ interface AbnormalBpDetail {
   mood?: Mood;
 }
 
+type HealthRiskCategory = 'normal' | 'warning' | 'danger';
+
+interface HealthSummaryBucket {
+  days: number;
+  percent: number;
+}
+
+interface HealthSummary {
+  months: number;
+  totalDays: number;
+  normal: HealthSummaryBucket;
+  warning: HealthSummaryBucket;
+  danger: HealthSummaryBucket;
+  stressHighCount: number;
+  stressHighMoodLabel: string;
+  periodicObservation: string;
+  dailySummaries: DailyBpSummary[];
+}
+
 const getBpRecordTimestamp = (record: BpRecord): number => {
   const normalizedTime = record.time?.replace(/\//g, '-');
   const timestamp = normalizedTime ? new Date(normalizedTime).getTime() : NaN;
@@ -512,6 +551,24 @@ const isAbnormalBpRecord = (record: BpRecord): boolean => {
   return Number.isFinite(sys) && Number.isFinite(dia) && getBpStatusFromValues(sys, dia).isAbnormal;
 };
 
+const isDangerBpRecord = (record: BpRecord): boolean => {
+  const status = getBpRecordStatus(record);
+  return (
+    record.level === '高血壓' ||
+    record.level === '超高血壓' ||
+    status?.level === '高血壓' ||
+    status?.level === '超高血壓'
+  );
+};
+
+const getBpRiskCategory = (record: BpRecord): HealthRiskCategory => {
+  const status = getBpRecordStatus(record);
+  const level = status?.level ?? record.level;
+  if (level === '高血壓' || level === '超高血壓') return 'danger';
+  if (level === '正常') return 'normal';
+  return 'warning';
+};
+
 const getBpRecordStatus = (record?: BpRecord): BpStatus | null => {
   if (!record) return null;
   const sys = Number(record.sys);
@@ -526,6 +583,75 @@ const sortRecordsAbnormalFirst = (items: BpRecord[]) =>
     if (abnormalDiff !== 0) return abnormalDiff;
     return getBpRecordTimestamp(b) - getBpRecordTimestamp(a);
   });
+
+const getRecordsWithinMonths = (items: BpRecord[], months: number) => {
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - months);
+  const cutoffTime = cutoff.getTime();
+
+  return items.filter((record) => {
+    const timestamp = getBpRecordTimestamp(record);
+    return timestamp >= cutoffTime;
+  });
+};
+
+const getPercent = (count: number, total: number) =>
+  total > 0 ? Math.round((count / total) * 100) : 0;
+
+const generateHealthSummary = (items: BpRecord[], months: number): HealthSummary => {
+  const periodRecords = getRecordsWithinMonths(items, months);
+  const dailyRiskMap = periodRecords.reduce<Record<string, HealthRiskCategory>>((acc, record) => {
+    const dateKey = getBpRecordDateKey(record);
+    if (!dateKey) return acc;
+
+    const category = getBpRiskCategory(record);
+    const current = acc[dateKey];
+    if (!current || category === 'danger' || (category === 'warning' && current === 'normal')) {
+      acc[dateKey] = category;
+    }
+    return acc;
+  }, {});
+
+  const counts = Object.values(dailyRiskMap).reduce(
+    (acc, category) => {
+      acc[category] += 1;
+      return acc;
+    },
+    { normal: 0, warning: 0, danger: 0 } as Record<HealthRiskCategory, number>
+  );
+  const totalDays = Object.keys(dailyRiskMap).length;
+  const stressHighRecords = periodRecords.filter((record) =>
+    isStressMood(record.mood) && isDangerBpRecord(record)
+  );
+  const stressMoodCounts = stressHighRecords.reduce<Record<string, number>>((acc, record) => {
+    const label = record.mood || UNMARKED_MOOD;
+    acc[label] = (acc[label] ?? 0) + 1;
+    return acc;
+  }, {});
+  const stressHighMoodLabel = Object.entries(stressMoodCounts)
+    .sort((a, b) => b[1] - a[1])[0]?.[0] ?? '壓力大/焦慮';
+  const periodicObservation = stressHighRecords.length > 0
+    ? `發現您的危險數值有 ${stressHighRecords.length} 次伴隨「焦慮/壓力大」心情標記，其中以「${stressHighMoodLabel}」較常見，具有情緒生理連動週期，建議看診時提供醫師參考。`
+    : '目前未發現「焦慮/壓力大」與高血壓同時出現的明顯週期；請持續標記心情，累積後更利於醫師判讀。';
+
+  return {
+    months,
+    totalDays,
+    normal: { days: counts.normal, percent: getPercent(counts.normal, totalDays) },
+    warning: { days: counts.warning, percent: getPercent(counts.warning, totalDays) },
+    danger: { days: counts.danger, percent: getPercent(counts.danger, totalDays) },
+    stressHighCount: stressHighRecords.length,
+    stressHighMoodLabel,
+    periodicObservation,
+    dailySummaries: getDailyBpSummaries(periodRecords),
+  };
+};
+
+const getSampledTrendSummaries = (items: DailyBpSummary[], maxPoints = 12) => {
+  if (items.length <= maxPoints) return items;
+  const step = Math.ceil(items.length / maxPoints);
+  return items.filter((_, index) => index % step === 0).slice(-maxPoints);
+};
 
 const HomeScreen = ({
   user, bp, setBp, handleOCR, autoSaveRecord, lastRecord, recentRecords = [], onSync, isSyncing, onUpdateMood,
@@ -571,14 +697,14 @@ const HomeScreen = ({
 
       <View style={styles.latestCard}>
         <View style={styles.cardHeader}>
-          <View style={styles.cardIcon}><Text style={{ color: '#fff', fontSize: 12 }}>❤️</Text></View>
+          <View style={styles.cardIcon}><Text style={styles.cardIconText}>❤️</Text></View>
           <View style={styles.cardHeaderInfo}>
             <Text style={styles.cardHeaderText}>血壓</Text>
             <Text style={styles.cardHeaderTime}>{lastRecord ? lastRecord.time : '尚無數據'}</Text>
           </View>
           {latestStatus && (
             <View style={[styles.bpStatusPill, { backgroundColor: latestStatus.color }]}>
-              <Text style={styles.bpStatusPillText}>{latestStatus.level}</Text>
+              <Text style={styles.bpStatusPillText}>{getBpLevelDisplay(latestStatus.level)}</Text>
             </View>
           )}
         </View>
@@ -616,11 +742,11 @@ const HomeScreen = ({
             <Text style={styles.miniTrendTitle}>近五日平均數據</Text>
             <View style={styles.chartLegend}>
               <View style={styles.chartLegendItem}>
-                <View style={[styles.chartLegendDot, { backgroundColor: '#1890ff' }]} />
+                <View style={[styles.chartLegendDot, styles.chartLegendDotSys]} />
                 <Text style={styles.chartLegendText}>收縮壓</Text>
               </View>
               <View style={styles.chartLegendItem}>
-                <View style={[styles.chartLegendDot, { backgroundColor: '#52c41a' }]} />
+                <View style={[styles.chartLegendDot, styles.chartLegendDotDia]} />
                 <Text style={styles.chartLegendText}>舒張壓</Text>
               </View>
             </View>
@@ -673,7 +799,7 @@ const HomeScreen = ({
 
       <Text style={styles.actionSectionTitle}>自動匯入</Text>
       <TouchableOpacity
-        style={[styles.ocrBtn, { backgroundColor: '#52c41a', opacity: isSyncing ? 0.6 : 1 }]}
+        style={[styles.ocrBtn, styles.syncBtn, isSyncing && styles.disabledAction]}
         onPress={() => onSync(true)}
         disabled={isSyncing}
       >
@@ -783,7 +909,7 @@ const HomeScreen = ({
                       <Text style={styles.abnormalRecordTime}>{item.time}</Text>
                     </View>
                     <View style={[styles.abnormalRecordLevel, { backgroundColor: item.color }]}>
-                      <Text style={styles.abnormalRecordLevelText}>{item.level}</Text>
+                      <Text style={styles.abnormalRecordLevelText}>{getBpLevelDisplay(item.level)}</Text>
                     </View>
                   </View>
                   <View style={styles.abnormalRecordValueRow}>
@@ -834,29 +960,89 @@ const HomeScreen = ({
 };
 
 // ─── 2. 趨勢分析分頁 ──────────────────────────────────────────────────────────
-const TrendScreen = ({ records, healthAdvice }: any) => {
-  const lastSeven = [...records].slice(0, 7).reverse();
-  const moodStressAnalysis = getMoodStressAnalysis(records);
-  const pulseMoodAnalysis = getPulseMoodAnalysis(records);
-  const pulseValues = lastSeven.map((r: any) => toFiniteNumber(r.pulse));
+const HEALTH_SUMMARY_RANGES = [
+  { label: '1個月', months: 1 },
+  { label: '3個月', months: 3 },
+  { label: '6個月', months: 6 },
+] as const;
+
+const TrendScreen = ({ records, healthAdvice, userId }: any) => {
+  const [summaryMonths, setSummaryMonths] = useState<number>(1);
+  const [remoteHealthSummary, setRemoteHealthSummary] = useState<HealthSummary | null>(null);
+  const [summarySource, setSummarySource] = useState<'backend' | 'local'>('local');
+  const localHealthSummary = useMemo(
+    () => generateHealthSummary(records, summaryMonths),
+    [records, summaryMonths]
+  );
+  const healthSummary = remoteHealthSummary ?? localHealthSummary;
+  const chartSummaries = useMemo(
+    () => getSampledTrendSummaries(healthSummary.dailySummaries),
+    [healthSummary.dailySummaries]
+  );
+  const periodRecords = useMemo(
+    () => getRecordsWithinMonths(records, summaryMonths),
+    [records, summaryMonths]
+  );
+  const moodStressAnalysis = getMoodStressAnalysis(periodRecords);
+  const pulseMoodAnalysis = getPulseMoodAnalysis(periodRecords);
+  const pulseRecords = periodRecords.slice(0, 14).reverse();
+  const pulseValues = pulseRecords.map((r: any) => toFiniteNumber(r.pulse));
   const validPulseValues = pulseValues.filter((value): value is number => value != null);
   const hasPulseData = validPulseValues.length > 0;
   const latestPulse = validPulseValues[validPulseValues.length - 1];
   const avgPulse = hasPulseData
     ? Math.round(validPulseValues.reduce((sum, value) => sum + value, 0) / validPulseValues.length)
     : null;
+
+  useEffect(() => {
+    if (!userId) {
+      setRemoteHealthSummary(null);
+      setSummarySource('local');
+      return;
+    }
+
+    let isActive = true;
+    setRemoteHealthSummary(null);
+    setSummarySource('local');
+
+    axios
+      .get(`${SUMMARY_API_URL}?userId=${encodeURIComponent(userId)}&months=${summaryMonths}`)
+      .then((res) => {
+        if (!isActive) return;
+        const summary = res.data as HealthSummary;
+        if (
+          summary &&
+          typeof summary.totalDays === 'number' &&
+          Array.isArray(summary.dailySummaries)
+        ) {
+          setRemoteHealthSummary(summary);
+          setSummarySource('backend');
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setRemoteHealthSummary(null);
+          setSummarySource('local');
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [summaryMonths, userId]);
+
   const chartData = {
-    labels: lastSeven.length > 0
-      ? lastSeven.map((record: BpRecord, i: number) => getShortRecordDateLabel(record, `${i + 1}`))
+    labels: chartSummaries.length > 0
+      ? chartSummaries.map((day) => day.label)
       : ['0'],
     datasets: [
       {
-        data: lastSeven.length > 0 ? lastSeven.map((r: any) => Number(r.sys)) : [0],
+        data: chartSummaries.length > 0 ? chartSummaries.map((day) => day.avgSys) : [0],
         color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
         strokeWidth: 3,
       },
       {
-        data: lastSeven.length > 0 ? lastSeven.map((r: any) => Number(r.dia)) : [0],
+        data: chartSummaries.length > 0 ? chartSummaries.map((day) => day.avgDia) : [0],
         color: (opacity = 0.6) => `rgba(100, 255, 218, ${opacity})`,
         strokeWidth: 2,
       },
@@ -878,7 +1064,23 @@ const TrendScreen = ({ records, healthAdvice }: any) => {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.trendContent}>
       <View style={styles.analysisCard}>
-        <Text style={styles.analysisTitle}>📊 近七次趨勢圖表</Text>
+        <Text style={styles.analysisTitle}>📊 長期血壓趨勢圖表</Text>
+        <View style={styles.segmentedControl}>
+          {HEALTH_SUMMARY_RANGES.map((range) => {
+            const selected = summaryMonths === range.months;
+            return (
+              <TouchableOpacity
+                key={range.months}
+                style={[styles.segmentButton, selected && styles.segmentButtonActive]}
+                onPress={() => setSummaryMonths(range.months)}
+              >
+                <Text style={[styles.segmentButtonText, selected && styles.segmentButtonTextActive]}>
+                  {range.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
         <View style={styles.chartFrame}>
           <Text style={[styles.chartAxisTag, styles.chartYAxisTag]}>mmHg</Text>
           <View style={styles.shiftedChart}>
@@ -906,7 +1108,7 @@ const TrendScreen = ({ records, healthAdvice }: any) => {
         {hasPulseData && (
           <View style={styles.pulseSummaryBox}>
             <View style={styles.pulseSummaryItem}>
-              <Text style={styles.pulseSummaryLabel}>近七次平均脈搏</Text>
+              <Text style={styles.pulseSummaryLabel}>區間平均脈搏</Text>
               <Text style={styles.pulseSummaryValue}>{avgPulse} bpm</Text>
             </View>
             <View style={styles.pulseSummaryDivider} />
@@ -916,6 +1118,26 @@ const TrendScreen = ({ records, healthAdvice }: any) => {
             </View>
           </View>
         )}
+        <View style={styles.macroSummaryBox}>
+          <Text style={styles.macroSummaryTitle}>📋 過去 {summaryMonths} 個月身心健康彙總報告</Text>
+          <Text style={styles.macroSummaryMeta}>
+            統計 {healthSummary.totalDays} 個有紀錄天數，圖表以每日平均抽樣呈現，避免半年資料造成卡頓。
+            {summarySource === 'backend' ? '資料由後端彙總。' : '目前使用本機備援彙總。'}
+          </Text>
+          <View style={styles.macroSummaryRow}>
+            <View style={[styles.macroSummaryDot, styles.macroSummaryDotDanger]} />
+            <Text style={styles.macroSummaryText}>高血壓（危險）天數：{healthSummary.danger.days} 天（{healthSummary.danger.percent}%）</Text>
+          </View>
+          <View style={styles.macroSummaryRow}>
+            <View style={[styles.macroSummaryDot, styles.macroSummaryDotWarning]} />
+            <Text style={styles.macroSummaryText}>血壓前期/警告天數：{healthSummary.warning.days} 天（{healthSummary.warning.percent}%）</Text>
+          </View>
+          <View style={styles.macroSummaryRow}>
+            <View style={[styles.macroSummaryDot, styles.macroSummaryDotNormal]} />
+            <Text style={styles.macroSummaryText}>正常天數：{healthSummary.normal.days} 天（{healthSummary.normal.percent}%）</Text>
+          </View>
+          <Text style={styles.macroSummaryObservation}>週期性觀察：{healthSummary.periodicObservation}</Text>
+        </View>
         <View style={styles.moodAnalysisBox}>
           <Text style={styles.moodAnalysisTitle}>血壓與心理狀態關聯性分析</Text>
           <Text style={styles.analysisLabel}>觀察</Text>
@@ -979,7 +1201,7 @@ const DiaryRecordItem = ({ item, onUpdateMood }: { item: BpRecord; onUpdateMood:
         styles.levelTag,
         { backgroundColor: recordStatus?.color ?? getBpLevelColor(item?.level) },
       ]}>
-        <Text style={styles.levelTagText}>{recordStatus?.level ?? item?.level}</Text>
+        <Text style={styles.levelTagText}>{getBpLevelDisplay(recordStatus?.level ?? item?.level)}</Text>
       </View>
     </View>
   );
@@ -987,16 +1209,25 @@ const DiaryRecordItem = ({ item, onUpdateMood }: { item: BpRecord; onUpdateMood:
 
 const DiaryScreen = ({ records, selectedDate, setSelectedDate, exportToCSV, onUpdateMood }: any) => {
   const todayDateKey = new Date().toISOString().split('T')[0];
-  const dateMap: Record<string, BpRecord[]> = {};
-  records.forEach((r: any) => {
-    if (r && r.time) {
-      const datePart = r.time.split(' ')[0].replace(/\//g, '-');
-      if (!dateMap[datePart]) dateMap[datePart] = [];
-      dateMap[datePart].push(r);
-    }
-  });
-  const currentDayRecords = sortRecordsAbnormalFirst(dateMap[selectedDate] || []);
-  const todayRecords = sortRecordsAbnormalFirst(dateMap[todayDateKey] || []);
+  const dateMap = useMemo(() => {
+    const groupedRecords: Record<string, BpRecord[]> = {};
+    records.forEach((r: any) => {
+      if (r && r.time) {
+        const datePart = r.time.split(' ')[0].replace(/\//g, '-');
+        if (!groupedRecords[datePart]) groupedRecords[datePart] = [];
+        groupedRecords[datePart].push(r);
+      }
+    });
+    return groupedRecords;
+  }, [records]);
+  const currentDayRecords = useMemo(
+    () => sortRecordsAbnormalFirst(dateMap[selectedDate] || []),
+    [dateMap, selectedDate]
+  );
+  const todayRecords = useMemo(
+    () => sortRecordsAbnormalFirst(dateMap[todayDateKey] || []),
+    [dateMap, todayDateKey]
+  );
   const [isDayModalVisible, setIsDayModalVisible] = useState(false);
   const [hasPickedDate, setHasPickedDate] = useState(false);
   const dayModalTranslateY = useRef(new Animated.Value(0)).current;
@@ -1006,44 +1237,61 @@ const DiaryScreen = ({ records, selectedDate, setSelectedDate, exportToCSV, onUp
   );
   const displayedRecords = hasPickedDate ? currentDayRecords : todayRecords;
   const emptyRecordText = hasPickedDate ? '這天沒有血壓紀錄' : '今天還沒有血壓紀錄';
-  const openDayRecords = (dateString: string) => {
+  const openDayRecords = useCallback((dateString: string) => {
     setHasPickedDate(true);
     setSelectedDate(dateString);
     setIsDayModalVisible(true);
-  };
+  }, [setSelectedDate]);
+  const renderCalendarDay = useCallback(({ date, state }: any) => {
+    const dStr = date.dateString;
+    const hasData = dateMap[dStr];
+    const hasAbnormalData = Boolean(hasData?.some(isAbnormalBpRecord));
+    const hasDangerData = Boolean(hasData?.some(isDangerBpRecord));
+    const displayRecord = hasData ? sortRecordsAbnormalFirst(hasData)[0] : undefined;
+    const displayRecordStatus = getBpRecordStatus(displayRecord);
+    const displayRecordColor = hasDangerData
+      ? BP_LEVEL_COLORS.danger
+      : displayRecordStatus?.color ?? getBpLevelColor(displayRecord?.level);
+
+    return (
+      <TouchableOpacity
+        onPress={() => openDayRecords(dStr)}
+        style={[
+          styles.customDay,
+          hasAbnormalData && styles.abnormalDay,
+          hasDangerData && styles.dangerDay,
+          selectedDate === dStr && styles.selectedDay,
+        ]}
+      >
+        {hasAbnormalData && (
+          <Text style={styles.abnormalDayIcon}>{hasDangerData ? '🔥' : '⚠️'}</Text>
+        )}
+        <Text style={[
+          styles.dayLabel,
+          state === 'disabled' && styles.disabledDayLabel,
+          hasDangerData && styles.dangerDayText,
+        ]}>
+          {date.day}
+        </Text>
+        {displayRecord && (
+          <Text style={[
+            styles.dayValue,
+            { color: displayRecordColor },
+            hasDangerData && styles.dangerDayText,
+          ]}>
+            {displayRecord.sys}/{displayRecord.dia}
+          </Text>
+        )}
+      </TouchableOpacity>
+    );
+  }, [dateMap, openDayRecords, selectedDate]);
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.diaryContent} showsVerticalScrollIndicator={false}>
         <Calendar
           onDayPress={(day: any) => openDayRecords(day.dateString)}
-          dayComponent={({ date, state }: any) => {
-            const dStr = date.dateString;
-            const hasData = dateMap[dStr];
-            const hasAbnormalData = Boolean(hasData?.some(isAbnormalBpRecord));
-            const displayRecord = hasData ? sortRecordsAbnormalFirst(hasData)[0] : undefined;
-            const displayRecordStatus = getBpRecordStatus(displayRecord);
-            return (
-              <TouchableOpacity
-                onPress={() => openDayRecords(dStr)}
-                style={[
-                  styles.customDay,
-                  hasAbnormalData && styles.abnormalDay,
-                  selectedDate === dStr && styles.selectedDay,
-                ]}
-              >
-                {hasAbnormalData && (
-                <Text style={styles.abnormalDayIcon}>⚠️</Text>
-              )}
-              <Text style={[styles.dayLabel, state === 'disabled' && { color: '#ccc' }]}>{date.day}</Text>
-              {displayRecord && (
-                <Text style={[styles.dayValue, { color: displayRecordStatus?.color ?? getBpLevelColor(displayRecord.level) }]}>
-                  {displayRecord.sys}/{displayRecord.dia}
-                </Text>
-              )}
-            </TouchableOpacity>
-            );
-          }}
+          dayComponent={renderCalendarDay}
         />
         <View style={styles.calendarLegend}>
           <Text style={styles.calendarLegendText}>⚠️ 代表當日有偏高或偏低紀錄</Text>
@@ -1051,7 +1299,7 @@ const DiaryScreen = ({ records, selectedDate, setSelectedDate, exportToCSV, onUp
         <View style={styles.diaryDetailHeader}>
           <Text style={styles.detailTitle}>{hasPickedDate ? `已選擇 ${selectedDate}` : `今天 ${todayDateKey} 紀錄`}</Text>
           <TouchableOpacity onPress={exportToCSV} style={styles.miniBtn}>
-            <Text style={{ color: '#fff', fontSize: 12 }}>匯出</Text>
+            <Text style={styles.whiteSmallText}>匯出</Text>
           </TouchableOpacity>
         </View>
         <View>
@@ -1242,7 +1490,7 @@ const App = () => {
   }, [user, analyzeHealth]);
 
   // 5. Health Connect 同步（修復版）
-  const syncHealthData = async (isManual = false) => {
+  const syncHealthData = useCallback(async (isManual = false) => {
     // 防止重複點擊
     if (isSyncing) return;
 
@@ -1430,10 +1678,10 @@ const App = () => {
     } finally {
       setIsSyncing(false);
     }
-  };
+  }, [analyzeHealth, ensureHealthConnectReady, isHealthAvailable, isSyncing, records, user?.uid]);
 
   // 6. 手動儲存血壓
-  const autoSaveRecord = async (data: { sys: string; dia: string; pulse?: string; mood?: Mood }) => {
+  const autoSaveRecord = useCallback(async (data: { sys: string; dia: string; pulse?: string; mood?: Mood }) => {
     if (!data.sys || !data.dia) {
       Alert.alert('提示', '請輸入收縮壓與舒張壓數值');
       return;
@@ -1488,10 +1736,10 @@ const App = () => {
           : '（雲端同步失敗，數據已存於本機）'
       );
     }
-  };
+  }, [analyzeHealth, records, user?.uid]);
 
   // 7. OCR 拍照辨識
-  const handleOCR = async () => {
+  const handleOCR = useCallback(async () => {
     const result: any = await launchCamera({ mediaType: 'photo', quality: 0.5 });
     if (result.assets && result.assets[0]?.uri) {
       try {
@@ -1506,7 +1754,7 @@ const App = () => {
         Alert.alert('OCR 錯誤', '文字辨識失敗，請手動輸入');
       }
     }
-  };
+  }, []);
 
   const updateRecordMood = useCallback(async (recordKey: string, mood: Mood) => {
     const updated = sortRecordsNewestFirst(records.map((record) =>
@@ -1527,7 +1775,7 @@ const App = () => {
   }, [analyzeHealth, records, user?.uid]);
 
   // 8. 匯出 CSV
-  const exportToCSV = async () => {
+  const exportToCSV = useCallback(async () => {
     try {
       const header = '\ufeff時間,收縮壓,舒張壓,脈搏,心情,狀態\n';
       const rows = records.map(r => `${r.time},${r.sys},${r.dia},${r.pulse || ''},${r.mood || UNMARKED_MOOD},${r.level}`).join('\n');
@@ -1539,9 +1787,52 @@ const App = () => {
         Alert.alert('匯出失敗', e?.message);
       }
     }
-  };
+  }, [records]);
 
   // ── 載入畫面 ──
+  const renderHeaderRight = useCallback(() => (
+    <TouchableOpacity onPress={() => auth().signOut()} style={styles.headerLogoutButton}>
+      <Text style={styles.headerLogoutText}>登出</Text>
+    </TouchableOpacity>
+  ), []);
+
+  const tabScreenOptions = useMemo(() => ({
+    tabBarStyle: styles.tabBar,
+    tabBarLabelStyle: styles.tabBarLabel,
+    tabBarIconStyle: styles.hiddenTabIcon,
+    tabBarActiveTintColor: '#154360',
+    headerRight: renderHeaderRight,
+  }), [renderHeaderRight]);
+
+  const renderMeasureScreen = useCallback(() => (
+    <HomeScreen
+      user={user}
+      bp={bp}
+      setBp={setBp}
+      handleOCR={handleOCR}
+      autoSaveRecord={autoSaveRecord}
+      lastRecord={records[0]}
+      recentRecords={records}
+      onSync={syncHealthData}
+      isSyncing={isSyncing}
+      onUpdateMood={updateRecordMood}
+    />
+  ), [autoSaveRecord, bp, handleOCR, isSyncing, records, syncHealthData, updateRecordMood, user]);
+
+  const renderTrendScreen = useCallback(() => (
+    <TrendScreen records={records} healthAdvice={healthAdvice} userId={user?.uid} />
+  ), [healthAdvice, records, user?.uid]);
+
+  const renderDiaryScreen = useCallback(() => (
+    <DiaryScreen
+      records={records}
+      selectedDate={selectedDate}
+      setSelectedDate={setSelectedDate}
+      exportToCSV={exportToCSV}
+      onUpdateMood={updateRecordMood}
+    />
+  ), [exportToCSV, records, selectedDate, updateRecordMood]);
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -1577,7 +1868,7 @@ const App = () => {
           <Text style={styles.btnText}>登入</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.loginBtn, { backgroundColor: '#52c41a' }]}
+          style={[styles.loginBtn, styles.registerBtn]}
           onPress={() => auth().createUserWithEmailAndPassword(email, password).catch(e => Alert.alert('註冊失敗', e.message))}
         >
           <Text style={styles.btnText}>註冊</Text>
@@ -1589,50 +1880,17 @@ const App = () => {
   // ── 主畫面 ──
   return (
     <NavigationContainer>
-      <Tab.Navigator
-        screenOptions={{
-          tabBarStyle: { height: 52, paddingTop: 4, paddingBottom: 4, backgroundColor: '#fff', elevation: 15 },
-          tabBarLabelStyle: { fontSize: 12, fontWeight: '700' },
-          tabBarIconStyle: { display: 'none' },
-          tabBarActiveTintColor: '#154360',
-          headerRight: () => (
-            <TouchableOpacity onPress={() => auth().signOut()} style={{ marginRight: 15 }}>
-              <Text style={{ color: '#ff4d4f', fontWeight: 'bold' }}>登出</Text>
-            </TouchableOpacity>
-          ),
-        }}
-      >
+      <Tab.Navigator screenOptions={tabScreenOptions}>
         <Tab.Screen name="Measure" options={{ title: '📸 測量' }}>
-          {() => (
-            <HomeScreen
-              user={user}
-              bp={bp}
-              setBp={setBp}
-              handleOCR={handleOCR}
-              autoSaveRecord={autoSaveRecord}
-              lastRecord={records[0]}
-              recentRecords={records}
-              onSync={syncHealthData}
-              isSyncing={isSyncing}
-              onUpdateMood={updateRecordMood}
-            />
-          )}
+          {renderMeasureScreen}
         </Tab.Screen>
 
         <Tab.Screen name="Trend" options={{ title: '📈 趨勢' }}>
-          {() => <TrendScreen records={records} healthAdvice={healthAdvice} />}
+          {renderTrendScreen}
         </Tab.Screen>
 
         <Tab.Screen name="Diary" options={{ title: '📔 日記' }}>
-          {() => (
-            <DiaryScreen
-              records={records}
-              selectedDate={selectedDate}
-              setSelectedDate={setSelectedDate}
-              exportToCSV={exportToCSV}
-              onUpdateMood={updateRecordMood}
-            />
-          )}
+          {renderDiaryScreen}
         </Tab.Screen>
       </Tab.Navigator>
       <Modal
@@ -1678,7 +1936,14 @@ const styles = StyleSheet.create({
   loginTitle: { fontSize: 24, fontWeight: 'bold', textAlign: 'center', marginBottom: 30, color: '#154360' },
   loginInput: { backgroundColor: '#f5f5f5', padding: 15, borderRadius: 10, marginBottom: 15, borderWidth: 1, borderColor: '#eee' },
   loginBtn: { backgroundColor: '#154360', padding: 15, borderRadius: 10, alignItems: 'center', marginBottom: 10 },
+  registerBtn: { backgroundColor: '#52c41a' },
   btnText: { color: '#fff', fontWeight: 'bold' },
+  whiteSmallText: { color: '#fff', fontSize: 12 },
+  tabBar: { height: 52, paddingTop: 4, paddingBottom: 4, backgroundColor: '#fff', elevation: 15 },
+  tabBarLabel: { fontSize: 12, fontWeight: '700' },
+  hiddenTabIcon: { display: 'none' },
+  headerLogoutButton: { marginRight: 15 },
+  headerLogoutText: { color: '#ff4d4f', fontWeight: 'bold' },
   header: { padding: 15, backgroundColor: 'white' },
   title: { fontSize: 14, fontWeight: 'bold', color: '#555' },
   inputArea: { padding: 15 },
@@ -1691,6 +1956,8 @@ const styles = StyleSheet.create({
   inputControl: { minHeight: 32, padding: 0, color: '#1f2937', fontSize: 20, fontWeight: '900' },
   inputUnit: { fontSize: 10, color: '#6b7280', fontWeight: '800' },
   actionSectionTitle: { marginBottom: 10, fontSize: 13, color: '#154360', fontWeight: '800' },
+  syncBtn: { backgroundColor: '#52c41a' },
+  disabledAction: { opacity: 0.6 },
   moodPicker: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
   moodChip: { flex: 1, minHeight: 54, marginHorizontal: 3, borderRadius: 10, borderWidth: 1, borderColor: '#d9d9d9', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
   moodChipSelected: { borderColor: '#1890ff', backgroundColor: '#e6f7ff' },
@@ -1704,6 +1971,7 @@ const styles = StyleSheet.create({
   latestCard: { backgroundColor: '#fff', borderRadius: 15, padding: 16, marginBottom: 20, elevation: 3, overflow: 'hidden' },
   cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
   cardIcon: { width: 30, height: 30, backgroundColor: '#154360', borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+  cardIconText: { color: '#fff', fontSize: 12 },
   cardHeaderInfo: { flex: 1 },
   cardHeaderText: { fontSize: 16, fontWeight: 'bold', color: '#154360' },
   cardHeaderTime: { fontSize: 11, color: '#999' },
@@ -1728,6 +1996,8 @@ const styles = StyleSheet.create({
   chartLegend: { flexDirection: 'row', alignItems: 'center' },
   chartLegendItem: { flexDirection: 'row', alignItems: 'center', marginLeft: 10 },
   chartLegendDot: { width: 8, height: 8, borderRadius: 4, marginRight: 4 },
+  chartLegendDotSys: { backgroundColor: '#1890ff' },
+  chartLegendDotDia: { backgroundColor: '#52c41a' },
   chartLegendText: { fontSize: 10, color: '#6b7280', fontWeight: '800' },
   referenceLegend: { marginTop: 6, alignItems: 'center' },
   referenceLegendText: { fontSize: 12, color: '#595959', fontWeight: '800', lineHeight: 18, textAlign: 'center' },
@@ -1759,16 +2029,24 @@ const styles = StyleSheet.create({
   unitText: { fontSize: 10, color: '#6b7280', fontWeight: 'bold', alignSelf: 'flex-end', marginBottom: 14 },
   customDay: { alignItems: 'center', justifyContent: 'center', width: 46, height: 50, borderRadius: 8, position: 'relative' },
   abnormalDay: { backgroundColor: '#fff1f0', borderWidth: 1, borderColor: '#ffa39e' },
+  dangerDay: { backgroundColor: '#fff1f0', borderWidth: 1, borderColor: BP_LEVEL_COLORS.danger },
   selectedDay: { backgroundColor: '#e6f7ff', borderWidth: 1, borderColor: '#1890ff' },
   abnormalDayIcon: { position: 'absolute', top: 2, right: 2, fontSize: 10, zIndex: 2, elevation: 2 },
   dayLabel: { fontSize: 14, color: '#333' },
   dayValue: { fontSize: 9, fontWeight: 'bold', marginTop: 2 },
+  dangerDayText: { color: BP_LEVEL_COLORS.danger, fontWeight: 'bold' },
   calendarLegend: { marginHorizontal: 15, marginTop: 8, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, backgroundColor: '#fff7e6', borderWidth: 1, borderColor: '#ffd591' },
   calendarLegendText: { color: '#ad4e00', fontSize: 12, fontWeight: '700', textAlign: 'center' },
+  disabledDayLabel: { color: '#ccc' },
   analysisCard: { backgroundColor: 'white', margin: 15, padding: 15, borderRadius: 20, elevation: 5 },
   trendContent: { paddingBottom: 84 },
   diaryContent: { paddingBottom: 84 },
   analysisTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: '#154360' },
+  segmentedControl: { flexDirection: 'row', backgroundColor: '#eef3f7', borderRadius: 8, padding: 3, marginBottom: 12 },
+  segmentButton: { flex: 1, minHeight: 38, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
+  segmentButtonActive: { backgroundColor: '#154360' },
+  segmentButtonText: { fontSize: 13, color: '#51606f', fontWeight: '800' },
+  segmentButtonTextActive: { color: '#fff' },
   chartFrame: { position: 'relative' },
   shiftedChart: { marginLeft: 0 },
   chartStyle: { borderRadius: 15, paddingRight: 54 },
@@ -1792,6 +2070,16 @@ const styles = StyleSheet.create({
   pulseAnalysisText: { fontSize: 13, lineHeight: 20, color: '#1d39c4' },
   pulseSourceText: { marginTop: 8, fontSize: 11, lineHeight: 17, color: '#1d39c4' },
   pulseSourceLink: { color: '#0050b3', fontWeight: '800', textDecorationLine: 'underline' },
+  macroSummaryBox: { marginTop: 12, padding: 15, backgroundColor: '#f6ffed', borderRadius: 10, borderLeftWidth: 5, borderLeftColor: BP_LEVEL_COLORS.normal },
+  macroSummaryTitle: { fontSize: 15, fontWeight: '900', color: '#135200', marginBottom: 6 },
+  macroSummaryMeta: { fontSize: 12, lineHeight: 18, color: '#3f6600', fontWeight: '700', marginBottom: 10 },
+  macroSummaryRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 7 },
+  macroSummaryDot: { width: 9, height: 9, borderRadius: 5, marginRight: 8 },
+  macroSummaryDotDanger: { backgroundColor: BP_LEVEL_COLORS.danger },
+  macroSummaryDotWarning: { backgroundColor: BP_LEVEL_COLORS.warning },
+  macroSummaryDotNormal: { backgroundColor: BP_LEVEL_COLORS.normal },
+  macroSummaryText: { flex: 1, fontSize: 13, lineHeight: 19, color: '#254000', fontWeight: '800' },
+  macroSummaryObservation: { marginTop: 4, fontSize: 13, lineHeight: 20, color: '#254000', fontWeight: '700' },
   diaryDetailHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 15, alignItems: 'center' },
   detailTitle: { fontSize: 15, fontWeight: 'bold' },
   miniBtn: { backgroundColor: '#52c41a', padding: 5, borderRadius: 5 },
