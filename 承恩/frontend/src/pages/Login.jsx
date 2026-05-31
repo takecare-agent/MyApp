@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom"
 import { useState } from "react"
+import { API_BASE_URL, GOOGLE_AUTH_URL } from "../config/runtime"
 
 export default function Login() {
   const navigate = useNavigate()
@@ -9,7 +10,7 @@ export default function Login() {
   // ===== 一般登入 =====
   const handleLogin = async () => {
     try {
-      const res = await fetch("http://localhost:5000/login", {
+      const res = await fetch(`${API_BASE_URL}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password })
@@ -27,14 +28,14 @@ export default function Login() {
       localStorage.setItem("role", data.role)
 
       navigate(`/${data.role}`)
-    } catch (err) {
+    } catch {
       alert("無法連線到後端")
     }
   }
 
   // ===== Google 登入 =====
   const handleGoogleLogin = () => {
-    window.location.href = "http://localhost:5000/auth/google"
+    window.location.href = GOOGLE_AUTH_URL
   }
 
   return (

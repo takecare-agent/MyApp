@@ -15,6 +15,11 @@ const modules = [
     title: "血壓量測與趨勢",
     description: "血壓機資料展示與手動備援輸入介面。",
     path: "/patient/blood-pressure"
+  },
+  {
+    title: "影像偵測事件",
+    description: "整合影像模型結果，查看跌倒與呼救手勢事件。",
+    path: "/patient/vision"
   }
 ]
 

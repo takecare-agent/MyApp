@@ -18,6 +18,16 @@ const modules = [
     path: "/caregiver/care-logs"
   },
   {
+    title: "受顧者血壓監測",
+    description: "代輸血壓資料、同步示範紀錄與快速風險判定。",
+    path: "/caregiver/blood-pressure"
+  },
+  {
+    title: "影像偵測中心",
+    description: "觸發影像模型，追蹤跌倒、呼救與離床事件。",
+    path: "/caregiver/vision"
+  },
+  {
     title: "提醒任務清單",
     description: "接收家屬提醒，完成後回報任務狀態。",
     path: "/caregiver/reminders"

@@ -12,6 +12,30 @@ const app = express()
 
 console.log("🔥 ACTIVE BACKEND FILE LOADED")
 
+const defaultAllowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost",
+  "https://localhost",
+  "capacitor://localhost",
+  "ionic://localhost"
+]
+
+const allowedOrigins = new Set(defaultAllowedOrigins)
+for (const value of (process.env.CORS_ORIGINS || "").split(",")) {
+  const origin = value.trim()
+  if (origin) allowedOrigins.add(origin)
+}
+
+const frontendWebUrl = (process.env.FRONTEND_WEB_URL || "http://localhost:5173").trim()
+const oauthSuccessBaseUrl = (
+  process.env.OAUTH_SUCCESS_URL || `${frontendWebUrl}/google-success`
+).trim()
+
+function buildOauthSuccessUrl(token) {
+  const separator = oauthSuccessBaseUrl.includes("?") ? "&" : "?"
+  return `${oauthSuccessBaseUrl}${separator}token=${encodeURIComponent(token)}`
+}
+
 // ================= MongoDB =================
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("✅ MongoDB connected"))
@@ -19,7 +43,13 @@ mongoose.connect(process.env.MONGO_URI)
 
 // ================= Middleware =================
 app.use(cors({
-  origin: "http://localhost:5173",
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.has(origin)) {
+      callback(null, true)
+      return
+    }
+    callback(new Error(`CORS blocked for origin: ${origin}`))
+  },
   credentials: true
 }))
 
@@ -60,6 +90,11 @@ const userSchema = new mongoose.Schema({
   },
 
   bloodPressureCursor: {
+    type: Number,
+    default: 0
+  },
+
+  visionSampleCursor: {
     type: Number,
     default: 0
   },
@@ -166,6 +201,41 @@ const MOCK_BP_SAMPLES = [
   { sys: 146, dia: 95, pulse: 88 },
   { sys: 124, dia: 80, pulse: 74 },
   { sys: 98, dia: 62, pulse: 64 }
+]
+
+const MOCK_VISION_SAMPLES = [
+  {
+    action: "DANGER: FALL",
+    severity: "高",
+    confidence: 0.96,
+    location: "客廳",
+    description: "模型判定疑似跌倒，建議立即確認安全狀況。",
+    frameTag: "vision-fall-01"
+  },
+  {
+    action: "CRITICAL SOS: WAVING",
+    severity: "高",
+    confidence: 0.94,
+    location: "臥室",
+    description: "模型判定疑似呼救揮手手勢，需優先回應。",
+    frameTag: "vision-sos-01"
+  },
+  {
+    action: "OFF_BED",
+    severity: "中",
+    confidence: 0.88,
+    location: "床邊",
+    description: "模型判定離床事件，請確認是否需要協助。",
+    frameTag: "vision-off-bed-01"
+  },
+  {
+    action: "SEDENTARY",
+    severity: "低",
+    confidence: 0.83,
+    location: "客廳",
+    description: "模型判定久坐不動，建議進行活動提醒。",
+    frameTag: "vision-sedentary-01"
+  }
 ]
 
 const familyAlertSchema = new mongoose.Schema({
@@ -569,9 +639,56 @@ const bloodPressureRecordSchema = new mongoose.Schema({
   }
 }, { timestamps: true })
 
+const visionDetectionRecordSchema = new mongoose.Schema({
+  patientUserId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+    index: true
+  },
+  reporterUserId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    index: true
+  },
+  reporterRole: {
+    type: String,
+    enum: ["patient", "family", "caregiver", "system"],
+    default: "system"
+  },
+  action: {
+    type: String,
+    required: true
+  },
+  severity: {
+    type: String,
+    enum: ["低", "中", "高"],
+    default: "中",
+    required: true
+  },
+  confidence: Number,
+  location: String,
+  description: String,
+  modelName: {
+    type: String,
+    default: "CareAI-MediaPipe"
+  },
+  frameTag: String,
+  detectedAt: {
+    type: Date,
+    default: Date.now,
+    index: true
+  },
+  source: {
+    type: String,
+    default: "vision-mock"
+  }
+}, { timestamps: true })
+
 const AbnormalEvent = mongoose.model("AbnormalEvent", abnormalEventSchema)
 const Reminder = mongoose.model("Reminder", reminderSchema)
 const BloodPressureRecord = mongoose.model("BloodPressureRecord", bloodPressureRecordSchema)
+const VisionDetectionRecord = mongoose.model("VisionDetectionRecord", visionDetectionRecordSchema)
 
 const MOCK_CAREGIVER_ALERTS = [
   { alertId: "CG-AL-501", type: "Fall", riskLevel: "High", status: "Pending", actionTaken: "Assisted standing", happenedAt: "2026-03-16T09:23:00+08:00" },
@@ -691,7 +808,7 @@ app.get(
   async (req, res) => {
     try {
       if (!req.user) {
-        return res.redirect("http://localhost:5173")
+        return res.redirect(frontendWebUrl)
       }
 
       const { email, name } = req.user
@@ -713,13 +830,11 @@ app.get(
         { expiresIn: "1h" }
       )
 
-      return res.redirect(
-        `http://localhost:5173/google-success?token=${token}`
-      )
+      return res.redirect(buildOauthSuccessUrl(token))
 
     } catch (err) {
       console.log("❌ callback error:", err.message)
-      return res.redirect("http://localhost:5173")
+      return res.redirect(frontendWebUrl)
     }
   }
 )
@@ -800,6 +915,101 @@ function judgeBloodPressureLevel(sys, dia) {
   if (sys < 90 || dia < 60) return "低血壓"
   if (sys >= 120 || dia >= 80) return "偏高"
   return "正常"
+}
+
+function normalizeVisionAction(value) {
+  const text = String(value || "").trim().toUpperCase()
+  if (!text) return "SEDENTARY"
+
+  if (text.includes("FALL") || text.includes("跌倒")) return "DANGER: FALL"
+  if (text.includes("SOS") || text.includes("WAV")) return "CRITICAL SOS: WAVING"
+  if (text.includes("OFF_BED") || text.includes("BED EXIT") || text.includes("離床")) return "OFF_BED"
+  if (text.includes("SEDENTARY") || text.includes("久坐")) return "SEDENTARY"
+
+  return String(value).trim()
+}
+
+function getVisionSeverityByAction(action) {
+  if (action === "DANGER: FALL" || action === "CRITICAL SOS: WAVING") return "高"
+  if (action === "OFF_BED") return "中"
+  return "低"
+}
+
+function toConfidence(value, fallback = 0.9) {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return fallback
+  if (parsed > 1) return Math.min(parsed / 100, 1)
+  return Math.max(parsed, 0)
+}
+
+function toVisionAlertType(action) {
+  if (action === "DANGER: FALL") return "跌倒"
+  if (action === "CRITICAL SOS: WAVING") return "呼救手勢"
+  if (action === "OFF_BED") return "離床"
+  if (action === "SEDENTARY") return "久坐不動"
+  return "異常行為"
+}
+
+async function getNextVisionSample(user) {
+  const total = MOCK_VISION_SAMPLES.length
+  const cursor = Number.isInteger(user.visionSampleCursor) ? user.visionSampleCursor : 0
+  const sampleIndex = ((cursor % total) + total) % total
+  const sample = MOCK_VISION_SAMPLES[sampleIndex]
+  user.visionSampleCursor = (sampleIndex + 1) % total
+  await user.save()
+  return {
+    sample,
+    sampleIndex,
+    nextCursor: user.visionSampleCursor
+  }
+}
+
+async function requestVisionModelResult(payload = {}) {
+  const endpoint = process.env.VISION_MODEL_ENDPOINT
+  if (!endpoint || typeof fetch !== "function") return null
+
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    })
+    if (!response.ok) return null
+
+    const data = await response.json()
+    const action = normalizeVisionAction(data.action || data.eventType || data.event_type)
+    return {
+      action,
+      severity: normalizeSeverity(data.severity || getVisionSeverityByAction(action)),
+      confidence: toConfidence(data.confidence, 0.92),
+      location: typeof data.location === "string" ? data.location.trim() : "",
+      description: typeof data.description === "string" ? data.description.trim() : "",
+      frameTag: typeof data.frameTag === "string" ? data.frameTag.trim() : "",
+      modelName: typeof data.modelName === "string" && data.modelName.trim()
+        ? data.modelName.trim()
+        : "CareAI-MediaPipe"
+    }
+  } catch {
+    return null
+  }
+}
+
+async function createVisionAlertIfNeeded({ patientUserId, reporterUserId, reporterRole, detectionRecord }) {
+  if (!detectionRecord || detectionRecord.severity !== "高") return null
+
+  return AbnormalEvent.create({
+    eventId: createAbnormalEventId(),
+    patientUserId,
+    reporterUserId,
+    reporterRole,
+    type: toVisionAlertType(detectionRecord.action),
+    severity: detectionRecord.severity,
+    status: "未處理",
+    location: detectionRecord.location || "",
+    description: detectionRecord.description || `${detectionRecord.action} 需立即確認`,
+    happenedAt: detectionRecord.detectedAt || new Date(),
+    source: detectionRecord.source || "vision-model"
+  })
 }
 
 async function resolveTargetPatient(fallbackUserId) {
@@ -940,6 +1150,131 @@ app.post("/patient/blood-pressure/sync", async (req, res) => {
     sampleIndex,
     nextCursor: user.bloodPressureCursor,
     record
+  })
+})
+
+app.get("/patient/vision/history", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "找不到使用者" })
+
+  const limit = normalizeLimit(req.query.limit, 20, 100)
+  const records = await VisionDetectionRecord.find({ patientUserId: user._id })
+    .sort({ detectedAt: -1, _id: -1 })
+    .limit(limit)
+
+  res.json({ records })
+})
+
+app.post("/patient/vision/detect", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "找不到使用者" })
+
+  const frameTag = typeof req.body?.frameTag === "string" ? req.body.frameTag.trim() : ""
+  const location = typeof req.body?.location === "string" ? req.body.location.trim() : ""
+  const description = typeof req.body?.description === "string" ? req.body.description.trim() : ""
+
+  let detection = await requestVisionModelResult({
+    reporterRole: "patient",
+    frameTag,
+    location,
+    description
+  })
+  let usedFallback = false
+  let sampleIndex = null
+  let nextCursor = null
+
+  if (!detection) {
+    const sampleResult = await getNextVisionSample(user)
+    usedFallback = true
+    sampleIndex = sampleResult.sampleIndex
+    nextCursor = sampleResult.nextCursor
+    detection = {
+      action: normalizeVisionAction(sampleResult.sample.action),
+      severity: normalizeSeverity(sampleResult.sample.severity),
+      confidence: toConfidence(sampleResult.sample.confidence, 0.9),
+      location: sampleResult.sample.location || "",
+      description: sampleResult.sample.description || "",
+      frameTag: sampleResult.sample.frameTag || "",
+      modelName: "CareAI-MediaPipe"
+    }
+  }
+
+  const record = await VisionDetectionRecord.create({
+    patientUserId: user._id,
+    reporterUserId: user._id,
+    reporterRole: "patient",
+    action: detection.action,
+    severity: normalizeSeverity(detection.severity || getVisionSeverityByAction(detection.action)),
+    confidence: toConfidence(detection.confidence, 0.9),
+    location: detection.location || location,
+    description: detection.description || description || `模型事件：${detection.action}`,
+    modelName: detection.modelName || "CareAI-MediaPipe",
+    frameTag: detection.frameTag || frameTag,
+    detectedAt: new Date(),
+    source: usedFallback ? "vision-mock" : "vision-model"
+  })
+
+  const linkedAlert = await createVisionAlertIfNeeded({
+    patientUserId: user._id,
+    reporterUserId: user._id,
+    reporterRole: "patient",
+    detectionRecord: record
+  })
+
+  res.status(201).json({
+    message: usedFallback ? "影像模型暫不可用，已寫入示範判定資料" : "影像模型判定完成",
+    usedFallback,
+    sampleIndex,
+    nextCursor,
+    record,
+    linkedAlert
+  })
+})
+
+app.post("/patient/vision/sync", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "找不到使用者" })
+
+  const sampleResult = await getNextVisionSample(user)
+  const sample = sampleResult.sample
+
+  const record = await VisionDetectionRecord.create({
+    patientUserId: user._id,
+    reporterUserId: user._id,
+    reporterRole: "system",
+    action: normalizeVisionAction(sample.action),
+    severity: normalizeSeverity(sample.severity || getVisionSeverityByAction(sample.action)),
+    confidence: toConfidence(sample.confidence, 0.9),
+    location: sample.location || "",
+    description: sample.description || `模型事件：${sample.action}`,
+    modelName: "CareAI-MediaPipe",
+    frameTag: sample.frameTag || "",
+    detectedAt: new Date(),
+    source: "vision-mock"
+  })
+
+  const linkedAlert = await createVisionAlertIfNeeded({
+    patientUserId: user._id,
+    reporterUserId: user._id,
+    reporterRole: "system",
+    detectionRecord: record
+  })
+
+  res.status(201).json({
+    message: "已寫入一筆示範影像偵測資料",
+    sampleIndex: sampleResult.sampleIndex,
+    nextCursor: sampleResult.nextCursor,
+    record,
+    linkedAlert
   })
 })
 
@@ -1481,6 +1816,232 @@ app.delete("/family/reminders/:id", async (req, res) => {
 })
 
 // ================= CAREGIVER =================
+app.get("/caregiver/blood-pressure/history", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "User not found" })
+
+  const patientUserId = await resolveTargetPatient(user._id)
+  const limit = normalizeLimit(req.query.limit, 30, 100)
+  const records = await BloodPressureRecord.find({ userId: patientUserId })
+    .sort({ measuredAt: -1, _id: -1 })
+    .limit(limit)
+
+  const latest = records.length > 0 ? records[0] : null
+  res.json({ records, latest })
+})
+
+app.post("/caregiver/blood-pressure/record", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "User not found" })
+
+  const sys = Number(req.body?.sys)
+  const dia = Number(req.body?.dia)
+  const pulseRaw = req.body?.pulse
+  const pulse = pulseRaw === "" || pulseRaw === null || pulseRaw === undefined
+    ? undefined
+    : Number(pulseRaw)
+
+  if (!Number.isFinite(sys) || !Number.isFinite(dia)) {
+    return res.status(400).json({ message: "請提供有效的 SYS 與 DIA 數值" })
+  }
+
+  if (pulseRaw !== "" && pulseRaw !== null && pulseRaw !== undefined && !Number.isFinite(pulse)) {
+    return res.status(400).json({ message: "Pulse 格式錯誤" })
+  }
+
+  const patientUserId = await resolveTargetPatient(user._id)
+  const record = await BloodPressureRecord.create({
+    userId: patientUserId,
+    sys,
+    dia,
+    pulse,
+    level: judgeBloodPressureLevel(sys, dia),
+    measuredAt: new Date(),
+    source: "caregiver-entry"
+  })
+
+  res.status(201).json({
+    message: "看護端已新增血壓紀錄",
+    record
+  })
+})
+
+app.post("/caregiver/blood-pressure/sync", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "User not found" })
+
+  const total = MOCK_BP_SAMPLES.length
+  const cursor = Number.isInteger(user.bloodPressureCursor) ? user.bloodPressureCursor : 0
+  const sampleIndex = ((cursor % total) + total) % total
+  const sample = MOCK_BP_SAMPLES[sampleIndex]
+
+  const patientUserId = await resolveTargetPatient(user._id)
+  const record = await BloodPressureRecord.create({
+    userId: patientUserId,
+    sys: sample.sys,
+    dia: sample.dia,
+    pulse: sample.pulse,
+    level: judgeBloodPressureLevel(sample.sys, sample.dia),
+    measuredAt: new Date(),
+    source: "mock-seed"
+  })
+
+  user.bloodPressureCursor = (sampleIndex + 1) % total
+  await user.save()
+
+  res.json({
+    message: "已同步一筆示範血壓資料",
+    sampleIndex,
+    nextCursor: user.bloodPressureCursor,
+    record
+  })
+})
+
+app.get("/caregiver/vision/history", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "User not found" })
+
+  const patientUserId = await resolveTargetPatient(user._id)
+  const filter = { patientUserId }
+  if (req.query.severity) {
+    filter.severity = normalizeSeverity(req.query.severity)
+  }
+  if (req.query.action) {
+    filter.action = normalizeVisionAction(req.query.action)
+  }
+
+  const limit = normalizeLimit(req.query.limit, 30, 100)
+  const records = await VisionDetectionRecord.find(filter)
+    .sort({ detectedAt: -1, _id: -1 })
+    .limit(limit)
+
+  res.json({ records })
+})
+
+app.post("/caregiver/vision/detect", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "User not found" })
+
+  const patientUserId = await resolveTargetPatient(user._id)
+  const frameTag = typeof req.body?.frameTag === "string" ? req.body.frameTag.trim() : ""
+  const location = typeof req.body?.location === "string" ? req.body.location.trim() : ""
+  const description = typeof req.body?.description === "string" ? req.body.description.trim() : ""
+
+  let detection = await requestVisionModelResult({
+    reporterRole: "caregiver",
+    frameTag,
+    location,
+    description
+  })
+  let usedFallback = false
+  let sampleIndex = null
+  let nextCursor = null
+
+  if (!detection) {
+    const sampleResult = await getNextVisionSample(user)
+    usedFallback = true
+    sampleIndex = sampleResult.sampleIndex
+    nextCursor = sampleResult.nextCursor
+    detection = {
+      action: normalizeVisionAction(sampleResult.sample.action),
+      severity: normalizeSeverity(sampleResult.sample.severity),
+      confidence: toConfidence(sampleResult.sample.confidence, 0.9),
+      location: sampleResult.sample.location || "",
+      description: sampleResult.sample.description || "",
+      frameTag: sampleResult.sample.frameTag || "",
+      modelName: "CareAI-MediaPipe"
+    }
+  }
+
+  const record = await VisionDetectionRecord.create({
+    patientUserId,
+    reporterUserId: user._id,
+    reporterRole: "caregiver",
+    action: detection.action,
+    severity: normalizeSeverity(detection.severity || getVisionSeverityByAction(detection.action)),
+    confidence: toConfidence(detection.confidence, 0.9),
+    location: detection.location || location,
+    description: detection.description || description || `模型事件：${detection.action}`,
+    modelName: detection.modelName || "CareAI-MediaPipe",
+    frameTag: detection.frameTag || frameTag,
+    detectedAt: new Date(),
+    source: usedFallback ? "vision-mock" : "vision-model"
+  })
+
+  const linkedAlert = await createVisionAlertIfNeeded({
+    patientUserId,
+    reporterUserId: user._id,
+    reporterRole: "caregiver",
+    detectionRecord: record
+  })
+
+  res.status(201).json({
+    message: usedFallback ? "影像模型暫不可用，已寫入示範判定資料" : "影像模型判定完成",
+    usedFallback,
+    sampleIndex,
+    nextCursor,
+    record,
+    linkedAlert
+  })
+})
+
+app.post("/caregiver/vision/sync", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "User not found" })
+
+  const patientUserId = await resolveTargetPatient(user._id)
+  const sampleResult = await getNextVisionSample(user)
+  const sample = sampleResult.sample
+
+  const record = await VisionDetectionRecord.create({
+    patientUserId,
+    reporterUserId: user._id,
+    reporterRole: "system",
+    action: normalizeVisionAction(sample.action),
+    severity: normalizeSeverity(sample.severity || getVisionSeverityByAction(sample.action)),
+    confidence: toConfidence(sample.confidence, 0.9),
+    location: sample.location || "",
+    description: sample.description || `模型事件：${sample.action}`,
+    modelName: "CareAI-MediaPipe",
+    frameTag: sample.frameTag || "",
+    detectedAt: new Date(),
+    source: "vision-mock"
+  })
+
+  const linkedAlert = await createVisionAlertIfNeeded({
+    patientUserId,
+    reporterUserId: user._id,
+    reporterRole: "system",
+    detectionRecord: record
+  })
+
+  res.status(201).json({
+    message: "已同步一筆示範影像偵測資料",
+    sampleIndex: sampleResult.sampleIndex,
+    nextCursor: sampleResult.nextCursor,
+    record,
+    linkedAlert
+  })
+})
+
 app.get("/caregiver/alerts/history", async (req, res) => {
   const decoded = verifyToken(req, res)
   if (!decoded) return res.status(401).json({ message: "Invalid token" })

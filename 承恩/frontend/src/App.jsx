@@ -7,12 +7,14 @@ import RoleSelect from "./pages/RoleSelect"
 
 import CaregiverHome from "./pages/caregiver/CaregiverHome"
 import CaregiverAlerts from "./pages/caregiver/CaregiverAlerts"
+import CaregiverBloodPressure from "./pages/caregiver/CaregiverBloodPressure"
 import CaregiverCareLogs from "./pages/caregiver/CaregiverCareLogs"
 import CaregiverLanguageSupport from "./pages/caregiver/CaregiverLanguageSupport"
 import CaregiverReminders from "./pages/caregiver/CaregiverReminders"
 import CaregiverSosCenter from "./pages/caregiver/CaregiverSosCenter"
 import CaregiverSetup from "./pages/caregiver/CaregiverSetup"
 import CaregiverSystemCenter from "./pages/caregiver/CaregiverSystemCenter"
+import CaregiverVisionDetection from "./pages/caregiver/CaregiverVisionDetection"
 
 import FamilyAlerts from "./pages/family/FamilyAlerts"
 import FamilyCareRecords from "./pages/family/FamilyCareRecords"
@@ -27,6 +29,7 @@ import PatientBloodPressure from "./pages/patient/PatientBloodPressure"
 import PatientHome from "./pages/patient/PatientHome"
 import PatientSetup from "./pages/patient/PatientSetup"
 import PatientSos from "./pages/patient/PatientSos"
+import PatientVisionDetection from "./pages/patient/PatientVisionDetection"
 import PatientWearable from "./pages/patient/PatientWearable"
 
 function ProtectedRoute({ children }) {
@@ -75,6 +78,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <PatientBloodPressure />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/patient/vision"
+        element={
+          <ProtectedRoute>
+            <PatientVisionDetection />
           </ProtectedRoute>
         }
       />
@@ -165,6 +176,22 @@ export default function App() {
         element={
           <ProtectedRoute>
             <CaregiverCareLogs />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/caregiver/blood-pressure"
+        element={
+          <ProtectedRoute>
+            <CaregiverBloodPressure />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/caregiver/vision"
+        element={
+          <ProtectedRoute>
+            <CaregiverVisionDetection />
           </ProtectedRoute>
         }
       />

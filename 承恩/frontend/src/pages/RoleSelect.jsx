@@ -1,36 +1,36 @@
-import { useEffect, useState } from "react"
+﻿import { useEffect, useState } from "react"
+import { API_BASE_URL } from "../config/runtime"
+
+function readEmailFromToken() {
+  const token = localStorage.getItem("token")
+  if (!token) return ""
+
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]))
+    return payload.email || ""
+  } catch {
+    return ""
+  }
+}
 
 export default function RoleSelect() {
-  const [email, setEmail] = useState("")
+  const [email] = useState(readEmailFromToken)
 
   useEffect(() => {
-    const token = localStorage.getItem("token")
-
-    if (!token) {
-      alert("未登入")
+    if (!email) {
+      alert("Login expired, please sign in again.")
       window.location.href = "/"
-      return
     }
-
-    const payload = JSON.parse(atob(token.split(".")[1]))
-
-    if (!payload.email) {
-      alert("找不到使用者 email")
-      window.location.href = "/"
-      return
-    }
-
-    setEmail(payload.email)
-  }, [])
+  }, [email])
 
   const handleSelectRole = async (role) => {
     try {
-      const res = await fetch("http://localhost:5000/set-role", {
+      const res = await fetch(`${API_BASE_URL}/set-role`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email, role })
+        body: JSON.stringify({ email, role }),
       })
 
       const data = await res.json()
@@ -39,27 +39,20 @@ export default function RoleSelect() {
       localStorage.setItem("role", role)
 
       window.location.href = `/${role}`
-
-    } catch (err) {
-      alert("設定角色失敗")
+    } catch {
+      alert("Failed to set role, please try again.")
     }
   }
 
   return (
     <div>
-      <h2>請選擇您的身份</h2>
+      <h2>Select your role</h2>
 
-      <button onClick={() => handleSelectRole("patient")}>
-        受顧者
-      </button>
+      <button onClick={() => handleSelectRole("patient")}>Patient</button>
 
-      <button onClick={() => handleSelectRole("family")}>
-        家屬端
-      </button>
+      <button onClick={() => handleSelectRole("family")}>Family</button>
 
-      <button onClick={() => handleSelectRole("caregiver")}>
-        看護端
-      </button>
+      <button onClick={() => handleSelectRole("caregiver")}>Caregiver</button>
     </div>
   )
 }
