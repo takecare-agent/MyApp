@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { API_BASE_URL } from "../../config/runtime"
 
 const LAST_SEEN_KEY = "family_last_seen_sos_event_id"
 
@@ -64,7 +65,7 @@ export default function FamilySosCenter() {
 
     try {
       const res = await fetch(
-        `http://localhost:5000/family/sos/history?status=${statusFilter}&limit=30`,
+        `${API_BASE_URL}/family/sos/history?status=${statusFilter}&limit=30`,
         { headers: { Authorization: `Bearer ${token}` } }
       )
       const data = await res.json()
@@ -113,7 +114,7 @@ export default function FamilySosCenter() {
     setErrorMessage("")
 
     try {
-      const res = await fetch(`http://localhost:5000/family/sos/${id}/resolve`, {
+      const res = await fetch(`${API_BASE_URL}/family/sos/${id}/resolve`, {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}` }
       })

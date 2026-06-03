@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { API_BASE_URL } from "../../config/runtime"
 
 const modules = [
   {
@@ -70,7 +71,7 @@ export default function CaregiverHome() {
       setError("")
 
       try {
-        const checkRes = await fetch("http://localhost:5000/caregiver/check-profile", {
+        const checkRes = await fetch(`${API_BASE_URL}/caregiver/check-profile`, {
           headers: { Authorization: "Bearer " + token }
         })
         if (!checkRes.ok) {
@@ -82,7 +83,7 @@ export default function CaregiverHome() {
           return
         }
 
-        const profileRes = await fetch("http://localhost:5000/caregiver/profile", {
+        const profileRes = await fetch(`${API_BASE_URL}/caregiver/profile`, {
           headers: { Authorization: "Bearer " + token }
         })
         if (!profileRes.ok) {

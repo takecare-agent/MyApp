@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { API_BASE_URL } from "../../config/runtime"
 
 const STATUS_OPTIONS = ["未處理", "處理中", "已完成"]
 const SEVERITY_OPTIONS = ["高", "中", "低"]
@@ -45,7 +46,7 @@ export default function FamilyAlerts() {
       if (severityFilter !== "all") params.set("severity", severityFilter)
       if (statusFilter !== "all") params.set("status", statusFilter)
 
-      const res = await fetch(`http://localhost:5000/family/alerts/history?${params.toString()}`, {
+      const res = await fetch(`${API_BASE_URL}/family/alerts/history?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       const data = await res.json()
@@ -76,7 +77,7 @@ export default function FamilyAlerts() {
     setErrorMessage("")
 
     try {
-      const res = await fetch("http://localhost:5000/family/alerts/sync", {
+      const res = await fetch(`${API_BASE_URL}/family/alerts/sync`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` }
       })
@@ -105,7 +106,7 @@ export default function FamilyAlerts() {
     setErrorMessage("")
 
     try {
-      const res = await fetch(`http://localhost:5000/family/alerts/${id}/status`, {
+      const res = await fetch(`${API_BASE_URL}/family/alerts/${id}/status`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",

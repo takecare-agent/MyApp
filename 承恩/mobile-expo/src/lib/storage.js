@@ -1,0 +1,36 @@
+import AsyncStorage from "@react-native-async-storage/async-storage"
+
+const SESSION_KEY = "TAKECARE_EXPO_SESSION_V1"
+const SETTINGS_KEY = "TAKECARE_EXPO_SETTINGS_V1"
+
+export async function saveSession(session) {
+  await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(session))
+}
+
+export async function loadSession() {
+  const raw = await AsyncStorage.getItem(SESSION_KEY)
+  if (!raw) return null
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+export async function clearSession() {
+  await AsyncStorage.removeItem(SESSION_KEY)
+}
+
+export async function saveSettings(settings) {
+  await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
+}
+
+export async function loadSettings() {
+  const raw = await AsyncStorage.getItem(SETTINGS_KEY)
+  if (!raw) return null
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}

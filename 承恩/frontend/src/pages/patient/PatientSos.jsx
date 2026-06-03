@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { API_BASE_URL } from "../../config/runtime"
 
 function formatTime(value) {
   if (!value) return "-"
@@ -56,7 +57,7 @@ export default function PatientSos() {
     }
 
     try {
-      const res = await fetch("http://localhost:5000/patient/profile", {
+      const res = await fetch(`${API_BASE_URL}/patient/profile`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       const data = await res.json()
@@ -80,7 +81,7 @@ export default function PatientSos() {
     }
 
     try {
-      const res = await fetch("http://localhost:5000/patient/sos/history?limit=10", {
+      const res = await fetch(`${API_BASE_URL}/patient/sos/history?limit=10`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       const data = await res.json()
@@ -143,7 +144,7 @@ export default function PatientSos() {
 
     try {
       const location = await getCurrentLocation()
-      const res = await fetch("http://localhost:5000/patient/sos/trigger", {
+      const res = await fetch(`${API_BASE_URL}/patient/sos/trigger`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

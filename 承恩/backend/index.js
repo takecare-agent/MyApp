@@ -16,17 +16,46 @@ const defaultAllowedOrigins = [
   "http://localhost:5173",
   "http://localhost",
   "https://localhost",
+  "http://localhost:19006",
+  "http://127.0.0.1:19006",
+  "http://localhost:8081",
+  "http://127.0.0.1:8081",
   "capacitor://localhost",
   "ionic://localhost"
 ]
 
+const frontendWebUrl = (process.env.FRONTEND_WEB_URL || "http://localhost:5173").trim()
+
 const allowedOrigins = new Set(defaultAllowedOrigins)
+if (frontendWebUrl) allowedOrigins.add(frontendWebUrl)
 for (const value of (process.env.CORS_ORIGINS || "").split(",")) {
   const origin = value.trim()
   if (origin) allowedOrigins.add(origin)
 }
 
-const frontendWebUrl = (process.env.FRONTEND_WEB_URL || "http://localhost:5173").trim()
+function isLocalNetworkOrigin(origin) {
+  try {
+    const parsed = new URL(origin)
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false
+
+    const host = (parsed.hostname || "").toLowerCase()
+    if (!host) return false
+    if (host === "localhost" || host === "127.0.0.1" || host === "::1") return true
+    if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) return true
+    if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)) return true
+
+    const matched172 = /^172\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/.exec(host)
+    if (matched172) {
+      const second = Number(matched172[1])
+      if (second >= 16 && second <= 31) return true
+    }
+  } catch {
+    return false
+  }
+
+  return false
+}
+
 const oauthSuccessBaseUrl = (
   process.env.OAUTH_SUCCESS_URL || `${frontendWebUrl}/google-success`
 ).trim()
@@ -44,7 +73,7 @@ mongoose.connect(process.env.MONGO_URI)
 // ================= Middleware =================
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || allowedOrigins.has(origin)) {
+    if (!origin || allowedOrigins.has(origin) || isLocalNetworkOrigin(origin)) {
       callback(null, true)
       return
     }
@@ -862,6 +891,63 @@ app.post("/set-role", async (req, res) => {
   } catch (err) {
     console.log("❌ set-role error:", err.message)
     res.status(500).json({ message: "設定角色失敗" })
+  }
+})
+
+function normalizeRoleForMobile(role) {
+  if (role === "patient" || role === "family" || role === "caregiver") {
+    return role
+  }
+  return "patient"
+}
+
+app.post("/mobile/dev-login", async (req, res) => {
+  try {
+    const rawEmail = typeof req.body?.email === "string" ? req.body.email.trim() : ""
+    const rawName = typeof req.body?.name === "string" ? req.body.name.trim() : ""
+    const rawRole = typeof req.body?.role === "string" ? req.body.role.trim() : ""
+
+    if (!rawEmail) {
+      return res.status(400).json({ message: "email is required" })
+    }
+
+    const email = rawEmail.toLowerCase()
+    const role = normalizeRoleForMobile(rawRole)
+
+    let user = await User.findOne({ email })
+    if (!user) {
+      user = await User.create({
+        email,
+        name: rawName || email.split("@")[0],
+        role,
+        profileCompleted: true
+      })
+    } else {
+      user.role = role
+      if (rawName) user.name = rawName
+      if (!user.name) user.name = email.split("@")[0]
+      user.profileCompleted = true
+      await user.save()
+    }
+
+    const token = jwt.sign(
+      { email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    )
+
+    return res.json({
+      token,
+      role: user.role,
+      user: {
+        email: user.email,
+        name: user.name || "",
+        role: user.role
+      }
+    })
+  } catch (err) {
+    console.log("❌ mobile/dev-login error:", err.message)
+    return res.status(500).json({ message: "mobile dev login failed" })
   }
 })
 
@@ -2434,7 +2520,11 @@ app.get("/caregiver/check-profile", async (req, res) => {
   if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
 
   const user = await User.findOne({ email: decoded.email })
-  res.json({ profileCompleted: user.profileCompleted })
+  if (!user) {
+    return res.json({ profileCompleted: false })
+  }
+
+  res.json({ profileCompleted: Boolean(user.profileCompleted) })
 })
 
 app.get("/caregiver/profile", async (req, res) => {
@@ -2442,10 +2532,13 @@ app.get("/caregiver/profile", async (req, res) => {
   if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
 
   const user = await User.findOne({ email: decoded.email })
+  if (!user) {
+    return res.status(404).json({ message: "找不到看護資料" })
+  }
 
   res.json({
-    name: user.name,
-    experience: user.experience
+    name: user.name || "",
+    experience: user.experience || ""
   })
 })
 
@@ -2454,11 +2547,24 @@ app.post("/caregiver/setup", async (req, res) => {
   if (!decoded) return res.status(401).json({ message: "未提供或無效 token" })
 
   const { name, experience } = req.body
+  const normalizedName = String(name || "").trim()
+  const normalizedExperience = String(experience || "").trim()
+  if (!normalizedName || !normalizedExperience) {
+    return res.status(400).json({ message: "name 和 experience 為必填" })
+  }
 
-  const user = await User.findOne({ email: decoded.email })
+  let user = await User.findOne({ email: decoded.email })
+  if (!user) {
+    user = await User.create({
+      email: decoded.email,
+      role: "caregiver",
+      profileCompleted: false
+    })
+  }
 
-  user.name = name
-  user.experience = experience
+  user.name = normalizedName
+  user.experience = normalizedExperience
+  if (!user.role) user.role = "caregiver"
   user.profileCompleted = true
 
   await user.save()

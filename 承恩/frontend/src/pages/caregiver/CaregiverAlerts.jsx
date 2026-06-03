@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { API_BASE_URL } from "../../config/runtime"
 
 const EVENT_TYPES = ["跌倒", "離床", "久坐不動", "異常行為", "呼救手勢", "其他"]
 const SEVERITY_OPTIONS = ["高", "中", "低"]
@@ -57,7 +58,7 @@ export default function CaregiverAlerts() {
     setErrorMessage("")
 
     try {
-      const res = await fetch(`http://localhost:5000/caregiver/alerts/history?${query}`, {
+      const res = await fetch(`${API_BASE_URL}/caregiver/alerts/history?${query}`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       const data = await res.json()
@@ -97,7 +98,7 @@ export default function CaregiverAlerts() {
     setErrorMessage("")
 
     try {
-      const res = await fetch("http://localhost:5000/caregiver/alerts", {
+      const res = await fetch(`${API_BASE_URL}/caregiver/alerts`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -144,7 +145,7 @@ export default function CaregiverAlerts() {
     setErrorMessage("")
 
     try {
-      const res = await fetch("http://localhost:5000/caregiver/alerts/sync", {
+      const res = await fetch(`${API_BASE_URL}/caregiver/alerts/sync`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` }
       })
@@ -173,7 +174,7 @@ export default function CaregiverAlerts() {
     setErrorMessage("")
 
     try {
-      const res = await fetch(`http://localhost:5000/caregiver/alerts/${id}/status`, {
+      const res = await fetch(`${API_BASE_URL}/caregiver/alerts/${id}/status`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",

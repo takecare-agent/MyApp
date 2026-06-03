@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { API_BASE_URL } from "../../config/runtime"
 
 function formatTime(value) {
   if (!value) return "-"
@@ -33,7 +34,7 @@ export default function CaregiverReminders() {
       if (statusFilter === "pending") params.set("completed", "false")
       if (statusFilter === "done") params.set("completed", "true")
 
-      const res = await fetch(`http://localhost:5000/caregiver/reminders?${params.toString()}`, {
+      const res = await fetch(`${API_BASE_URL}/caregiver/reminders?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       const data = await res.json()
@@ -64,7 +65,7 @@ export default function CaregiverReminders() {
     setErrorMessage("")
     try {
       const endpoint = action === "complete" ? "complete" : "reset"
-      const res = await fetch(`http://localhost:5000/caregiver/reminders/${id}/${endpoint}`, {
+      const res = await fetch(`${API_BASE_URL}/caregiver/reminders/${id}/${endpoint}`, {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}` }
       })

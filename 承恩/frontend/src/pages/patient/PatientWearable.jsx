@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { API_BASE_URL } from "../../config/runtime"
 
 const FALLBACK_RECORD = {
   heartRate: 74,
@@ -39,7 +40,7 @@ export default function PatientWearable() {
     setErrorMessage("")
 
     try {
-      const res = await fetch("http://localhost:5000/patient/wearable/latest", {
+      const res = await fetch(`${API_BASE_URL}/patient/wearable/latest`, {
         headers: { Authorization: "Bearer " + token }
       })
 
@@ -67,7 +68,7 @@ export default function PatientWearable() {
     setErrorMessage("")
 
     try {
-      const res = await fetch("http://localhost:5000/patient/wearable/history?limit=10", {
+      const res = await fetch(`${API_BASE_URL}/patient/wearable/history?limit=10`, {
         headers: { Authorization: "Bearer " + token }
       })
 
@@ -101,7 +102,7 @@ export default function PatientWearable() {
     setErrorMessage("")
 
     try {
-      const res = await fetch("http://localhost:5000/patient/wearable/sync", {
+      const res = await fetch(`${API_BASE_URL}/patient/wearable/sync`, {
         method: "POST",
         headers: { Authorization: "Bearer " + token }
       })

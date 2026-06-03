@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { API_BASE_URL } from "../../config/runtime"
 
 const JUDGE_RULES = [
   "正常：SYS < 120 且 DIA < 80",
@@ -54,7 +55,7 @@ export default function CaregiverBloodPressure() {
     setLoading(true)
     setErrorMessage("")
     try {
-      const res = await fetch("http://localhost:5000/caregiver/blood-pressure/history?limit=30", {
+      const res = await fetch(`${API_BASE_URL}/caregiver/blood-pressure/history?limit=30`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       const data = await res.json()
@@ -93,7 +94,7 @@ export default function CaregiverBloodPressure() {
     setStatusMessage("")
     setErrorMessage("")
     try {
-      const res = await fetch("http://localhost:5000/caregiver/blood-pressure/record", {
+      const res = await fetch(`${API_BASE_URL}/caregiver/blood-pressure/record`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -131,7 +132,7 @@ export default function CaregiverBloodPressure() {
     setStatusMessage("")
     setErrorMessage("")
     try {
-      const res = await fetch("http://localhost:5000/caregiver/blood-pressure/sync", {
+      const res = await fetch(`${API_BASE_URL}/caregiver/blood-pressure/sync`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` }
       })

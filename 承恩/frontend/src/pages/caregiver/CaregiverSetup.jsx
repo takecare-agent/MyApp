@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { API_BASE_URL } from "../../config/runtime"
 
 export default function CaregiverSetup() {
   const navigate = useNavigate()
@@ -22,7 +23,7 @@ export default function CaregiverSetup() {
     setSubmitting(true)
 
     try {
-      const res = await fetch("http://localhost:5000/caregiver/setup", {
+      const res = await fetch(`${API_BASE_URL}/caregiver/setup`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -1,4 +1,17 @@
-const LOCAL_API_ORIGIN = "http://localhost:5000"
+const DEFAULT_API_PORT = "5000"
+const API_OVERRIDE_STORAGE_KEY = "TAKECARE_API_BASE_URL"
+
+function resolveLegacyLocalApiOrigin() {
+  if (typeof window === "undefined") {
+    return `http://127.0.0.1:${DEFAULT_API_PORT}`
+  }
+
+  const protocol = window.location?.protocol || "http:"
+  const hostname = window.location?.hostname || "127.0.0.1"
+  return `${protocol}//${hostname}:${DEFAULT_API_PORT}`
+}
+
+const LOCAL_API_ORIGIN = resolveLegacyLocalApiOrigin()
 
 function normalizeBaseUrl(url) {
   return String(url || "")
@@ -6,8 +19,29 @@ function normalizeBaseUrl(url) {
     .replace(/\/+$/, "")
 }
 
+function getRuntimeApiOverride() {
+  if (typeof window === "undefined") return ""
+
+  try {
+    const params = new URLSearchParams(window.location.search)
+    const queryOverride = normalizeBaseUrl(params.get("apiBaseUrl"))
+    if (queryOverride) {
+      window.localStorage.setItem(API_OVERRIDE_STORAGE_KEY, queryOverride)
+      return queryOverride
+    }
+
+    return normalizeBaseUrl(
+      window.localStorage.getItem(API_OVERRIDE_STORAGE_KEY)
+    )
+  } catch {
+    return ""
+  }
+}
+
 export const API_BASE_URL = normalizeBaseUrl(
-  import.meta.env.VITE_API_BASE_URL || LOCAL_API_ORIGIN
+  getRuntimeApiOverride() ||
+    import.meta.env.VITE_API_BASE_URL ||
+    LOCAL_API_ORIGIN
 )
 
 export const GOOGLE_AUTH_URL = `${API_BASE_URL}/auth/google`

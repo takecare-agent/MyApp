@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { API_BASE_URL } from "../../config/runtime"
 
 const MODEL_ACTIONS = [
   "DANGER: FALL（跌倒）",
@@ -61,7 +62,7 @@ export default function PatientVisionDetection() {
     setErrorMessage("")
 
     try {
-      const res = await fetch("http://localhost:5000/patient/vision/history?limit=30", {
+      const res = await fetch(`${API_BASE_URL}/patient/vision/history?limit=30`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       const data = await res.json()
@@ -96,7 +97,7 @@ export default function PatientVisionDetection() {
     setErrorMessage("")
 
     try {
-      const res = await fetch("http://localhost:5000/patient/vision/detect", {
+      const res = await fetch(`${API_BASE_URL}/patient/vision/detect`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -131,7 +132,7 @@ export default function PatientVisionDetection() {
     setErrorMessage("")
 
     try {
-      const res = await fetch("http://localhost:5000/patient/vision/sync", {
+      const res = await fetch(`${API_BASE_URL}/patient/vision/sync`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` }
       })

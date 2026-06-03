@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { API_BASE_URL } from "../../config/runtime"
 
 const CATEGORY_OPTIONS = ["用藥提醒", "醫療行程", "生理量測", "生活照護", "其他"]
 
@@ -51,7 +52,7 @@ export default function FamilyReminders() {
       if (statusFilter === "pending") params.set("completed", "false")
       if (statusFilter === "done") params.set("completed", "true")
 
-      const res = await fetch(`http://localhost:5000/family/reminders?${params.toString()}`, {
+      const res = await fetch(`${API_BASE_URL}/family/reminders?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       const data = await res.json()
@@ -97,8 +98,8 @@ export default function FamilyReminders() {
     setErrorMessage("")
     try {
       const url = editingId
-        ? `http://localhost:5000/family/reminders/${editingId}`
-        : "http://localhost:5000/family/reminders"
+        ? `${API_BASE_URL}/family/reminders/${editingId}`
+        : `${API_BASE_URL}/family/reminders`
       const method = editingId ? "PATCH" : "POST"
 
       const res = await fetch(url, {
@@ -152,7 +153,7 @@ export default function FamilyReminders() {
     setStatusMessage("")
     setErrorMessage("")
     try {
-      const res = await fetch(`http://localhost:5000/family/reminders/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/family/reminders/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` }
       })

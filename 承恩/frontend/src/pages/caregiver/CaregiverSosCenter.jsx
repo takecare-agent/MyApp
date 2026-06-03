@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { API_BASE_URL } from "../../config/runtime"
 
 function formatTime(value) {
   if (!value) return "-"
@@ -40,7 +41,7 @@ export default function CaregiverSosCenter() {
 
     try {
       const query = `status=${statusFilter}&limit=30`
-      const res = await fetch(`http://localhost:5000/caregiver/sos/history?${query}`, {
+      const res = await fetch(`${API_BASE_URL}/caregiver/sos/history?${query}`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       const data = await res.json()
@@ -95,7 +96,7 @@ export default function CaregiverSosCenter() {
     setErrorMessage("")
 
     try {
-      const res = await fetch(`http://localhost:5000/caregiver/sos/${id}/resolve`, {
+      const res = await fetch(`${API_BASE_URL}/caregiver/sos/${id}/resolve`, {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}` }
       })

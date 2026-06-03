@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { API_BASE_URL } from "../../config/runtime"
 
 function toDateInputValue(date) {
   const localDate = new Date(date)
@@ -32,7 +33,7 @@ export default function FamilyCareRecords() {
       if (dateValue) query.set("date", dateValue)
 
       const res = await fetch(
-        `http://localhost:5000/family/care-records/history?${query.toString()}`,
+        `${API_BASE_URL}/family/care-records/history?${query.toString()}`,
         {
           headers: { Authorization: "Bearer " + token }
         }
@@ -65,7 +66,7 @@ export default function FamilyCareRecords() {
     setErrorMessage("")
 
     try {
-      const res = await fetch("http://localhost:5000/family/care-records/sync", {
+      const res = await fetch(`${API_BASE_URL}/family/care-records/sync`, {
         method: "POST",
         headers: { Authorization: "Bearer " + token }
       })

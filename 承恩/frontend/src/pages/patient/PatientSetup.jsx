@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { API_BASE_URL } from "../../config/runtime"
 
 export default function PatientSetup() {
   const navigate = useNavigate()
@@ -28,7 +29,7 @@ export default function PatientSetup() {
     setSubmitting(true)
 
     try {
-      const res = await fetch("http://localhost:5000/patient/setup", {
+      const res = await fetch(`${API_BASE_URL}/patient/setup`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

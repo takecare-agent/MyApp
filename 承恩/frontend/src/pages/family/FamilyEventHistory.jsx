@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { API_BASE_URL } from "../../config/runtime"
 
 function toDateInputValue(date) {
   const localDate = new Date(date)
@@ -45,7 +46,7 @@ export default function FamilyEventHistory() {
       if (endDate) query.set("endDate", endDate)
 
       const res = await fetch(
-        `http://localhost:5000/family/events/history?${query.toString()}`,
+        `${API_BASE_URL}/family/events/history?${query.toString()}`,
         {
           headers: { Authorization: "Bearer " + token }
         }
@@ -79,7 +80,7 @@ export default function FamilyEventHistory() {
     setErrorMessage("")
 
     try {
-      const res = await fetch("http://localhost:5000/family/events/sync", {
+      const res = await fetch(`${API_BASE_URL}/family/events/sync`, {
         method: "POST",
         headers: { Authorization: "Bearer " + token }
       })

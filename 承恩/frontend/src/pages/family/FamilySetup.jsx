@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { API_BASE_URL } from "../../config/runtime"
 
 export default function FamilySetup() {
   const navigate = useNavigate()
@@ -22,7 +23,7 @@ export default function FamilySetup() {
     setSubmitting(true)
 
     try {
-      const res = await fetch("http://localhost:5000/family/setup", {
+      const res = await fetch(`${API_BASE_URL}/family/setup`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
