@@ -4,7 +4,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 
 const app = express();
-const PORT = process.env.PORT || 5000; 
+const PORT = process.env.PORT || 5000;
 const memoryRecords = [];
 let isMongoReady = false;
 
@@ -61,10 +61,54 @@ const toFiniteNumber = (value) => {
   return null;
 };
 
-const getRecordTimestamp = (record) => {
-  const normalizedTime = record.time?.replace(/\//g, '-');
-  const timestamp = normalizedTime ? new Date(normalizedTime).getTime() : NaN;
+const getPulseValue = (record) =>
+  toFiniteNumber(record?.pulse ?? record?.heartRate ?? record?.bpm ?? record?.pulseRate) ?? 0;
+
+const parseRecordTimestamp = (value) => {
+  if (!value) return 0;
+  if (value instanceof Date) {
+    const timestamp = value.getTime();
+    return Number.isNaN(timestamp) ? 0 : timestamp;
+  }
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+
+  const raw = String(value).trim();
+  const directTimestamp = new Date(raw).getTime();
+  if (!Number.isNaN(directTimestamp)) return directTimestamp;
+
+  const normalized = raw
+    .replace(/\//g, '-')
+    .replace('上午', 'AM')
+    .replace('下午', 'PM')
+    .replace(/\s+/g, ' ');
+  const normalizedTimestamp = new Date(normalized).getTime();
+  if (!Number.isNaN(normalizedTimestamp)) return normalizedTimestamp;
+
+  const match = raw.match(
+    /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})\s*(上午|下午|AM|PM)?\s*(\d{1,2}):(\d{2})(?::(\d{2}))?/i
+  );
+  if (!match) return 0;
+
+  const [, year, month, day, meridiem, hourText, minuteText, secondText] = match;
+  let hour = Number(hourText);
+  const normalizedMeridiem = meridiem?.toUpperCase();
+  if ((normalizedMeridiem === '下午' || normalizedMeridiem === 'PM') && hour < 12) hour += 12;
+  if ((normalizedMeridiem === '上午' || normalizedMeridiem === 'AM') && hour === 12) hour = 0;
+
+  const parsedDate = new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    hour,
+    Number(minuteText),
+    Number(secondText || 0)
+  );
+  const timestamp = parsedDate.getTime();
   return Number.isNaN(timestamp) ? 0 : timestamp;
+};
+
+const getRecordTimestamp = (record) => {
+  return parseRecordTimestamp(record.time || record.createdAt || record._id?.getTimestamp?.());
 };
 
 const getRecordDateKey = (record) => {
@@ -76,6 +120,9 @@ const getRecordDateKey = (record) => {
 
 const getRecordIdentityConditions = (record) => {
   const conditions = [];
+  if (record._id && mongoose.Types.ObjectId.isValid(record._id)) {
+    conditions.push({ _id: record._id });
+  }
   if (record.syncKey) conditions.push({ syncKey: record.syncKey });
   if (record.id) conditions.push({ id: record.id });
   if (record.time && record.sys && record.dia) {
@@ -215,16 +262,40 @@ const getScopedMemoryRecords = (userId) =>
     ? memoryRecords.filter((record) => record.userId === userId || record.userId == null)
     : memoryRecords;
 
+const getRecordsForUser = async (userId) => {
+  if (!userId) return [];
+  if (!isMongoReady) return getScopedMemoryRecords(userId);
+
+  const query = buildUserRecordQuery(userId);
+  return Record.find(query).sort({ _id: -1 }).lean();
+};
+
+const normalizeBpRecord = (record) => ({
+  ...record,
+  sys: toFiniteNumber(record.sys) ?? 0,
+  dia: toFiniteNumber(record.dia) ?? 0,
+  pulse: getPulseValue(record),
+  time: record.time || record.createdAt || new Date().toISOString(),
+});
+
+const getTodayDateKey = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+};
+
+const getDayLabel = (date) =>
+  date.toLocaleDateString('zh-TW', { weekday: 'short' });
+
 app.post('/api/bp', async (req, res) => {
   try {
     const identityConditions = getRecordIdentityConditions(req.body);
     if (!isMongoReady) {
       const duplicateIndex = identityConditions.length > 0
         ? memoryRecords.findIndex((record) =>
-            identityConditions.some((condition) =>
-              Object.entries(condition).every(([key, value]) => record[key] === value)
-            )
+          identityConditions.some((condition) =>
+            Object.entries(condition).every(([key, value]) => record[key] === value)
           )
+        )
         : -1;
 
       if (duplicateIndex >= 0) {
@@ -262,6 +333,174 @@ app.post('/api/bp', async (req, res) => {
   }
 });
 
+app.get('/api/bp/latest', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    if (!userId) return res.status(400).json({ error: '缺少 userId' });
+
+    if (!isMongoReady) {
+      const records = getScopedMemoryRecords(userId)
+        .sort((a, b) => getRecordTimestamp(b) - getRecordTimestamp(a));
+      if (!records.length) return res.status(404).json({ error: '無血壓記錄' });
+      res.json(normalizeBpRecord(records[0]));
+      return;
+    }
+
+    const query = buildUserRecordQuery(userId);
+    const records = await Record.find(query).lean();
+    const record = records
+      .map(normalizeBpRecord)
+      .sort((a, b) => getRecordTimestamp(b) - getRecordTimestamp(a))[0];
+    if (!record) return res.status(404).json({ error: '無血壓記錄' });
+    res.json(record);
+  } catch (err) {
+    res.status(500).send(err);
+  }
+});
+
+app.get('/api/caregiver/today-status', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    if (!userId) return res.status(400).json({ error: 'Missing userId' });
+
+    const records = (await getRecordsForUser(userId))
+      .map(normalizeBpRecord)
+      .sort((a, b) => getRecordTimestamp(b) - getRecordTimestamp(a));
+    const todayKey = getTodayDateKey();
+    const latestRecord = records[0] || null;
+    const todayRecords = records.filter((record) => getRecordDateKey(record) === todayKey);
+
+    res.json({
+      measuredToday: todayRecords.length > 0,
+      latestRecord: todayRecords[0] || latestRecord,
+      totalToday: todayRecords.length,
+    });
+  } catch (err) {
+    res.status(500).send(err);
+  }
+});
+
+app.get('/api/caregiver/seven-day-history', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    if (!userId) return res.status(400).json({ error: 'Missing userId' });
+
+    const records = (await getRecordsForUser(userId))
+      .map(normalizeBpRecord)
+      .sort((a, b) => getRecordTimestamp(b) - getRecordTimestamp(a));
+
+    const history = Array.from({ length: 7 }, (_, index) => {
+      const date = new Date();
+      date.setDate(date.getDate() - index);
+      const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      const dayRecords = records.filter((record) => getRecordDateKey(record) === dateKey);
+      const sysValues = dayRecords.map((record) => record.sys).filter((value) => value > 0);
+      const diaValues = dayRecords.map((record) => record.dia).filter((value) => value > 0);
+
+      return {
+        date: dateKey,
+        dayLabel: index === 0 ? '今天' : getDayLabel(date),
+        hasRecord: dayRecords.length > 0,
+        records: dayRecords,
+        avgSys: sysValues.length ? Math.round(sysValues.reduce((a, b) => a + b, 0) / sysValues.length) : undefined,
+        avgDia: diaValues.length ? Math.round(diaValues.reduce((a, b) => a + b, 0) / diaValues.length) : undefined,
+      };
+    });
+
+    res.json({ history });
+  } catch (err) {
+    res.status(500).send(err);
+  }
+});
+
+app.post('/api/caregiver/trigger-sync', async (req, res) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ error: 'Missing userId' });
+
+    const records = (await getRecordsForUser(userId))
+      .map(normalizeBpRecord)
+      .sort((a, b) => getRecordTimestamp(b) - getRecordTimestamp(a));
+
+    res.json({
+      success: true,
+      record: records[0] || null,
+      message: records[0] ? 'Latest paired record returned.' : 'No paired record yet.',
+    });
+  } catch (err) {
+    res.status(500).send(err);
+  }
+});
+
+app.post('/api/bp/manual-record', async (req, res) => {
+  try {
+    const record = {
+      ...req.body,
+      sys: String(req.body.sys),
+      dia: String(req.body.dia),
+      pulse: req.body.pulse != null ? String(req.body.pulse) : undefined,
+      time: req.body.time || new Date().toLocaleString('zh-TW'),
+      id: req.body.id || Date.now().toString(),
+      source: req.body.source || 'manual',
+    };
+
+    if (!record.userId) return res.status(400).json({ error: 'Missing userId' });
+
+    if (!isMongoReady) {
+      const newRecord = { ...record, _id: `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` };
+      memoryRecords.unshift(newRecord);
+      res.status(201).json(newRecord);
+      return;
+    }
+
+    const newRecord = new Record(record);
+    await newRecord.save();
+    res.status(201).json(newRecord);
+  } catch (err) {
+    res.status(500).send(err);
+  }
+});
+
+app.get('/api/bp/statistics', async (req, res) => {
+  try {
+    const { userId, daysBack = 90 } = req.query;
+    if (!userId) return res.status(400).json({ error: '缺少 userId' });
+    const days = Math.min(Math.max(Number(daysBack) || 90, 1), 365);
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+
+    let records = [];
+    if (!isMongoReady) {
+      records = getScopedMemoryRecords(userId).filter((record) => getRecordTimestamp(record) >= cutoff);
+    } else {
+      const query = buildUserRecordQuery(userId);
+      const all = await Record.find(query).lean();
+      records = all.filter((record) => getRecordTimestamp(record) >= cutoff);
+    }
+
+    const dailySummaries = getDailyBpSummaries(records);
+    const allSys = records.map((record) => toFiniteNumber(record.sys)).filter((v) => v != null);
+    const allDia = records.map((record) => toFiniteNumber(record.dia)).filter((v) => v != null);
+    const avgSystolic = allSys.length ? Math.round(allSys.reduce((a, b) => a + b, 0) / allSys.length) : 0;
+    const avgDiastolic = allDia.length ? Math.round(allDia.reduce((a, b) => a + b, 0) / allDia.length) : 0;
+    const maxSystolic = allSys.length ? Math.max(...allSys) : 0;
+    const minSystolic = allSys.length ? Math.min(...allSys) : 0;
+    const highBPDays = dailySummaries.filter((day) => day.avgSys >= 140).length;
+
+    res.json({
+      period: days <= 90 ? '3m' : '6m',
+      avgSystolic,
+      avgDiastolic,
+      maxSystolic,
+      minSystolic,
+      highBPDays,
+      totalDays: dailySummaries.length,
+      trendData: dailySummaries
+    });
+  } catch (err) {
+    res.status(500).send(err);
+  }
+});
+
 app.get('/api/bp', async (req, res) => {
   try {
     if (!isMongoReady) {
@@ -294,5 +533,5 @@ app.get('/api/bp/summary', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`後端伺服器啟動成功：http://localhost:${PORT}`);
+  console.log(`後端伺服器啟動成功：http://localhost:${PORT}`);
 });

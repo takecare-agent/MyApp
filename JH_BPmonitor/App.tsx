@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
   StyleSheet, Text, View, TextInput, TouchableOpacity,
   Alert, SafeAreaView, FlatList, Dimensions, ActivityIndicator, ScrollView,
-  AppState, InteractionManager, Platform, Modal, Linking, Pressable, PanResponder, Animated
+  AppState, InteractionManager, Platform, Modal, Linking, Pressable, PanResponder, Animated, Clipboard
 } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -15,33 +15,39 @@ import { LineChart } from 'react-native-chart-kit';
 import { launchCamera } from 'react-native-image-picker';
 import TextRecognition from '@react-native-ml-kit/text-recognition';
 import auth from '@react-native-firebase/auth';
-import {
-  initialize,
-  requestPermission,
-  readRecords,
-  getGrantedPermissions,
-} from 'react-native-health-connect';
+import FamilyScreen from './screens/FamilyScreen';
+import CaregiverScreen from './screens/CaregiverScreen';
+import { API_URL, SUMMARY_API_URL } from './src/config/api';
 
 // ─── 月曆中文設定 ────────────────────────────────────────────────────────────
 LocaleConfig.locales.zh = {
-  monthNames: ['一月','二月','三月','四月','五月','六月','七月','八月','九月','十月','十一月','十二月'],
-  monthNamesShort: ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'],
-  dayNames: ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'],
-  dayNamesShort: ['日','一','二','三','四','五','六'],
+  monthNames: ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'],
+  monthNamesShort: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
+  dayNames: ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'],
+  dayNamesShort: ['日', '一', '二', '三', '四', '五', '六'],
   today: '今天',
 };
 LocaleConfig.defaultLocale = 'zh';
 
 const Tab = createBottomTabNavigator();
-const API_BASE_URL = 'http://192.168.0.10:5000';
-const API_URL = `${API_BASE_URL}/api/bp`;
-const SUMMARY_API_URL = `${API_URL}/summary`;
 const MOOD_ANALYSIS_SOURCE_URL = 'https://www.heart.org/en/health-topics/high-blood-pressure/changes-you-can-make-to-manage-high-blood-pressure/managing-stress-to-control-high-blood-pressure';
 const PULSE_ANALYSIS_SOURCE_URL = 'https://www.health.harvard.edu/healthy-aging-and-longevity/understanding-the-stress-response';
 const HEALTH_CONNECT_PERMISSIONS = [
   { accessType: 'read', recordType: 'BloodPressure' },
   { accessType: 'read', recordType: 'HeartRate' },
 ] as const;
+type HealthConnectModule = {
+  initialize: () => Promise<boolean>;
+  requestPermission: (permissions: readonly unknown[]) => Promise<unknown[]>;
+  readRecords: (recordType: 'BloodPressure' | 'HeartRate', options: unknown) => Promise<{ records?: unknown[] }>;
+  getGrantedPermissions: () => Promise<unknown[]>;
+};
+
+const getAndroidHealthConnect = (): HealthConnectModule | null => {
+  if (Platform.OS !== 'android') return null;
+  // Health Connect is an Android native module; keep it out of the iOS bundle path.
+  return require('react-native-health-connect') as HealthConnectModule;
+};
 const PULSE_MATCH_WINDOW_MS = 15 * 60 * 1000;
 const BP_LEVEL_COLORS = {
   normal: '#52c41a',
@@ -482,13 +488,6 @@ const getBpRecordDateKey = (record: BpRecord): string | null => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
 
-const getShortRecordDateLabel = (record: BpRecord, fallback: string) => {
-  const dateKey = getBpRecordDateKey(record);
-  if (!dateKey) return fallback;
-  const [, month, day] = dateKey.split('-');
-  return `${Number(month)}/${Number(day)}`;
-};
-
 const getDailyBpSummaries = (items: BpRecord[]): DailyBpSummary[] => {
   const groups: Record<string, { sys: number[]; dia: number[] }> = {};
 
@@ -697,7 +696,7 @@ const fetchRemoteBpRecords = async (userId?: string): Promise<BpRecord[]> => {
 };
 
 const HomeScreen = ({
-  user, bp, setBp, handleOCR, autoSaveRecord, lastRecord, recentRecords = [], onSync, isSyncing, onUpdateMood,
+  user, pairCode, bp, setBp, handleOCR, autoSaveRecord, lastRecord, recentRecords = [], onSync, isSyncing, onUpdateMood, onResetRole,
 }: any) => {
   const dailyTrend = useMemo(
     () => getDailyBpSummaries(recentRecords).slice(-5),
@@ -714,6 +713,7 @@ const HomeScreen = ({
 
   const [isLatestMoodModalVisible, setIsLatestMoodModalVisible] = useState(false);
   const [isAbnormalModalVisible, setIsAbnormalModalVisible] = useState(false);
+  const [isPairCodeVisible, setIsPairCodeVisible] = useState(false);
   const abnormalModalTranslateY = useRef(new Animated.Value(0)).current;
   const abnormalModalPanResponder = useMemo(
     () => createSwipeDownDismissPanResponder(abnormalModalTranslateY, () => setIsAbnormalModalVisible(false)),
@@ -725,280 +725,320 @@ const HomeScreen = ({
     onUpdateMood(getBpRecordPrimaryKey(lastRecord), mood);
     setIsLatestMoodModalVisible(false);
   };
+  const copyPairCode = () => {
+    if (!pairCode) {
+      Alert.alert('尚無配對碼', '請先確認已登入受顧者帳號。');
+      return;
+    }
+
+    Clipboard.setString(pairCode);
+    Alert.alert('已複製', '受顧者配對碼已複製到剪貼簿。');
+  };
   const latestStatus = getBpRecordStatus(lastRecord);
 
   return (
-  <SafeAreaView style={styles.container}>
-    <View style={styles.header}>
-      <Text style={styles.title}>👤 使用者：{user?.email}</Text>
-    </View>
-    <ScrollView
-      style={styles.inputArea}
-      contentContainerStyle={styles.inputAreaContent}
-      keyboardShouldPersistTaps="handled"
-    >
-
-      <View style={styles.latestCard}>
-        <View style={styles.cardHeader}>
-          <View style={styles.cardIcon}><Text style={styles.cardIconText}>❤️</Text></View>
-          <View style={styles.cardHeaderInfo}>
-            <Text style={styles.cardHeaderText}>血壓</Text>
-            <Text style={styles.cardHeaderTime}>{lastRecord ? lastRecord.time : '尚無數據'}</Text>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <View style={styles.elderHeaderTitleBlock}>
+          <Text style={styles.elderHeaderTitle}>長輩每日血壓紀錄</Text>
+          <Text style={styles.title}>使用者：{user?.email}</Text>
+        </View>
+        <View style={styles.elderHeaderActions}>
+          <TouchableOpacity
+            style={[styles.elderHeaderButton, styles.elderResetButton]}
+            onPress={onResetRole}
+          >
+            <Text style={styles.elderHeaderButtonText}>重新選擇身份</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.elderHeaderButton}
+            onPress={() => setIsPairCodeVisible((current) => !current)}
+          >
+            <Text style={styles.elderHeaderButtonText}>
+              {isPairCodeVisible ? '隱藏配對碼' : '查看配對碼'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      <ScrollView
+        style={styles.inputArea}
+        contentContainerStyle={styles.inputAreaContent}
+        keyboardShouldPersistTaps="handled"
+      >
+        {isPairCodeVisible && (
+          <View style={styles.pairCodeCard}>
+            <Text style={styles.pairCodeLabel}>受顧者配對碼</Text>
+            <View style={styles.pairCodeRow}>
+              <Text selectable style={styles.pairCodeValue}>{pairCode}</Text>
+              <TouchableOpacity style={styles.pairCodeCopyButton} onPress={copyPairCode}>
+                <Text style={styles.pairCodeCopyText}>複製</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.pairCodeHint}>請把此代碼提供給家屬或看護，對方輸入後即可查看這位受顧者的血壓資料。</Text>
           </View>
-          {latestStatus && (
-            <View style={[styles.bpStatusPill, { backgroundColor: latestStatus.color }]}>
-              <Text style={styles.bpStatusPillText}>{getBpLevelDisplay(latestStatus.level)}</Text>
+        )}
+
+        <View style={styles.latestCard}>
+          <View style={styles.cardHeader}>
+            <View style={styles.cardIcon}><Text style={styles.cardIconText}>❤️</Text></View>
+            <View style={styles.cardHeaderInfo}>
+              <Text style={styles.cardHeaderText}>血壓</Text>
+              <Text style={styles.cardHeaderTime}>{lastRecord ? lastRecord.time : '尚無數據'}</Text>
+            </View>
+            {latestStatus && (
+              <View style={[styles.bpStatusPill, { backgroundColor: latestStatus.color }]}>
+                <Text style={styles.bpStatusPillText}>{getBpLevelDisplay(latestStatus.level)}</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.cardBody}>
+            <View style={styles.valueWrapper}>
+              <View style={styles.bpValueBlock}>
+                <Text style={styles.valueLabel}>收縮壓</Text>
+                <Text style={styles.bigBpText}>{lastRecord ? lastRecord.sys : '--'}</Text>
+              </View>
+              <View style={styles.bpDivider} />
+              <View style={styles.bpValueBlock}>
+                <Text style={styles.valueLabel}>舒張壓</Text>
+                <Text style={styles.bigBpText}>{lastRecord ? lastRecord.dia : '--'}</Text>
+              </View>
+              <View style={styles.bpDivider} />
+              <View style={styles.bpValueBlock}>
+                <Text style={styles.valueLabel}>脈搏</Text>
+                <Text style={styles.bigBpText}>{lastRecord?.pulse || '--'}</Text>
+              </View>
+              <Text style={styles.unitText}>mmHg / bpm</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.latestMoodRow}
+              onPress={() => lastRecord && setIsLatestMoodModalVisible(true)}
+              disabled={!lastRecord}
+            >
+              <Text style={styles.latestMoodLabel}>心情狀態</Text>
+              <Text style={styles.latestMoodValue}>
+                {lastRecord ? `${getMoodEmoji(lastRecord.mood)} ${lastRecord.mood || UNMARKED_MOOD}` : '--'}
+              </Text>
+            </TouchableOpacity>
+
+            <View style={styles.miniTrendHeader}>
+              <Text style={styles.miniTrendTitle}>近五日平均數據</Text>
+              <View style={styles.chartLegend}>
+                <View style={styles.chartLegendItem}>
+                  <View style={[styles.chartLegendDot, styles.chartLegendDotSys]} />
+                  <Text style={styles.chartLegendText}>收縮壓</Text>
+                </View>
+                <View style={styles.chartLegendItem}>
+                  <View style={[styles.chartLegendDot, styles.chartLegendDotDia]} />
+                  <Text style={styles.chartLegendText}>舒張壓</Text>
+                </View>
+              </View>
+            </View>
+            <View style={styles.scaleWrapper}>
+              <View style={[styles.limitLine, { bottom: `${getMiniChartPositionPercent(130)}%` }]}><Text style={styles.limitText}>130</Text></View>
+              <View style={[styles.limitLine, { bottom: `${getMiniChartPositionPercent(80)}%` }]}><Text style={styles.limitText}>80</Text></View>
+
+              <View style={styles.baseLine} />
+              <View style={styles.miniTrendContainer}>
+                {dailyTrend.map((day) => {
+                  const sysHeight = getMiniChartBarHeight(day.avgSys);
+                  const diaHeight = getMiniChartBarHeight(day.avgDia);
+                  return (
+                    <View key={day.dateKey} style={styles.miniTrendPoint}>
+                      <View style={styles.miniTrendBarGroup}>
+                        <Text style={[styles.sysBarValue, { bottom: sysHeight + 2 }]} numberOfLines={1}>{day.avgSys}</Text>
+                        <View style={[styles.miniTrendBar, { height: sysHeight }]} />
+                      </View>
+                      <View style={styles.miniTrendBarGroup}>
+                        <Text style={[styles.diaBarValue, { bottom: diaHeight + 2 }]} numberOfLines={1}>{day.avgDia}</Text>
+                        <View style={[styles.miniTrendBar, styles.miniTrendBarDia, { height: diaHeight }]} />
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+            <View style={styles.weekLabelsContainer}>
+              {dailyTrend.map((day) => (
+                <Text key={day.dateKey} style={styles.weekLabelText} numberOfLines={1}>{day.label}</Text>
+              ))}
+            </View>
+            <View style={styles.referenceLegend}>
+              <Text style={styles.referenceLegendText}>130 代表收縮壓偏高提醒，80 代表舒張壓偏高提醒</Text>
+            </View>
+          </View>
+
+          {dailyWarnings.length > 0 && (
+            <View style={styles.bpWarningBox}>
+              {dailyWarnings.map((warning) => (
+                <Text key={warning} style={styles.bpWarningText}>{warning}</Text>
+              ))}
+              <TouchableOpacity style={styles.abnormalDetailBtn} onPress={() => setIsAbnormalModalVisible(true)}>
+                <Text style={styles.abnormalDetailBtnText}>查看異常時間數據</Text>
+              </TouchableOpacity>
             </View>
           )}
         </View>
 
-        <View style={styles.cardBody}>
-          <View style={styles.valueWrapper}>
-            <View style={styles.bpValueBlock}>
-              <Text style={styles.valueLabel}>收縮壓</Text>
-              <Text style={styles.bigBpText}>{lastRecord ? lastRecord.sys : '--'}</Text>
-            </View>
-            <View style={styles.bpDivider} />
-            <View style={styles.bpValueBlock}>
-              <Text style={styles.valueLabel}>舒張壓</Text>
-              <Text style={styles.bigBpText}>{lastRecord ? lastRecord.dia : '--'}</Text>
-            </View>
-            <View style={styles.bpDivider} />
-            <View style={styles.bpValueBlock}>
-              <Text style={styles.valueLabel}>脈搏</Text>
-              <Text style={styles.bigBpText}>{lastRecord?.pulse || '--'}</Text>
-            </View>
-            <Text style={styles.unitText}>mmHg / bpm</Text>
-          </View>
-          <TouchableOpacity
-            style={styles.latestMoodRow}
-            onPress={() => lastRecord && setIsLatestMoodModalVisible(true)}
-            disabled={!lastRecord}
-          >
-            <Text style={styles.latestMoodLabel}>心情狀態</Text>
-            <Text style={styles.latestMoodValue}>
-              {lastRecord ? `${getMoodEmoji(lastRecord.mood)} ${lastRecord.mood || UNMARKED_MOOD}` : '--'}
-            </Text>
-          </TouchableOpacity>
+        <Text style={styles.actionSectionTitle}>自動匯入</Text>
+        <TouchableOpacity
+          style={[styles.ocrBtn, styles.syncBtn, isSyncing && styles.disabledAction]}
+          onPress={() => onSync(true)}
+          disabled={isSyncing}
+        >
+          <Text style={styles.saveBtnText}>
+            {isSyncing ? '⏳ 同步中...' : '🔄 從 Health Connect 同步 (OMRON)'}
+          </Text>
+        </TouchableOpacity>
 
-          <View style={styles.miniTrendHeader}>
-            <Text style={styles.miniTrendTitle}>近五日平均數據</Text>
-            <View style={styles.chartLegend}>
-              <View style={styles.chartLegendItem}>
-                <View style={[styles.chartLegendDot, styles.chartLegendDotSys]} />
-                <Text style={styles.chartLegendText}>收縮壓</Text>
-              </View>
-              <View style={styles.chartLegendItem}>
-                <View style={[styles.chartLegendDot, styles.chartLegendDotDia]} />
-                <Text style={styles.chartLegendText}>舒張壓</Text>
-              </View>
+        <TouchableOpacity style={styles.ocrBtn} onPress={handleOCR}>
+          <Text style={styles.saveBtnText}>📸 拍照辨識血壓計</Text>
+        </TouchableOpacity>
+
+        <Text style={styles.actionSectionTitle}>新增一筆紀錄</Text>
+        <View style={styles.inputRow}>
+          <View style={styles.inputField}>
+            <Text style={styles.inputLabel}>收縮壓</Text>
+            <View style={styles.inputValueRow}>
+              <TextInput
+                style={styles.inputControl}
+                placeholder="120"
+                keyboardType="numeric"
+                value={bp.sys}
+                onChangeText={(t) => setBp({ ...bp, sys: t })}
+                blurOnSubmit={false}
+              />
+              <Text style={styles.inputUnit}>mmHg</Text>
             </View>
           </View>
-          <View style={styles.scaleWrapper}>
-            <View style={[styles.limitLine, { bottom: `${getMiniChartPositionPercent(130)}%` }]}><Text style={styles.limitText}>130</Text></View>
-            <View style={[styles.limitLine, { bottom: `${getMiniChartPositionPercent(80)}%` }]}><Text style={styles.limitText}>80</Text></View>
-
-            <View style={styles.baseLine} />
-            <View style={styles.miniTrendContainer}>
-              {dailyTrend.map((day) => {
-                const sysHeight = getMiniChartBarHeight(day.avgSys);
-                const diaHeight = getMiniChartBarHeight(day.avgDia);
-                return (
-                  <View key={day.dateKey} style={styles.miniTrendPoint}>
-                    <View style={styles.miniTrendBarGroup}>
-                      <Text style={[styles.sysBarValue, { bottom: sysHeight + 2 }]} numberOfLines={1}>{day.avgSys}</Text>
-                      <View style={[styles.miniTrendBar, { height: sysHeight }]} />
+          <View style={styles.inputField}>
+            <Text style={styles.inputLabel}>舒張壓</Text>
+            <View style={styles.inputValueRow}>
+              <TextInput
+                style={styles.inputControl}
+                placeholder="80"
+                keyboardType="numeric"
+                value={bp.dia}
+                onChangeText={(t) => setBp({ ...bp, dia: t })}
+                blurOnSubmit={false}
+              />
+              <Text style={styles.inputUnit}>mmHg</Text>
+            </View>
+          </View>
+          <View style={styles.inputField}>
+            <Text style={styles.inputLabel}>脈搏</Text>
+            <View style={styles.inputValueRow}>
+              <TextInput
+                style={styles.inputControl}
+                placeholder="72"
+                keyboardType="numeric"
+                value={bp.pulse}
+                onChangeText={(t) => setBp({ ...bp, pulse: t })}
+                blurOnSubmit={false}
+              />
+              <Text style={styles.inputUnit}>bpm</Text>
+            </View>
+          </View>
+        </View>
+        <View style={styles.moodPicker}>
+          {MOOD_OPTIONS.map((option) => {
+            const selected = bp.mood === option.value;
+            return (
+              <TouchableOpacity
+                key={option.value}
+                style={[styles.moodChip, selected && styles.moodChipSelected]}
+                onPress={() => setBp({ ...bp, mood: option.value })}
+              >
+                <Text style={styles.moodEmoji}>{option.emoji}</Text>
+                <Text style={[styles.moodLabel, selected && styles.moodLabelSelected]}>{option.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        <TouchableOpacity style={styles.saveBtn} onPress={() => autoSaveRecord(bp)}>
+          <Text style={styles.saveBtnText}>💾 儲存血壓數據</Text>
+        </TouchableOpacity>
+        <Modal
+          animationType="slide"
+          transparent
+          visible={isAbnormalModalVisible}
+          onRequestClose={() => setIsAbnormalModalVisible(false)}
+        >
+          <View style={styles.modalBackdrop}>
+            <Pressable style={styles.modalDismissArea} onPress={() => setIsAbnormalModalVisible(false)} />
+            <Animated.View style={[styles.abnormalRecordsModal, { transform: [{ translateY: abnormalModalTranslateY }] }]}>
+              <View style={styles.modalDragHandleArea} {...abnormalModalPanResponder.panHandlers}>
+                <View style={styles.modalDragHandle} />
+              </View>
+              <View style={styles.modalHeader}>
+                <View>
+                  <Text style={styles.modalTitle}>異常時間數據</Text>
+                  <Text style={styles.modalSubtitle}>最近 {abnormalDetails.length} 筆偏高或偏低紀錄</Text>
+                </View>
+                <TouchableOpacity onPress={() => setIsAbnormalModalVisible(false)} style={styles.modalCloseBtn}>
+                  <Text style={styles.modalCloseText}>關閉</Text>
+                </TouchableOpacity>
+              </View>
+              <FlatList
+                data={abnormalDetails}
+                keyExtractor={(item) => item.key}
+                contentContainerStyle={styles.abnormalRecordsList}
+                ListEmptyComponent={<Text style={styles.emptyDayText}>目前沒有偏高或偏低的單筆紀錄</Text>}
+                renderItem={({ item }) => (
+                  <View style={styles.abnormalRecordCard}>
+                    <View style={styles.abnormalRecordTop}>
+                      <View>
+                        <Text style={styles.abnormalRecordDate}>{item.date}</Text>
+                        <Text style={styles.abnormalRecordTime}>{item.time}</Text>
+                      </View>
+                      <View style={[styles.abnormalRecordLevel, { backgroundColor: item.color }]}>
+                        <Text style={styles.abnormalRecordLevelText}>{getBpLevelDisplay(item.level)}</Text>
+                      </View>
                     </View>
-                    <View style={styles.miniTrendBarGroup}>
-                      <Text style={[styles.diaBarValue, { bottom: diaHeight + 2 }]} numberOfLines={1}>{day.avgDia}</Text>
-                      <View style={[styles.miniTrendBar, styles.miniTrendBarDia, { height: diaHeight }]} />
+                    <View style={styles.abnormalRecordValueRow}>
+                      <Text style={styles.abnormalRecordValue}>{item.sys}/{item.dia}</Text>
+                      <Text style={styles.abnormalRecordUnit}>mmHg</Text>
+                      <Text style={styles.abnormalRecordPulse}>脈搏 {item.pulse || '--'} bpm</Text>
                     </View>
+                    <Text style={styles.abnormalRecordMood}>心情：{getMoodEmoji(item.mood)} {item.mood || UNMARKED_MOOD}</Text>
                   </View>
-                );
-              })}
-            </View>
+                )}
+              />
+            </Animated.View>
           </View>
-          <View style={styles.weekLabelsContainer}>
-            {dailyTrend.map((day) => (
-              <Text key={day.dateKey} style={styles.weekLabelText} numberOfLines={1}>{day.label}</Text>
-            ))}
-          </View>
-          <View style={styles.referenceLegend}>
-            <Text style={styles.referenceLegendText}>130 代表收縮壓偏高提醒，80 代表舒張壓偏高提醒</Text>
-          </View>
-        </View>
-
-        {dailyWarnings.length > 0 && (
-          <View style={styles.bpWarningBox}>
-            {dailyWarnings.map((warning) => (
-              <Text key={warning} style={styles.bpWarningText}>{warning}</Text>
-            ))}
-            <TouchableOpacity style={styles.abnormalDetailBtn} onPress={() => setIsAbnormalModalVisible(true)}>
-              <Text style={styles.abnormalDetailBtnText}>查看異常時間數據</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
-
-      <Text style={styles.actionSectionTitle}>自動匯入</Text>
-      <TouchableOpacity
-        style={[styles.ocrBtn, styles.syncBtn, isSyncing && styles.disabledAction]}
-        onPress={() => onSync(true)}
-        disabled={isSyncing}
-      >
-        <Text style={styles.saveBtnText}>
-          {isSyncing ? '⏳ 同步中...' : '🔄 從 Health Connect 同步 (OMRON)'}
-        </Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.ocrBtn} onPress={handleOCR}>
-        <Text style={styles.saveBtnText}>📸 拍照辨識血壓計</Text>
-      </TouchableOpacity>
-
-      <Text style={styles.actionSectionTitle}>新增一筆紀錄</Text>
-      <View style={styles.inputRow}>
-        <View style={styles.inputField}>
-          <Text style={styles.inputLabel}>收縮壓</Text>
-          <View style={styles.inputValueRow}>
-            <TextInput
-              style={styles.inputControl}
-              placeholder="120"
-              keyboardType="numeric"
-              value={bp.sys}
-              onChangeText={(t) => setBp({ ...bp, sys: t })}
-              blurOnSubmit={false}
-            />
-            <Text style={styles.inputUnit}>mmHg</Text>
-          </View>
-        </View>
-        <View style={styles.inputField}>
-          <Text style={styles.inputLabel}>舒張壓</Text>
-          <View style={styles.inputValueRow}>
-            <TextInput
-              style={styles.inputControl}
-              placeholder="80"
-              keyboardType="numeric"
-              value={bp.dia}
-              onChangeText={(t) => setBp({ ...bp, dia: t })}
-              blurOnSubmit={false}
-            />
-            <Text style={styles.inputUnit}>mmHg</Text>
-          </View>
-        </View>
-        <View style={styles.inputField}>
-          <Text style={styles.inputLabel}>脈搏</Text>
-          <View style={styles.inputValueRow}>
-            <TextInput
-              style={styles.inputControl}
-              placeholder="72"
-              keyboardType="numeric"
-              value={bp.pulse}
-              onChangeText={(t) => setBp({ ...bp, pulse: t })}
-              blurOnSubmit={false}
-            />
-            <Text style={styles.inputUnit}>bpm</Text>
-          </View>
-        </View>
-      </View>
-      <View style={styles.moodPicker}>
-        {MOOD_OPTIONS.map((option) => {
-          const selected = bp.mood === option.value;
-          return (
-            <TouchableOpacity
-              key={option.value}
-              style={[styles.moodChip, selected && styles.moodChipSelected]}
-              onPress={() => setBp({ ...bp, mood: option.value })}
-            >
-              <Text style={styles.moodEmoji}>{option.emoji}</Text>
-              <Text style={[styles.moodLabel, selected && styles.moodLabelSelected]}>{option.label}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-      <TouchableOpacity style={styles.saveBtn} onPress={() => autoSaveRecord(bp)}>
-        <Text style={styles.saveBtnText}>💾 儲存血壓數據</Text>
-      </TouchableOpacity>
-      <Modal
-        animationType="slide"
-        transparent
-        visible={isAbnormalModalVisible}
-        onRequestClose={() => setIsAbnormalModalVisible(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <Pressable style={styles.modalDismissArea} onPress={() => setIsAbnormalModalVisible(false)} />
-          <Animated.View style={[styles.abnormalRecordsModal, { transform: [{ translateY: abnormalModalTranslateY }] }]}>
-            <View style={styles.modalDragHandleArea} {...abnormalModalPanResponder.panHandlers}>
-              <View style={styles.modalDragHandle} />
-            </View>
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={styles.modalTitle}>異常時間數據</Text>
-                <Text style={styles.modalSubtitle}>最近 {abnormalDetails.length} 筆偏高或偏低紀錄</Text>
+        </Modal>
+        <Modal
+          animationType="fade"
+          transparent
+          visible={isLatestMoodModalVisible}
+          onRequestClose={() => setIsLatestMoodModalVisible(false)}
+        >
+          <View style={styles.centerModalBackdrop}>
+            <View style={styles.moodSelectModal}>
+              <Text style={styles.moodSelectTitle}>修改這筆心情狀態</Text>
+              <View style={styles.moodSelectGrid}>
+                {MOOD_OPTIONS.map((option) => (
+                  <TouchableOpacity
+                    key={`latest-${option.value}`}
+                    style={[
+                      styles.moodSelectChip,
+                      lastRecord?.mood === option.value && styles.moodSelectChipSelected,
+                    ]}
+                    onPress={() => updateLatestMood(option.value)}
+                  >
+                    <Text style={styles.moodEmoji}>{option.emoji}</Text>
+                    <Text style={styles.moodLabel}>{option.label}</Text>
+                  </TouchableOpacity>
+                ))}
               </View>
-              <TouchableOpacity onPress={() => setIsAbnormalModalVisible(false)} style={styles.modalCloseBtn}>
-                <Text style={styles.modalCloseText}>關閉</Text>
+              <TouchableOpacity style={styles.moodSelectCancelBtn} onPress={() => setIsLatestMoodModalVisible(false)}>
+                <Text style={styles.moodSelectCancelText}>取消</Text>
               </TouchableOpacity>
             </View>
-            <FlatList
-              data={abnormalDetails}
-              keyExtractor={(item) => item.key}
-              contentContainerStyle={styles.abnormalRecordsList}
-              ListEmptyComponent={<Text style={styles.emptyDayText}>目前沒有偏高或偏低的單筆紀錄</Text>}
-              renderItem={({ item }) => (
-                <View style={styles.abnormalRecordCard}>
-                  <View style={styles.abnormalRecordTop}>
-                    <View>
-                      <Text style={styles.abnormalRecordDate}>{item.date}</Text>
-                      <Text style={styles.abnormalRecordTime}>{item.time}</Text>
-                    </View>
-                    <View style={[styles.abnormalRecordLevel, { backgroundColor: item.color }]}>
-                      <Text style={styles.abnormalRecordLevelText}>{getBpLevelDisplay(item.level)}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.abnormalRecordValueRow}>
-                    <Text style={styles.abnormalRecordValue}>{item.sys}/{item.dia}</Text>
-                    <Text style={styles.abnormalRecordUnit}>mmHg</Text>
-                    <Text style={styles.abnormalRecordPulse}>脈搏 {item.pulse || '--'} bpm</Text>
-                  </View>
-                  <Text style={styles.abnormalRecordMood}>心情：{getMoodEmoji(item.mood)} {item.mood || UNMARKED_MOOD}</Text>
-                </View>
-              )}
-            />
-          </Animated.View>
-        </View>
-      </Modal>
-      <Modal
-        animationType="fade"
-        transparent
-        visible={isLatestMoodModalVisible}
-        onRequestClose={() => setIsLatestMoodModalVisible(false)}
-      >
-        <View style={styles.centerModalBackdrop}>
-          <View style={styles.moodSelectModal}>
-            <Text style={styles.moodSelectTitle}>修改這筆心情狀態</Text>
-            <View style={styles.moodSelectGrid}>
-              {MOOD_OPTIONS.map((option) => (
-                <TouchableOpacity
-                  key={`latest-${option.value}`}
-                  style={[
-                    styles.moodSelectChip,
-                    lastRecord?.mood === option.value && styles.moodSelectChipSelected,
-                  ]}
-                  onPress={() => updateLatestMood(option.value)}
-                >
-                  <Text style={styles.moodEmoji}>{option.emoji}</Text>
-                  <Text style={styles.moodLabel}>{option.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <TouchableOpacity style={styles.moodSelectCancelBtn} onPress={() => setIsLatestMoodModalVisible(false)}>
-              <Text style={styles.moodSelectCancelText}>取消</Text>
-            </TouchableOpacity>
           </View>
-        </View>
-      </Modal>
-    </ScrollView>
-  </SafeAreaView>
+        </Modal>
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
@@ -1106,106 +1146,106 @@ const TrendScreen = ({ records, healthAdvice, userId }: any) => {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.trendContent}>
-      <View style={styles.analysisCard}>
-        <Text style={styles.analysisTitle}>📊 長期血壓趨勢圖表</Text>
-        <View style={styles.segmentedControl}>
-          {HEALTH_SUMMARY_RANGES.map((range) => {
-            const selected = summaryMonths === range.months;
-            return (
-              <TouchableOpacity
-                key={range.months}
-                style={[styles.segmentButton, selected && styles.segmentButtonActive]}
-                onPress={() => setSummaryMonths(range.months)}
-              >
-                <Text style={[styles.segmentButtonText, selected && styles.segmentButtonTextActive]}>
-                  {range.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-        <View style={styles.chartFrame}>
-          <Text style={[styles.chartAxisTag, styles.chartYAxisTag]}>mmHg</Text>
-          <View style={styles.shiftedChart}>
-            <LineChart
-              data={chartData}
-              width={Dimensions.get('window').width - 50}
-              height={220}
-              chartConfig={{
-                backgroundGradientFrom: '#154360',
-                backgroundGradientTo: '#051937',
-                color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
-                labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
-                propsForDots: { r: '5', strokeWidth: '2', stroke: '#ffa726' },
-                propsForHorizontalLabels: { fontSize: 9 },
-                propsForVerticalLabels: { fontSize: 10 },
-              }}
-              bezier
-              style={styles.chartStyle}
-            />
+        <View style={styles.analysisCard}>
+          <Text style={styles.analysisTitle}>📊 長期血壓趨勢圖表</Text>
+          <View style={styles.segmentedControl}>
+            {HEALTH_SUMMARY_RANGES.map((range) => {
+              const selected = summaryMonths === range.months;
+              return (
+                <TouchableOpacity
+                  key={range.months}
+                  style={[styles.segmentButton, selected && styles.segmentButtonActive]}
+                  onPress={() => setSummaryMonths(range.months)}
+                >
+                  <Text style={[styles.segmentButtonText, selected && styles.segmentButtonTextActive]}>
+                    {range.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
-        </View>
-        <View style={styles.adviceBox}>
-          <Text style={styles.adviceText}>{healthAdvice}</Text>
-        </View>
-        {hasPulseData && (
-          <View style={styles.pulseSummaryBox}>
-            <View style={styles.pulseSummaryItem}>
-              <Text style={styles.pulseSummaryLabel}>區間平均脈搏</Text>
-              <Text style={styles.pulseSummaryValue}>{avgPulse} bpm</Text>
-            </View>
-            <View style={styles.pulseSummaryDivider} />
-            <View style={styles.pulseSummaryItem}>
-              <Text style={styles.pulseSummaryLabel}>最近一次脈搏</Text>
-              <Text style={styles.pulseSummaryValue}>{latestPulse} bpm</Text>
+          <View style={styles.chartFrame}>
+            <Text style={[styles.chartAxisTag, styles.chartYAxisTag]}>mmHg</Text>
+            <View style={styles.shiftedChart}>
+              <LineChart
+                data={chartData}
+                width={Dimensions.get('window').width - 50}
+                height={220}
+                chartConfig={{
+                  backgroundGradientFrom: '#154360',
+                  backgroundGradientTo: '#051937',
+                  color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
+                  labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
+                  propsForDots: { r: '5', strokeWidth: '2', stroke: '#ffa726' },
+                  propsForHorizontalLabels: { fontSize: 9 },
+                  propsForVerticalLabels: { fontSize: 10 },
+                }}
+                bezier
+                style={styles.chartStyle}
+              />
             </View>
           </View>
-        )}
-        <View style={styles.macroSummaryBox}>
-          <Text style={styles.macroSummaryTitle}>📋 過去 {summaryMonths} 個月身心健康彙總報告</Text>
-          <Text style={styles.macroSummaryMeta}>
-            統計 {healthSummary.totalDays} 個有紀錄天數，圖表以每日平均抽樣呈現，避免半年資料造成卡頓。
-            {summarySource === 'backend' ? '資料由後端彙總。' : '目前使用本機備援彙總。'}
-          </Text>
-          <View style={styles.macroSummaryRow}>
-            <View style={[styles.macroSummaryDot, styles.macroSummaryDotDanger]} />
-            <Text style={styles.macroSummaryText}>高血壓（危險）天數：{healthSummary.danger.days} 天（{healthSummary.danger.percent}%）</Text>
+          <View style={styles.adviceBox}>
+            <Text style={styles.adviceText}>{healthAdvice}</Text>
           </View>
-          <View style={styles.macroSummaryRow}>
-            <View style={[styles.macroSummaryDot, styles.macroSummaryDotWarning]} />
-            <Text style={styles.macroSummaryText}>血壓前期/警告天數：{healthSummary.warning.days} 天（{healthSummary.warning.percent}%）</Text>
-          </View>
-          <View style={styles.macroSummaryRow}>
-            <View style={[styles.macroSummaryDot, styles.macroSummaryDotNormal]} />
-            <Text style={styles.macroSummaryText}>正常天數：{healthSummary.normal.days} 天（{healthSummary.normal.percent}%）</Text>
-          </View>
-          <Text style={styles.macroSummaryObservation}>週期性觀察：{healthSummary.periodicObservation}</Text>
-        </View>
-        <View style={styles.moodAnalysisBox}>
-          <Text style={styles.moodAnalysisTitle}>血壓與心理狀態關聯性分析</Text>
-          <Text style={styles.analysisLabel}>觀察</Text>
-          <Text style={styles.moodAnalysisText}>{moodStressAnalysis}</Text>
-          <Text style={styles.analysisLabel}>來源</Text>
-          <Text style={styles.moodSourceText}>
-            <Text style={styles.moodSourceLink} onPress={openMoodAnalysisSource}>
-              American Heart Association 壓力與血壓衛教
+          {hasPulseData && (
+            <View style={styles.pulseSummaryBox}>
+              <View style={styles.pulseSummaryItem}>
+                <Text style={styles.pulseSummaryLabel}>區間平均脈搏</Text>
+                <Text style={styles.pulseSummaryValue}>{avgPulse} bpm</Text>
+              </View>
+              <View style={styles.pulseSummaryDivider} />
+              <View style={styles.pulseSummaryItem}>
+                <Text style={styles.pulseSummaryLabel}>最近一次脈搏</Text>
+                <Text style={styles.pulseSummaryValue}>{latestPulse} bpm</Text>
+              </View>
+            </View>
+          )}
+          <View style={styles.macroSummaryBox}>
+            <Text style={styles.macroSummaryTitle}>📋 過去 {summaryMonths} 個月身心健康彙總報告</Text>
+            <Text style={styles.macroSummaryMeta}>
+              統計 {healthSummary.totalDays} 個有紀錄天數，圖表以每日平均抽樣呈現，避免半年資料造成卡頓。
+              {summarySource === 'backend' ? '資料由後端彙總。' : '目前使用本機備援彙總。'}
             </Text>
-            ；交感神經壓力反應可能使心跳加快、血管收縮並短暫升高血壓。本分析僅供參考，不能取代醫療診斷。
-          </Text>
-        </View>
-        <View style={styles.pulseAnalysisBox}>
-          <Text style={styles.pulseAnalysisTitle}>脈搏與身心調節分析</Text>
-          <Text style={styles.analysisLabel}>觀察</Text>
-          <Text style={styles.pulseAnalysisText}>{pulseMoodAnalysis}</Text>
-          <Text style={styles.analysisLabel}>來源</Text>
-          <Text style={styles.pulseSourceText}>
-            <Text style={styles.pulseSourceLink} onPress={openPulseAnalysisSource}>
-              Harvard Health Publishing 壓力反應指南
+            <View style={styles.macroSummaryRow}>
+              <View style={[styles.macroSummaryDot, styles.macroSummaryDotDanger]} />
+              <Text style={styles.macroSummaryText}>高血壓（危險）天數：{healthSummary.danger.days} 天（{healthSummary.danger.percent}%）</Text>
+            </View>
+            <View style={styles.macroSummaryRow}>
+              <View style={[styles.macroSummaryDot, styles.macroSummaryDotWarning]} />
+              <Text style={styles.macroSummaryText}>血壓前期/警告天數：{healthSummary.warning.days} 天（{healthSummary.warning.percent}%）</Text>
+            </View>
+            <View style={styles.macroSummaryRow}>
+              <View style={[styles.macroSummaryDot, styles.macroSummaryDotNormal]} />
+              <Text style={styles.macroSummaryText}>正常天數：{healthSummary.normal.days} 天（{healthSummary.normal.percent}%）</Text>
+            </View>
+            <Text style={styles.macroSummaryObservation}>週期性觀察：{healthSummary.periodicObservation}</Text>
+          </View>
+          <View style={styles.moodAnalysisBox}>
+            <Text style={styles.moodAnalysisTitle}>血壓與心理狀態關聯性分析</Text>
+            <Text style={styles.analysisLabel}>觀察</Text>
+            <Text style={styles.moodAnalysisText}>{moodStressAnalysis}</Text>
+            <Text style={styles.analysisLabel}>來源</Text>
+            <Text style={styles.moodSourceText}>
+              <Text style={styles.moodSourceLink} onPress={openMoodAnalysisSource}>
+                American Heart Association 壓力與血壓衛教
+              </Text>
+              ；交感神經壓力反應可能使心跳加快、血管收縮並短暫升高血壓。本分析僅供參考，不能取代醫療診斷。
             </Text>
-            ；當心理面臨焦慮時，交感神經刺激會促使心跳加快（BPM上升）以應對外在威脅。本分析非醫療診斷，若持續心悸請諮詢專業醫師。
-          </Text>
+          </View>
+          <View style={styles.pulseAnalysisBox}>
+            <Text style={styles.pulseAnalysisTitle}>脈搏與身心調節分析</Text>
+            <Text style={styles.analysisLabel}>觀察</Text>
+            <Text style={styles.pulseAnalysisText}>{pulseMoodAnalysis}</Text>
+            <Text style={styles.analysisLabel}>來源</Text>
+            <Text style={styles.pulseSourceText}>
+              <Text style={styles.pulseSourceLink} onPress={openPulseAnalysisSource}>
+                Harvard Health Publishing 壓力反應指南
+              </Text>
+              ；當心理面臨焦慮時，交感神經刺激會促使心跳加快（BPM上升）以應對外在威脅。本分析非醫療診斷，若持續心悸請諮詢專業醫師。
+            </Text>
+          </View>
         </View>
-      </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -1398,6 +1438,8 @@ const App = () => {
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [selectedRole, setSelectedRole] = useState<'family' | 'caregiver' | 'elderly' | null>(null);
+  const [carePairCode, setCarePairCode] = useState('');
   const [bp, setBp] = useState<{ sys: string; dia: string; pulse: string; mood: Mood }>({
     sys: '',
     dia: '',
@@ -1432,11 +1474,13 @@ const App = () => {
 
   const ensureHealthConnectReady = useCallback(async () => {
     if (Platform.OS !== 'android') return false;
+    const healthConnect = getAndroidHealthConnect();
+    if (!healthConnect) return false;
 
     if (!healthInitPromiseRef.current) {
       healthInitPromiseRef.current = (async () => {
         await waitForNativeActivityReady();
-        const initialized = await initialize();
+        const initialized = await healthConnect.initialize();
         if (isMountedRef.current) {
           setIsHealthAvailable(Boolean(initialized));
         }
@@ -1457,6 +1501,35 @@ const App = () => {
     return subscriber;
   }, []);
 
+  useEffect(() => {
+    if (!user) {
+      setSelectedRole(null);
+      return;
+    }
+    // 不從 AsyncStorage 還原上次身分，讓登入後每次都重新選擇身份
+    setSelectedRole(null);
+  }, [user]);
+
+  const handleChooseRole = async (role: 'family' | 'caregiver' | 'elderly') => {
+    try {
+      if (role === 'family' || role === 'caregiver') {
+        const pairedElderlyId = carePairCode.trim();
+        if (!pairedElderlyId) {
+          Alert.alert('需要配對碼', '請輸入受顧者手機上顯示的配對碼，再進入家屬或看護端。');
+          return;
+        }
+        await AsyncStorage.setItem('elderlyId', pairedElderlyId);
+        await AsyncStorage.setItem('monitoredElderlyId', pairedElderlyId);
+      } else {
+        await AsyncStorage.removeItem('elderlyId');
+        await AsyncStorage.removeItem('monitoredElderlyId');
+      }
+    } catch {
+      // ignore
+    }
+    setSelectedRole(role);
+  };
+
   // 2. Health Connect 初始化
   //    initialize() 只確認服務存在，不代表原生 launcher 已就緒。
   //    原生 launcher (requestPermission) 的初始化是在 MainActivity.onCreate()
@@ -1473,7 +1546,7 @@ const App = () => {
           console.warn('[HealthConnect] 初始化回傳 false，裝置可能不支援');
         }
       } catch (e) {
-        console.error('[HealthConnect] 初始化例外：', e);
+        console.warn('[HealthConnect] 初始化例外：', e);
       }
     };
     initHealth();
@@ -1505,7 +1578,7 @@ const App = () => {
     if (avgSys >= 180 || avgDia >= 120) setHealthAdvice('🚨 警示：近期平均值已達超高血壓提醒範圍，請儘快與醫師聯絡評估。');
     else if (avgSys >= 140) setHealthAdvice('⚠️ 警示：近期平均血壓偏高（高血壓）。請諮詢醫師。');
     else if (avgSys >= 120) setHealthAdvice('🔔 提醒：血壓處於「前期」範圍，建議留意飲食與作息。');
-    else                    setHealthAdvice('✅ 正常：血壓控制良好，請繼續保持！');
+    else setHealthAdvice('✅ 正常：血壓控制良好，請繼續保持！');
   }, []);
 
   // 4. 載入本地 + 雲端數據
@@ -1521,7 +1594,7 @@ const App = () => {
           setRecords(local);
           analyzeHealth(local);
         }
-      } catch {}
+      } catch { }
       try {
         const remoteRecords = await fetchRemoteBpRecords(user.uid);
         const remote: BpRecord[] = mergeRecordsPreservingLocalMood(remoteRecords, local);
@@ -1541,6 +1614,12 @@ const App = () => {
   const syncHealthData = useCallback(async (isManual = false) => {
     // 防止重複點擊
     if (isSyncing) return;
+    const healthConnect = getAndroidHealthConnect();
+
+    if (!healthConnect) {
+      if (isManual) Alert.alert('iOS 暫不支援', 'Health Connect 是 Android 專用服務；iPhone 版本會改由 Apple HealthKit 串接。');
+      return;
+    }
 
     // Health Connect 服務未就緒
     if (!isHealthAvailable && !(await ensureHealthConnectReady())) {
@@ -1565,7 +1644,7 @@ const App = () => {
       // ── 步驟 A：先檢查現有權限，避免每次都彈出授權視窗 ──
       let alreadyGranted = false;
       try {
-        const granted = await getGrantedPermissions();
+        const granted = await healthConnect.getGrantedPermissions();
         const grantedReadTypes = new Set(
           Array.isArray(granted)
             ? granted.filter((p: any) => p.accessType === 'read').map((p: any) => p.recordType)
@@ -1581,7 +1660,7 @@ const App = () => {
       if (!alreadyGranted) {
         console.log('[HealthConnect] 發起授權請求...');
         await waitForNativeActivityReady();
-        const result = await requestPermission([...HEALTH_CONNECT_PERMISSIONS]);
+        const result = await healthConnect.requestPermission([...HEALTH_CONNECT_PERMISSIONS]);
         if (!Array.isArray(result) || result.length === 0) {
           if (isManual) Alert.alert('權限不足', '請在「健康連結」App 中授予血壓讀取權限\n\n設定 → 應用程式 → 健康連結 → 應用程式權限');
           return;
@@ -1597,7 +1676,7 @@ const App = () => {
 
       console.log(`[HealthConnect] 讀取 ${startTime.toISOString()} ~ ${endTime.toISOString()}`);
 
-      const result = await readRecords('BloodPressure', {
+      const result = await healthConnect.readRecords('BloodPressure', {
         timeRangeFilter: {
           operator: 'between',
           startTime: startTime.toISOString(),
@@ -1609,7 +1688,7 @@ const App = () => {
       let heartRateRecords: any[] = [];
 
       try {
-        const heartRateResult = await readRecords('HeartRate', {
+        const heartRateResult = await healthConnect.readRecords('HeartRate', {
           timeRangeFilter: {
             operator: 'between',
             startTime: startTime.toISOString(),
@@ -1664,6 +1743,7 @@ const App = () => {
       const existingKeys = new Set(baselineRecords.flatMap(getBpRecordIdentityKeys));
       let updatedExistingRecords = baselineRecords;
       let pulseBackfillCount = 0;
+      const pulseBackfilledRecords: BpRecord[] = [];
       const toSave: BpRecord[] = [];
 
       for (const record of newRecords) {
@@ -1677,7 +1757,9 @@ const App = () => {
               const isSameRecord = identity.keys.some((key) => existingKeysForRecord.includes(key));
               if (!isSameRecord || existingRecord.pulse) return existingRecord;
               didBackfillPulse = true;
-              return { ...existingRecord, pulse: record.pulse };
+              const patchedRecord = { ...existingRecord, pulse: record.pulse };
+              pulseBackfilledRecords.push(patchedRecord);
+              return patchedRecord;
             });
             if (didBackfillPulse) pulseBackfillCount += 1;
           }
@@ -1706,8 +1788,8 @@ const App = () => {
       }
 
       // 上傳雲端（逐筆，失敗不影響主流程）
-      for (const rec of toSave) {
-        try { await axios.post(API_URL, rec); } catch {}
+      for (const rec of [...toSave, ...pulseBackfilledRecords]) {
+        try { await axios.post(API_URL, rec); } catch { }
       }
 
       const unmarkedImportedRecords = toSave.filter((record) => !isMarkedMood(record.mood));
@@ -1727,7 +1809,7 @@ const App = () => {
       );
 
     } catch (e: any) {
-      console.error('[HealthConnect] 同步錯誤：', e);
+      console.warn('[HealthConnect] 同步錯誤：', e);
       if (isManual) {
         Alert.alert(
           '同步失敗',
@@ -1866,6 +1948,7 @@ const App = () => {
   const renderMeasureScreen = useCallback(() => (
     <HomeScreen
       user={user}
+      pairCode={user?.uid}
       bp={bp}
       setBp={setBp}
       handleOCR={handleOCR}
@@ -1875,6 +1958,7 @@ const App = () => {
       onSync={syncHealthData}
       isSyncing={isSyncing || isCloudLoading}
       onUpdateMood={updateRecordMood}
+      onResetRole={() => setSelectedRole(null)}
     />
   ), [autoSaveRecord, bp, handleOCR, isCloudLoading, isSyncing, records, syncHealthData, updateRecordMood, user]);
 
@@ -1936,6 +2020,48 @@ const App = () => {
     );
   }
 
+  if (user && !selectedRole) {
+    return (
+      <SafeAreaView style={styles.roleSelectContainer}>
+        <Text style={styles.roleSelectTitle}>請選擇您要使用的身分</Text>
+        <TextInput
+          style={styles.pairCodeInput}
+          placeholder="家屬/看護請輸入受顧者配對碼"
+          value={carePairCode}
+          onChangeText={setCarePairCode}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <TouchableOpacity
+          style={styles.roleButton}
+          onPress={() => handleChooseRole('elderly')}
+        >
+          <Text style={styles.roleButtonText}>我是受顧者</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.roleButton}
+          onPress={() => handleChooseRole('family')}
+        >
+          <Text style={styles.roleButtonText}>我是家屬</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.roleButton}
+          onPress={() => handleChooseRole('caregiver')}
+        >
+          <Text style={styles.roleButtonText}>我是看護</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
+  if (selectedRole === 'family') {
+    return <FamilyScreen onResetRole={() => setSelectedRole(null)} />;
+  }
+
+  if (selectedRole === 'caregiver') {
+    return <CaregiverScreen onResetRole={() => setSelectedRole(null)} />;
+  }
+
   // ── 主畫面 ──
   return (
     <NavigationContainer>
@@ -1989,13 +2115,25 @@ const App = () => {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f0f2f5' },
+  container: { flex: 1, backgroundColor: '#f6f8fb' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loginContainer: { flex: 1, justifyContent: 'center', padding: 30, backgroundColor: '#fff' },
   loginTitle: { fontSize: 24, fontWeight: 'bold', textAlign: 'center', marginBottom: 30, color: '#154360' },
   loginInput: { backgroundColor: '#f5f5f5', padding: 15, borderRadius: 10, marginBottom: 15, borderWidth: 1, borderColor: '#eee' },
   loginBtn: { backgroundColor: '#154360', padding: 15, borderRadius: 10, alignItems: 'center', marginBottom: 10 },
   registerBtn: { backgroundColor: '#52c41a' },
+  roleSelectContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: '#f6f8fb' },
+  roleSelectTitle: { fontSize: 22, fontWeight: '900', color: '#154360', marginBottom: 28, textAlign: 'center' },
+  pairCodeCard: { width: '100%', backgroundColor: '#f4f8fb', borderWidth: 1, borderColor: '#cfe1ef', borderRadius: 12, padding: 14, marginBottom: 14 },
+  pairCodeLabel: { fontSize: 13, fontWeight: '700', color: '#154360', marginBottom: 6 },
+  pairCodeRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
+  pairCodeValue: { flex: 1, fontSize: 15, fontWeight: '800', color: '#0f2f44' },
+  pairCodeCopyButton: { backgroundColor: '#154360', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 9 },
+  pairCodeCopyText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  pairCodeHint: { fontSize: 12, color: '#4f6473', lineHeight: 18 },
+  pairCodeInput: { width: '100%', backgroundColor: '#f5f5f5', padding: 14, borderRadius: 10, marginBottom: 16, borderWidth: 1, borderColor: '#d7e0e7', color: '#333' },
+  roleButton: { width: '100%', backgroundColor: '#154360', padding: 18, borderRadius: 14, alignItems: 'center', marginBottom: 16 },
+  roleButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   btnText: { color: '#fff', fontWeight: 'bold' },
   whiteSmallText: { color: '#fff', fontSize: 12 },
   tabBar: { height: 52, paddingTop: 4, paddingBottom: 4, backgroundColor: '#fff', elevation: 15 },
@@ -2003,10 +2141,16 @@ const styles = StyleSheet.create({
   hiddenTabIcon: { display: 'none' },
   headerLogoutButton: { marginRight: 15 },
   headerLogoutText: { color: '#ff4d4f', fontWeight: 'bold' },
-  header: { padding: 15, backgroundColor: 'white' },
-  title: { fontSize: 14, fontWeight: 'bold', color: '#555' },
+  header: { paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff' },
+  elderHeaderTitleBlock: { marginBottom: 10 },
+  elderHeaderTitle: { fontSize: 22, fontWeight: '900', color: '#262626', lineHeight: 28 },
+  title: { fontSize: 13, fontWeight: '800', color: '#4f6473', marginTop: 3 },
+  elderHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  elderHeaderButton: { flex: 1, backgroundColor: '#154360', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, alignItems: 'center' },
+  elderResetButton: { flex: 1.35, backgroundColor: '#8c8c8c' },
+  elderHeaderButtonText: { color: '#fff', fontSize: 13, fontWeight: '800', textAlign: 'center' },
   inputArea: { padding: 15 },
-  inputAreaContent: { paddingBottom: 84 },
+  inputAreaContent: { paddingBottom: Platform.OS === 'ios' ? 104 : 84 },
   inputRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
   input: { flex: 0.31, backgroundColor: 'white', padding: 15, borderRadius: 10, borderWidth: 1, borderColor: '#ddd', color: '#333' },
   inputField: { flex: 0.31, minHeight: 78, backgroundColor: 'white', paddingHorizontal: 10, paddingVertical: 9, borderRadius: 10, borderWidth: 1, borderColor: '#d9e6f2' },
@@ -2015,7 +2159,7 @@ const styles = StyleSheet.create({
   inputControl: { minHeight: 32, padding: 0, color: '#1f2937', fontSize: 20, fontWeight: '900' },
   inputUnit: { fontSize: 10, color: '#6b7280', fontWeight: '800' },
   actionSectionTitle: { marginBottom: 10, fontSize: 13, color: '#154360', fontWeight: '800' },
-  syncBtn: { backgroundColor: '#52c41a' },
+  syncBtn: { backgroundColor: '#154360' },
   disabledAction: { opacity: 0.6 },
   moodPicker: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
   moodChip: { flex: 1, minHeight: 54, marginHorizontal: 3, borderRadius: 10, borderWidth: 1, borderColor: '#d9d9d9', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
@@ -2024,7 +2168,7 @@ const styles = StyleSheet.create({
   moodLabel: { fontSize: 11, color: '#595959', fontWeight: '700' },
   moodLabelSelected: { color: '#0050b3' },
   ocrBtn: { backgroundColor: '#cf1322', padding: 18, borderRadius: 12, alignItems: 'center', marginBottom: 20 },
-  saveBtn: { backgroundColor: '#1890ff', padding: 15, borderRadius: 10, alignItems: 'center' },
+  saveBtn: { backgroundColor: '#154360', padding: 15, borderRadius: 10, alignItems: 'center' },
   saveBtnText: { color: 'white', fontWeight: 'bold' },
   sectionTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: '#333' },
   latestCard: { backgroundColor: '#fff', borderRadius: 15, padding: 16, marginBottom: 20, elevation: 3, overflow: 'hidden' },
@@ -2064,7 +2208,7 @@ const styles = StyleSheet.create({
   bpWarningText: { color: '#ad4e00', fontSize: 12, fontWeight: '700', marginBottom: 3 },
   abnormalDetailBtn: { marginTop: 8, alignSelf: 'flex-start', backgroundColor: '#ad4e00', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 },
   abnormalDetailBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  abnormalRecordsModal: { maxHeight: '82%', backgroundColor: '#f0f2f5', borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingTop: 14, paddingBottom: 20 },
+  abnormalRecordsModal: { maxHeight: '82%', backgroundColor: '#f6f8fb', borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingTop: 14, paddingBottom: 20 },
   abnormalRecordsList: { paddingBottom: 12 },
   abnormalRecordCard: { marginHorizontal: 15, marginBottom: 10, padding: 14, borderRadius: 12, backgroundColor: '#fff', borderWidth: 1, borderColor: '#f0f0f0' },
   abnormalRecordTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
@@ -2152,7 +2296,7 @@ const styles = StyleSheet.create({
   moodSelectChipSelected: { borderColor: '#1890ff', backgroundColor: '#e6f7ff' },
   moodSelectCancelBtn: { marginTop: 4, alignItems: 'center', padding: 10 },
   moodSelectCancelText: { color: '#8c8c8c', fontWeight: '800' },
-  dayRecordsModal: { maxHeight: '82%', backgroundColor: '#f0f2f5', borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingTop: 14, paddingBottom: 24 },
+  dayRecordsModal: { maxHeight: '82%', backgroundColor: '#f6f8fb', borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingTop: 14, paddingBottom: 24 },
   modalDragHandleArea: { alignItems: 'center', paddingTop: 2, paddingBottom: 8 },
   modalDragHandle: { width: 44, height: 5, borderRadius: 999, backgroundColor: '#bfbfbf', marginBottom: 5 },
   modalDragHint: { fontSize: 11, color: '#8c8c8c', fontWeight: '700' },

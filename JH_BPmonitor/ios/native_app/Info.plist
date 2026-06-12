@@ -34,8 +34,16 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>本 App 需要使用藍牙連線歐姆龍血壓計，協助長輩同步血壓與脈搏資料，讓本人、家屬或看護能即時查看健康紀錄。</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>本 App 需要使用藍牙與血壓計配對，以讀取長輩量測的血壓與脈搏資料。</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>本 App 需要讀取 Apple 健康中的血壓、脈搏與相關健康紀錄，用於建立長輩的血壓趨勢、每日監控與身心狀態分析。</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>本 App 需要將長輩量測或看護協助記錄的血壓、脈搏與身心狀態資料寫入 Apple 健康，方便長期保存與後續照護追蹤。</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string></string>
+	<string>本 App 僅在需要協助藍牙裝置配對或健康資料同步時使用定位相關權限，不會追蹤長輩位置。</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIRequiredDeviceCapabilities</key>
