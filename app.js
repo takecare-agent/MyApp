@@ -12,6 +12,10 @@ const MONGO_URI = 'mongodb://localhost:27017/demo';
 const fs = require('fs');
 const axios = require('axios');
 
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const geminiModel = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
 const GOOGLE_API_KEY = 'AIzaSyCNuHziWnihp-KqAKENHcqym8uCiJvDwhM';
 
 // 語音辨識 API
@@ -72,6 +76,17 @@ const DANGER_KEYWORDS = [
 ];
 
 // --- Schemas ---
+const ChatMessageSchema = new mongoose.Schema({
+  senderUsername: String,
+  targetUsername: String,
+  originalText: String,
+  translatedText: String,
+  sourceLang: String,
+  targetLang: String,
+  timestamp: { type: Date, default: Date.now, expires: '30d' }
+});
+const ChatMessage = mongoose.model('ChatMessage', ChatMessageSchema);
+
 const UserSchema = new mongoose.Schema({
     username: { type: String, required: true, unique: true },
     password: { type: String, required: true },
@@ -195,10 +210,24 @@ app.post('/translate', async (req, res) => {
       vi: 'vi', tl: 'tl', th: 'th'
     };
     const targetLang = langMap[req.body.targetLang] || req.body.targetLang;
-    const result = await translate(req.body.text, { to: targetLang, forceBatch: false });
+    const sourceText = req.body.text;
+
+    // 先用 Gemini 潤飾中文語氣
+    const prompt = `以下是一句照護用語，請在不改變意思的情況下，讓語氣變得更親切溫和，適合對長輩說話。只需要回傳修改後的句子，不需要任何解釋。
+
+原句：${sourceText}`;
+
+    const geminiResult = await geminiModel.generateContent(prompt);
+    const softText = geminiResult.response.text().trim();
+    console.log('Gemini 潤飾結果:', softText);
+
+    // 再翻譯成看護語言
+    const result = await translate(softText, { to: targetLang, forceBatch: false });
+    console.log('翻譯結果:', result.text);
+
     res.json({ translatedText: result.text });
   } catch (error) {
-    console.log('翻譯 API 發生錯誤:', error.message);
+    console.log('翻譯錯誤:', error.message);
     res.json({ translatedText: req.body.text });
   }
 });
@@ -286,7 +315,92 @@ app.post('/update-lang', async (req, res) => {
     } catch (e) { res.json({ success: false }); }
 });
 
+const http = require('http');
+const { Server } = require('socket.io');
+
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: { origin: '*' }
+});
+
+// 儲存房間連線
+const rooms = {};
+
+io.on('connection', (socket) => {
+  console.log('新連線:', socket.id);
+
+  // 加入聊天室（依綁定關係）
+  socket.on('join_room', ({ username }) => {
+    socket.join(username);
+    rooms[socket.id] = username;
+    console.log(`${username} 加入房間`);
+  });
+
+  // 收到訊息後翻譯並廣播
+  socket.on('send_message', async ({ senderUsername, targetUsername, text, sourceLang, targetLang }) => {
+  try {
+    // 查詢接收者的語言設定
+    const targetUser = await User.findOne({ username: targetUsername });
+    const targetUserLang = targetUser?.lang || 'zh';
+    
+    const langMap = {
+      zh: 'zh-TW', en: 'en', id: 'id',
+      vi: 'vi', tl: 'tl', th: 'th'
+    };
+    const to = langMap[targetUserLang] || 'zh-TW';
+    console.log('接收者語言:', targetUserLang, '翻譯到:', to);
+    
+    const result = await translate(text, { to, forceBatch: false });
+    const translatedText = result.text;
+    console.log('翻譯結果:', translatedText);
+
+    const message = {
+      senderUsername,
+      originalText: text,
+      translatedText,
+      sourceLang,
+      targetLang: targetUserLang,
+      timestamp: new Date().toISOString(),
+    };
+
+    io.to(senderUsername).emit('new_message', { ...message, displayText: text });
+    io.to(targetUsername).emit('new_message', { ...message, displayText: translatedText });
+
+    const newMsg = new ChatMessage({
+      senderUsername,
+      targetUsername,
+      originalText: text,
+      translatedText,
+      sourceLang,
+      targetLang: targetUserLang,
+    });
+    await newMsg.save();
+
+  } catch (e) {
+    console.log('訊息處理錯誤:', e.message);
+  }
+});
+
+  socket.on('disconnect', () => {
+    delete rooms[socket.id];
+  });
+});
+
+app.get('/chat-history', async (req, res) => {
+  try {
+    const { username, partnerUsername } = req.query;
+    const messages = await ChatMessage.find({
+      $or: [
+        { senderUsername: username, targetUsername: partnerUsername },
+        { senderUsername: partnerUsername, targetUsername: username }
+      ]
+    }).sort({ timestamp: 1 }).limit(50);
+    res.json(messages);
+  } catch (e) { res.json([]); }
+});
+// 把 app.listen 換成 server.listen
+server.listen(process.env.PORT || 5001, '0.0.0.0', () => console.log('🚀 Server 運行中'));
 // 自訂語句 API (保持不變，省略細節以省版面，請保留你原本的 app.get/post/delete('/custom-phrases') 邏輯)
 // ... (請將原本的 /custom-phrases 三個路由貼在這裡)
 
-app.listen(process.env.PORT || 5001, '0.0.0.0', () => console.log(`🚀 Server 運行中`));
+//app.listen(process.env.PORT || 5001, '0.0.0.0', () => console.log(`🚀 Server 運行中`));
