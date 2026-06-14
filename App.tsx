@@ -12,7 +12,7 @@ import { Picker } from '@react-native-picker/picker';
 import * as Speech from 'expo-speech';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
-const API_BASE = 'http://192.168.0.117:5001';
+const API_BASE = 'http://10.122.72.229:5001';
 
 interface User {
   username: string; name: string; role: string; lang: string;
@@ -77,7 +77,7 @@ const UI_TEXT = {
   en: {
     cgTitle: '⚠️ Care Assistant', select: '--- Tap to select ---', result: 'Chinese Translation', replay: '🔊 Replay Audio', familyNote: '--- Family Notes ---',
     voiceInput: 'Voice Input', listening: 'Listening...', tapToStop: 'Tap to stop recording', processing: 'Processing...', recognized: 'Recognized: ', tapToStart: 'Tap mic to start speaking',
-    fmTitle: '👨‍👩‍👧 Family Portal', addPhrase: '➕ Add Custom Phrase', inputPh: 'Enter new phrase...', addBtn: 'Add', logsTitle: '⚠️ Danger Logs (7 Days)', refresh: 'Refresh',
+    fmTitle: ' Family Portal', addPhrase: '➕ Add Custom Phrase', inputPh: 'Enter new phrase...', addBtn: 'Add', logsTitle: '⚠️ Danger Logs (7 Days)', refresh: 'Refresh',
     setMenu: '⚙️ Settings', accInfo: '👤 Account Info', myCode: 'My Bind Code: ', boundTo: 'Bound to: ',
     bindSec: '🔗 Bind Account', bindPh: 'Enter 6-digit code...', bindBtn: 'Confirm Bind', unbindBtn: '❌ Unbind',
     langSec: '🌐 App Language', logout: '🚪 Logout'
@@ -85,7 +85,7 @@ const UI_TEXT = {
   zh: {
     cgTitle: '⚠️ 照護助手', select: '--- 請點擊選擇 ---', result: '中文翻譯', replay: '🔊 重新朗讀', familyNote: '--- 家屬自訂語句 ---',
     voiceInput: '語音輸入', listening: '聆聽中...', tapToStop: '點擊停止按鈕結束錄音', processing: '辨識中，請稍候...', recognized: '已識別：', tapToStart: '點擊麥克風開始語音輸入',
-    fmTitle: '👨‍👩‍👧 家屬管理端', addPhrase: '➕ 自訂新增語句', inputPh: '輸入新語句...', addBtn: '新增', logsTitle: '⚠️ 危險語句紀錄', refresh: '重新整理',
+    fmTitle: ' 家屬管理端', addPhrase: '➕ 自訂新增語句', inputPh: '輸入新語句...', addBtn: '新增', logsTitle: '⚠️ 危險語句紀錄', refresh: '重新整理',
     setMenu: '⚙️ 系統設定', accInfo: '👤 帳號資訊', myCode: '我的綁定碼：', boundTo: '目前綁定對象：',
     bindSec: '🔗 綁定家屬/看護帳號', bindPh: '請輸入對方 6 位數綁定碼...', bindBtn: '確認綁定', unbindBtn: '❌ 解除綁定',
     langSec: '🌐 介面語言 (App Language)', logout: '🚪 登出帳號'
@@ -93,7 +93,7 @@ const UI_TEXT = {
   id: {
     cgTitle: '⚠️ Asisten Perawat', select: '--- Ketuk untuk memilih ---', result: 'Terjemahan Mandarin', replay: '🔊 Putar Ulang', familyNote: '--- Catatan Keluarga ---',
     voiceInput: 'Input Suara', listening: 'Mendengarkan...', tapToStop: 'Ketuk untuk berhenti', processing: 'Memproses...', recognized: 'Dikenali: ', tapToStart: 'Ketuk mikrofon untuk mulai',
-    fmTitle: '👨‍👩‍👧 Portal Keluarga', addPhrase: '➕ Tambah Kalimat', inputPh: 'Masukkan kalimat...', addBtn: 'Tambah', logsTitle: '⚠️ Log Bahaya (7 Hari)', refresh: 'Segarkan',
+    fmTitle: ' Portal Keluarga', addPhrase: '➕ Tambah Kalimat', inputPh: 'Masukkan kalimat...', addBtn: 'Tambah', logsTitle: '⚠️ Log Bahaya (7 Hari)', refresh: 'Segarkan',
     setMenu: '⚙️ Pengaturan', accInfo: '👤 Info Akun', myCode: 'Kode Saya: ', boundTo: 'Terikat dengan: ',
     bindSec: '🔗 Ikat Akun', bindPh: 'Masukkan 6 digit kode...', bindBtn: 'Konfirmasi', unbindBtn: '❌ Lepaskan Ikatan',
     langSec: '🌐 Bahasa Aplikasi', logout: '🚪 Keluar'
@@ -101,7 +101,7 @@ const UI_TEXT = {
   vi: {
     cgTitle: '⚠️ Trợ lý Chăm sóc', select: '--- Nhấn để chọn ---', result: 'Bản dịch tiếng Trung', replay: '🔊 Phát lại', familyNote: '--- Ghi chú Gia đình ---',
     voiceInput: 'Nhập giọng nói', listening: 'Đang nghe...', tapToStop: 'Nhấn để dừng', processing: 'Đang xử lý...', recognized: 'Đã nhận: ', tapToStart: 'Nhấn mic để bắt đầu',
-    fmTitle: '👨‍👩‍👧 Cổng Gia đình', addPhrase: '➕ Thêm câu', inputPh: 'Nhập câu mới...', addBtn: 'Thêm', logsTitle: '⚠️ Nhật ký Nguy hiểm (7 ngày)', refresh: 'Làm mới',
+    fmTitle: ' Cổng Gia đình', addPhrase: '➕ Thêm câu', inputPh: 'Nhập câu mới...', addBtn: 'Thêm', logsTitle: '⚠️ Nhật ký Nguy hiểm (7 ngày)', refresh: 'Làm mới',
     setMenu: '⚙️ Cài đặt', accInfo: '👤 Thông tin tài khoản', myCode: 'Mã của tôi: ', boundTo: 'Liên kết với: ',
     bindSec: '🔗 Liên kết Tài khoản', bindPh: 'Nhập mã 6 chữ số...', bindBtn: 'Xác nhận', unbindBtn: '❌ Hủy liên kết',
     langSec: '🌐 Ngôn ngữ Ứng dụng', logout: '🚪 Đăng xuất'
@@ -109,7 +109,7 @@ const UI_TEXT = {
   tl: {
     cgTitle: '⚠️ Katulong sa Pag-aalaga', select: '--- I-tap para pumili ---', result: 'Salin sa Tsino', replay: '🔊 I-replay', familyNote: '--- Mga Tala ng Pamilya ---',
     voiceInput: 'Voice Input', listening: 'Nakikinig...', tapToStop: 'I-tap para huminto', processing: 'Pinoproseso...', recognized: 'Nakilala: ', tapToStart: 'I-tap ang mic para magsimula',
-    fmTitle: '👨‍👩‍👧 Portal ng Pamilya', addPhrase: '➕ Magdagdag ng Parirala', inputPh: 'Ipasok ang parirala...', addBtn: 'Idagdag', logsTitle: '⚠️ Mga Log ng Panganib (7 Araw)', refresh: 'I-refresh',
+    fmTitle: ' Portal ng Pamilya', addPhrase: '➕ Magdagdag ng Parirala', inputPh: 'Ipasok ang parirala...', addBtn: 'Idagdag', logsTitle: '⚠️ Mga Log ng Panganib (7 Araw)', refresh: 'I-refresh',
     setMenu: '⚙️ Mga Setting', accInfo: '👤 Impormasyon ng Account', myCode: 'Aking Code: ', boundTo: 'Nakakabit sa: ',
     bindSec: '🔗 I-bind ang Account', bindPh: 'Ilagay ang 6-digit na code...', bindBtn: 'Kumpirmahin', unbindBtn: '❌ I-unbind',
     langSec: '🌐 Wika ng App', logout: '🚪 Mag-logout'
@@ -117,7 +117,7 @@ const UI_TEXT = {
   th: {
     cgTitle: '⚠️ ผู้ช่วยดูแล', select: '--- แตะเพื่อเลือก ---', result: 'แปลภาษาจีน', replay: '🔊 เล่นเสียงซ้ำ', familyNote: '--- บันทึกจากครอบครัว ---',
     voiceInput: 'การป้อนเสียง', listening: 'กำลังฟัง...', tapToStop: 'แตะเพื่อหยุด', processing: 'กำลังประมวลผล...', recognized: 'รู้จักแล้ว: ', tapToStart: 'แตะไมค์เพื่อเริ่ม',
-    fmTitle: '👨‍👩‍👧 พอร์ทัลครอบครัว', addPhrase: '➕ เพิ่มวลีที่กำหนดเอง', inputPh: 'ป้อนวลีใหม่...', addBtn: 'เพิ่ม', logsTitle: '⚠️ บันทึกอันตราย (7 วัน)', refresh: 'รีเฟรช',
+    fmTitle: ' พอร์ทัลครอบครัว', addPhrase: '➕ เพิ่มวลีที่กำหนดเอง', inputPh: 'ป้อนวลีใหม่...', addBtn: 'เพิ่ม', logsTitle: '⚠️ บันทึกอันตราย (7 วัน)', refresh: 'รีเฟรช',
     setMenu: '⚙️ การตั้งค่า', accInfo: '👤 ข้อมูลบัญชี', myCode: 'รหัสของฉัน: ', boundTo: 'ผูกกับ: ',
     bindSec: '🔗 ผูกบัญชี', bindPh: 'ป้อนรหัส 6 หลัก...', bindBtn: 'ยืนยันการผูก', unbindBtn: '❌ ยกเลิกการผูก',
     langSec: '🌐 ภาษาของแอป', logout: '🚪 ออกจากระบบ'
@@ -160,7 +160,7 @@ const AuthScreen = ({ onLogin }: { onLogin: (user: User) => void }) => {
 
   return (
     <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-      <Text style={{ fontSize: 32, fontWeight: 'bold', marginBottom: 30, color: '#00c49f' }}>
+      <Text style={{ fontSize: 32, fontWeight: 'bold', marginBottom: 30, color: '#2a00c4' }}>
         {isLoginView ? ' 歡迎登入' : ' 註冊帳號'}
       </Text>
       <View style={styles.card}>
@@ -171,7 +171,7 @@ const AuthScreen = ({ onLogin }: { onLogin: (user: User) => void }) => {
             <TextInput style={styles.input} placeholderTextColor="#888" placeholder="姓名 / 稱呼" value={name} onChangeText={setName} />
             <Text style={styles.label}>選擇身分</Text>
             <View style={styles.pickerContainer}>
-              <Picker selectedValue={role} onValueChange={setRole} style={{ color: '333', backgroundColor: '#ffffff' }} dropdownIconColor="#00c49f">
+              <Picker selectedValue={role} onValueChange={setRole} style={{ color: '333', backgroundColor: '#ffffff' }} dropdownIconColor="#2a00c4">
                 <Picker.Item label=" 家屬 (Family)" value="family" />
                 <Picker.Item label=" 看護 (Caregiver)" value="caregiver" />
               </Picker>
@@ -182,7 +182,7 @@ const AuthScreen = ({ onLogin }: { onLogin: (user: User) => void }) => {
           <Text style={styles.btnText}>{isLoading ? "處理中..." : (isLoginView ? "登入" : "註冊")}</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={() => setIsLoginView(!isLoginView)} style={{ marginTop: 10 }}>
-          <Text style={{ textAlign: 'center', color: '#00c49f', fontSize: 16 }}>
+          <Text style={{ textAlign: 'center', color: '#2a00c4', fontSize: 16 }}>
             {isLoginView ? "還沒有帳號？點此註冊" : "已有帳號？點此登入"}
           </Text>
         </TouchableOpacity>
@@ -236,7 +236,7 @@ const FamilyScreen = ({ currentUser, customPhrases, setCustomPhrases, appLang }:
         </View>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
           <Text style={styles.sectionTitle}>{ui.logsTitle}</Text>
-          <TouchableOpacity onPress={fetchLogs}><Text style={{ color: '#00c49f' }}>{ui.refresh}</Text></TouchableOpacity>
+          <TouchableOpacity onPress={fetchLogs}><Text style={{ color: '#2a00c4' }}>{ui.refresh}</Text></TouchableOpacity>
         </View>
         {logs.length === 0 ? <Text style={styles.textGray}>No recent logs.</Text> : null}
         {logs.map((log, i) => (
@@ -298,22 +298,31 @@ const CaregiverScreen = ({ currentUser, customPhrases, appLang }: any) => {
   }, []);
 
   // 下拉選單選取
-  const handleAutoTranslateAndSpeak = (val: string) => {
-    if (!val) { setSelectedKey(''); return; }
-    setSelectedKey(val);
-    let textToSpeak = '';
-    if (val.startsWith('custom_')) {
-      textToSpeak = val.replace('custom_', '');
+const handleAutoTranslateAndSpeak = async (val: string) => {
+  if (!val) { setSelectedKey(''); return; }
+  setSelectedKey(val);
+  let textToSpeak = '';
+  if (val.startsWith('custom_')) {
+    textToSpeak = val.replace('custom_', '');
+    setTranslatedText(textToSpeak);
+  } else {
+    const match = SYSTEM_PHRASES.find(p => p.key === val);
+    if (match) { textToSpeak = match.zh; }
+  }
+  if (textToSpeak) {
+    try {
+      // 透過後端潤飾中文語氣
+      const res = await axios.post(`${API_BASE}/translate`, { text: textToSpeak, targetLang: 'zh' });
+      const softChinese = res.data.translatedText;
+      setTranslatedText(softChinese);
+      setTimeout(() => speak(softChinese), 100);
+      axios.post(`${API_BASE}/track-phrase`, { username: currentUser.username, phrase: softChinese }).catch(() => {});
+    } catch (e) {
       setTranslatedText(textToSpeak);
-    } else {
-      const match = SYSTEM_PHRASES.find(p => p.key === val);
-      if (match) { textToSpeak = match.zh; setTranslatedText(match.zh); }
+      setTimeout(() => speak(textToSpeak), 100);
     }
-    if (textToSpeak) {
-      speak(textToSpeak);
-      axios.post(`${API_BASE}/track-phrase`, { username: currentUser.username, phrase: textToSpeak }).catch(() => {});
-    }
-  };
+  }
+};
 
   // 語音輸入後翻譯並朗讀
   const handleVoiceTranslateAndSpeak = async (text: string) => {
@@ -418,7 +427,7 @@ const CaregiverScreen = ({ currentUser, customPhrases, appLang }: any) => {
         <View style={styles.pickerContainer}>
           <Picker
             selectedValue={selectedKey}
-            dropdownIconColor="#00c49f"
+            dropdownIconColor="#2a00c4"
             style={{ color: '#333', backgroundColor: '#ffffff' }}
             onValueChange={handleAutoTranslateAndSpeak}
           >
@@ -435,7 +444,7 @@ const CaregiverScreen = ({ currentUser, customPhrases, appLang }: any) => {
               <Picker.Item label={ui.familyNote} value="" color="#ffb300" />
             )}
             {translatedCustomPhrases.map((item, i) => (
-              <Picker.Item key={`custom-${i}`} label={item.trans} value={`custom_${item.orig}`} color="#00c49f" />
+              <Picker.Item key={`custom-${i}`} label={item.trans} value={`custom_${item.orig}`} color="#2a00c4" />
             ))}
           </Picker>
         </View>
@@ -558,7 +567,7 @@ const SettingsScreen = ({ currentUser, onLogout, appLang, setAppLang, updateUser
           <Text style={styles.sectionTitle}>{ui.accInfo}</Text>
           <Text style={styles.textGray}>{currentUser.name} ({currentUser.role === 'family' ? 'Family' : 'Caregiver'})</Text>
           <Text style={[styles.textGray, { marginTop: 10 }]}>{ui.myCode}
-            <Text style={{ color: '#00c49f', fontWeight: 'bold', fontSize: 18 }}>{currentUser.bindCode || 'None'}</Text>
+            <Text style={{ color: '#2a00c4', fontWeight: 'bold', fontSize: 18 }}>{currentUser.bindCode || 'None'}</Text>
           </Text>
           <Text style={styles.textGray}>{ui.boundTo}
             <Text style={styles.textWhite}>{currentUser.boundToName ? `✅ ${currentUser.boundToName}` : '❌ None'}</Text>
@@ -586,7 +595,7 @@ const SettingsScreen = ({ currentUser, onLogout, appLang, setAppLang, updateUser
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>{ui.langSec}</Text>
           <View style={styles.pickerContainer}>
-            <Picker selectedValue={appLang} onValueChange={handleLangChange} style={{ color: '#333', backgroundColor: '#ffffff' }} dropdownIconColor="#00c49f">
+            <Picker selectedValue={appLang} onValueChange={handleLangChange} style={{ color: '#333', backgroundColor: '#ffffff' }} dropdownIconColor="#2a00c4">
               <Picker.Item label="繁體中文" value="zh" />
               <Picker.Item label="English" value="en" />
               <Picker.Item label="Indonesian (印尼語)" value="id" />
@@ -617,6 +626,227 @@ const BloodPressureScreen = ({ currentUser }: { currentUser: User }) => {
   );
 };
 
+import io from 'socket.io-client';
+
+// ==========================================
+// 頁面 6：聊天室
+// ==========================================
+const ChatScreen = ({ currentUser, appLang }: any) => {
+  const [messages, setMessages] = useState<any[]>([]);
+  const [inputText, setInputText] = useState('');
+  const [isListening, setIsListening] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+  const socketRef = useRef<any>(null);
+  const recordingRef = useRef<Audio.Recording | null>(null);
+  const scrollViewRef = useRef<any>(null);
+
+  const partnerUsername = currentUser.boundTo;
+  const isFamily = currentUser.role === 'family';
+  const myLang = appLang;
+  const partnerLang = isFamily ? 'zh' : appLang;
+
+  useEffect(() => {
+    if (!partnerUsername) return;
+
+    // 建立 WebSocket 連線
+    const socket = io(API_BASE, { transports: ['websocket'] });
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+      setIsConnected(true);
+      socket.emit('join_room', { username: currentUser.username });
+      console.log('WebSocket 連線成功');
+    });
+
+    socket.on('new_message', (msg: any) => {
+      setMessages(prev => [...prev, msg]);
+      setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
+    });
+
+    socket.on('disconnect', () => setIsConnected(false));
+
+    // 載入歷史訊息
+    axios.get(`${API_BASE}/chat-history`, {
+      params: { username: currentUser.username, partnerUsername }
+    }).then(res => {
+      const history = res.data.map((msg: any) => ({
+        ...msg,
+        displayText: msg.senderUsername === currentUser.username
+          ? msg.originalText
+          : msg.translatedText
+      }));
+      setMessages(history);
+    }).catch(() => {});
+
+    return () => { socket.disconnect(); };
+  }, [partnerUsername]);
+
+  // 發送文字訊息
+  const sendMessage = () => {
+    if (!inputText.trim() || !socketRef.current || !partnerUsername) return;
+    socketRef.current.emit('send_message', {
+  senderUsername: currentUser.username,
+  targetUsername: partnerUsername,
+  text: inputText.trim(),
+  sourceLang: myLang,
+  targetLang: isFamily ? appLang : 'zh',
+});
+    setInputText('');
+  };
+
+  // 語音輸入
+  const startListening = async () => {
+    try {
+      const { granted } = await Audio.requestPermissionsAsync();
+      if (!granted) { Alert.alert('權限不足', '請開啟麥克風權限'); return; }
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const { recording } = await Audio.Recording.createAsync({
+        android: {
+          extension: '.m4a',
+          outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+          audioEncoder: Audio.AndroidAudioEncoder.AAC,
+          sampleRate: 16000, numberOfChannels: 1, bitRate: 128000,
+        },
+        ios: {
+          extension: '.wav', audioQuality: Audio.IOSAudioQuality.HIGH,
+          sampleRate: 16000, numberOfChannels: 1, bitRate: 256000,
+          linearPCMBitDepth: 16, linearPCMIsBigEndian: false, linearPCMIsFloat: false,
+        },
+        web: {},
+      });
+      recordingRef.current = recording;
+      setIsListening(true);
+    } catch (e) { Alert.alert('錯誤', '無法啟動錄音'); }
+  };
+
+  const stopListening = async () => {
+    if (!recordingRef.current) return;
+    setIsListening(false);
+    try {
+      await recordingRef.current.stopAndUnloadAsync();
+      const uri = recordingRef.current.getURI();
+      recordingRef.current = null;
+      if (!uri) return;
+
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
+
+      const base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+      const sttRes = await axios.post(`${API_BASE}/speech-to-text`, {
+        audioBase64: base64, langCode: myLang,
+      });
+      if (sttRes.data.success && sttRes.data.text) {
+        setInputText(sttRes.data.text);
+      }
+    } catch (e) { console.log('語音錯誤:', e); }
+  };
+
+  if (!partnerUsername) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}><Text style={styles.headerTitle}>💬 聊天室</Text></View>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ color: '#888', fontSize: 16 }}>請先綁定帳號才能使用聊天室</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>
+          💬 {currentUser.boundToName || '聊天室'}
+          {isConnected ? ' 🟢' : ' 🔴'}
+        </Text>
+      </View>
+
+      {/* 訊息列表 */}
+      <ScrollView
+        ref={scrollViewRef}
+        style={{ flex: 1, padding: 15 }}
+        onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+      >
+        {messages.map((msg, i) => {
+          const isMine = msg.senderUsername === currentUser.username;
+          return (
+            <View key={i} style={{
+              alignItems: isMine ? 'flex-end' : 'flex-start',
+              marginBottom: 12,
+            }}>
+              <View style={{
+                maxWidth: '75%',
+                backgroundColor: isMine ? '#2a00c4' : '#f0f0f0',
+                borderRadius: 12,
+                padding: 12,
+                borderBottomRightRadius: isMine ? 2 : 12,
+                borderBottomLeftRadius: isMine ? 12 : 2,
+              }}>
+                <Text style={{ color: isMine ? 'white' : '#333', fontSize: 15 }}>
+                  {msg.displayText}
+                </Text>
+                {msg.displayText !== msg.originalText && (
+                  <Text style={{ color: isMine ? 'rgba(255,255,255,0.7)' : '#999', fontSize: 11, marginTop: 4 }}>
+                    原文：{msg.originalText}
+                  </Text>
+                )}
+              </View>
+              <Text style={{ color: '#aaa', fontSize: 11, marginTop: 3 }}>
+                {msg.senderUsername === currentUser.username ? '我' : currentUser.boundToName}
+              </Text>
+            </View>
+          );
+        })}
+      </ScrollView>
+
+      {/* 輸入區 */}
+      <View style={{
+        flexDirection: 'row', padding: 10, backgroundColor: '#f5f5f5',
+        borderTopWidth: 1, borderTopColor: '#eee', alignItems: 'center'
+      }}>
+        {/* 語音按鈕 */}
+        <TouchableOpacity
+          onPress={isListening ? stopListening : startListening}
+          style={{
+            width: 44, height: 44, borderRadius: 22,
+            backgroundColor: isListening ? '#ff4d4f' : '#2a00c4',
+            alignItems: 'center', justifyContent: 'center', marginRight: 8,
+          }}
+        >
+          <Text style={{ color: 'white', fontSize: 18 }}>
+            {isListening ? '⏹' : '🎤'}
+          </Text>
+        </TouchableOpacity>
+
+        {/* 文字輸入 */}
+        <TextInput
+          style={{
+            flex: 1, backgroundColor: 'white', borderRadius: 20,
+            paddingHorizontal: 15, paddingVertical: 8, borderWidth: 1,
+            borderColor: '#ddd', fontSize: 15, maxHeight: 100,
+          }}
+          value={inputText}
+          onChangeText={setInputText}
+          placeholder={isFamily ? '輸入中文訊息...' : 'Type a message...'}
+          placeholderTextColor="#aaa"
+          multiline
+        />
+
+        {/* 發送按鈕 */}
+        <TouchableOpacity
+          onPress={sendMessage}
+          style={{
+            width: 44, height: 44, borderRadius: 22,
+            backgroundColor: inputText.trim() ? '#2a00c4' : '#ccc',
+            alignItems: 'center', justifyContent: 'center', marginLeft: 8,
+          }}
+          disabled={!inputText.trim()}
+        >
+          <Text style={{ color: 'white', fontSize: 18 }}>➤</Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+};
 // ==========================================
 // App 主程式
 // ==========================================
@@ -643,12 +873,18 @@ export default function App() {
   return (
     <NavigationIndependentTree>
       <NavigationContainer>
-        <Tab.Navigator screenOptions={{ headerShown: false, tabBarActiveTintColor: '#00c49f', tabBarStyle: { backgroundColor: '#1a1a1a', borderTopColor: '#333' } }}>
+        <Tab.Navigator screenOptions={{ headerShown: false, tabBarActiveTintColor: '#2a00c4', tabBarStyle: { backgroundColor: '#1a1a1a', borderTopColor: '#333' } }}>
           {isCaregiver ? (
             <Tab.Screen name="Care" children={() => <CaregiverScreen currentUser={currentUser} customPhrases={customPhrases} appLang={appLang} />} options={{ tabBarIcon: () => <Text style={{ fontSize: 20 }}>🗣️</Text> }} />
           ) : (
             <Tab.Screen name="Family" children={() => <FamilyScreen currentUser={currentUser} customPhrases={customPhrases} setCustomPhrases={setCustomPhrases} appLang={appLang} />} options={{ tabBarIcon: () => <Text style={{ fontSize: 20 }}>👨‍👩‍👧</Text> }} />
           )}
+          
+          <Tab.Screen
+            name="Chat"
+            children={() => <ChatScreen currentUser={currentUser} appLang={appLang} />}
+            options={{ tabBarIcon: () => <Text style={{ fontSize: 20 }}>💬</Text> }}
+/>
           <Tab.Screen name="Settings" children={() => <SettingsScreen currentUser={currentUser} onLogout={() => setCurrentUser(null)} appLang={appLang} setAppLang={setAppLang} updateUserInfo={setCurrentUser} />} options={{ tabBarIcon: () => <Text style={{ fontSize: 20 }}>⚙️</Text> }} />
         </Tab.Navigator>
       </NavigationContainer>
@@ -662,18 +898,18 @@ export default function App() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#ffffff' },
   header: { padding: 15, backgroundColor: '#f5f5f5', flexDirection: 'row', justifyContent: 'center', elevation: 5, borderBottomWidth: 1, borderBottomColor: '#ddd' },
-  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#00c49f' },
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#2a00c4' },
   card: { backgroundColor: '#f9f9f9', borderRadius: 8, padding: 20, marginBottom: 15, width: '100%', borderWidth: 1, borderColor: '#eee' },
   input: { backgroundColor: '#ffffff', color: '#333', padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#ccc', marginBottom: 15, fontSize: 16 },
-  primaryBtn: { backgroundColor: '#00c49f', padding: 15, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  primaryBtn: { backgroundColor: '#2a00c4', padding: 15, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   dangerBtn: { backgroundColor: '#cf1322', padding: 15, borderRadius: 8, alignItems: 'center' },
   btnText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#00c49f', marginBottom: 15 },
+  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#2a00c4', marginBottom: 15 },
   label: { fontSize: 14, fontWeight: 'bold', color: '#666', marginBottom: 8 },
   textWhite: { color: '#333', fontSize: 16 },
   textGray: { color: '#888', fontSize: 16, marginBottom: 5 },
   pickerContainer: { backgroundColor: '#ffffff', borderRadius: 8, borderWidth: 1, borderColor: '#ccc', overflow: 'hidden', marginBottom: 10 },
-  resultText: { color: '#00c49f', fontSize: 28, fontWeight: 'bold', textAlign: 'center' },
+  resultText: { color: '#2a00c4', fontSize: 28, fontWeight: 'bold', textAlign: 'center' },
   phraseItem: { backgroundColor: '#f9f9f9', padding: 15, borderRadius: 8, marginBottom: 8, borderWidth: 1, borderColor: '#eee' },
   logCard: { backgroundColor: '#fff0f0', padding: 15, borderRadius: 8, marginBottom: 10, borderLeftWidth: 4, borderLeftColor: '#ff4d4f' }
 });
@@ -698,7 +934,7 @@ const micBtnStyle = {
   borderRadius: 32,
   backgroundColor: '#f0faf7',
   borderWidth: 2,
-  borderColor: '#00c49f',
+  borderColor: '#2a00c4',
   alignItems: 'center' as const,
   justifyContent: 'center' as const,
 };
@@ -712,13 +948,13 @@ const micHeadStyle = {
   width: 16,
   height: 22,
   borderRadius: 8,
-  backgroundColor: '#00c49f',
+  backgroundColor: '#2a00c4',
 };
 
 const micNeckStyle = {
   width: 2,
   height: 8,
-  backgroundColor: '#00c49f',
+  backgroundColor: '#2a00c4',
   marginTop: 1,
 };
 
@@ -726,7 +962,7 @@ const micBaseStyle = {
   width: 20,
   height: 2,
   borderRadius: 1,
-  backgroundColor: '#00c49f',
+  backgroundColor: '#2a00c4',
 };
 
 const stopIconStyle = {
