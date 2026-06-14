@@ -55,7 +55,7 @@ export default function AuthScreen({
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.card}>
-        <Text style={styles.title}>TakeCare Mobile (Expo Go)</Text>
+        <Text style={styles.title}>TakeCare Mobile</Text>
         <Text style={styles.subtitle}>
           Node.js backend + React Native frontend
         </Text>

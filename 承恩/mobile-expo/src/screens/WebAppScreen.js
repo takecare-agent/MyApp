@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react"
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native"
+import { Pressable, StyleSheet, Text, View } from "react-native"
 import { WebView } from "react-native-webview"
 
 function trimTrailingSlash(value) {
@@ -25,6 +25,27 @@ function buildWebUrl(baseUrl, routePath, apiBaseUrl) {
   )}`
 }
 
+function getWebLoadErrorMessage(targetUrl, description) {
+  const fallback = description || "Web page failed to load."
+
+  try {
+    const parsedUrl = new URL(targetUrl)
+    const port = parsedUrl.port || (parsedUrl.protocol === "https:" ? "443" : "80")
+
+    if (fallback.includes("ERR_CONNECTION_REFUSED")) {
+      return `No web server is listening at ${parsedUrl.hostname}:${port}. Start the frontend with npm run dev in ../frontend, then reload this page.`
+    }
+
+    if (fallback.includes("ERR_CLEARTEXT_NOT_PERMITTED")) {
+      return "Android blocked this HTTP URL. Check AndroidManifest cleartext settings."
+    }
+  } catch {
+    return fallback
+  }
+
+  return fallback
+}
+
 export default function WebAppScreen({
   token,
   role,
@@ -36,7 +57,6 @@ export default function WebAppScreen({
   onLogout
 }) {
   const webRef = useRef(null)
-  const [loading, setLoading] = useState(true)
   const [canGoBack, setCanGoBack] = useState(false)
   const [error, setError] = useState("")
 
@@ -67,13 +87,17 @@ export default function WebAppScreen({
           } else {
             localStorage.removeItem("TAKECARE_API_BASE_URL");
           }
-          localStorage.setItem("mobile_mode", "expo");
+          localStorage.setItem("mobile_mode", "react-native-cli");
         } catch (e) {}
       })();
       true;
     `,
     [apiBaseUrl, role, token]
   )
+
+  const reloadWebView = () => {
+    webRef.current?.reload()
+  }
 
   if (!targetUrl) {
     return (
@@ -112,7 +136,7 @@ export default function WebAppScreen({
           >
             <Text style={styles.smallBtnText}>Web Back</Text>
           </Pressable>
-          <Pressable style={styles.smallBtn} onPress={() => webRef.current?.reload()}>
+          <Pressable style={styles.smallBtn} onPress={reloadWebView}>
             <Text style={styles.smallBtnText}>Reload</Text>
           </Pressable>
           <Pressable style={styles.logoutBtn} onPress={onLogout}>
@@ -123,7 +147,9 @@ export default function WebAppScreen({
 
       {error ? (
         <View style={styles.errorBanner}>
-          <Text style={styles.errorText}>{error}</Text>
+          <Text style={styles.errorText}>
+            {getWebLoadErrorMessage(targetUrl, error)}
+          </Text>
         </View>
       ) : null}
 
@@ -136,27 +162,41 @@ export default function WebAppScreen({
         originWhitelist={["*"]}
         injectedJavaScriptBeforeContentLoaded={injectedAuthScript}
         injectedJavaScript={injectedAuthScript}
-        onLoadStart={() => {
-          setLoading(true)
-          setError("")
+        onLoadStart={() => setError("")}
+        onNavigationStateChange={navState => {
+          setCanGoBack(navState.canGoBack)
         }}
-        onLoadEnd={() => setLoading(false)}
-        onNavigationStateChange={navState => setCanGoBack(navState.canGoBack)}
         onError={event => {
-          setLoading(false)
-          setError(event.nativeEvent?.description || "Web page failed to load.")
+          const description =
+            event.nativeEvent?.description || "Web page failed to load."
+          setError(description)
         }}
         onHttpError={event => {
-          setLoading(false)
           setError(`HTTP ${event.nativeEvent?.statusCode} when loading web page.`)
         }}
+        renderError={() => (
+          <View style={styles.webErrorContainer}>
+            <Text style={styles.webErrorTitle}>Web frontend is not reachable</Text>
+            <Text style={styles.webErrorText}>
+              {getWebLoadErrorMessage(targetUrl, error)}
+            </Text>
+            <Text style={styles.webErrorUrl} numberOfLines={3}>
+              {targetUrl}
+            </Text>
+            <View style={styles.webErrorActions}>
+              <Pressable style={styles.smallBtn} onPress={onBack}>
+                <Text style={styles.smallBtnText}>Home</Text>
+              </Pressable>
+              <Pressable
+                style={styles.smallBtn}
+                onPress={reloadWebView}
+              >
+                <Text style={styles.smallBtnText}>Reload</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
       />
-
-      {loading ? (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color="#1f74d1" />
-        </View>
-      ) : null}
     </View>
   )
 }
@@ -248,12 +288,6 @@ const styles = StyleSheet.create({
     color: "#1f507f",
     fontWeight: "700"
   },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(242, 247, 255, 0.55)"
-  },
   errorBanner: {
     paddingHorizontal: 10,
     paddingVertical: 8,
@@ -264,5 +298,35 @@ const styles = StyleSheet.create({
   errorText: {
     color: "#b42318",
     fontSize: 12
+  },
+  webErrorContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+    backgroundColor: "#f2f7ff"
+  },
+  webErrorTitle: {
+    color: "#173e67",
+    fontSize: 18,
+    fontWeight: "800",
+    textAlign: "center"
+  },
+  webErrorText: {
+    marginTop: 10,
+    color: "#4f6682",
+    lineHeight: 20,
+    textAlign: "center"
+  },
+  webErrorUrl: {
+    marginTop: 10,
+    color: "#6a7e99",
+    fontSize: 12,
+    textAlign: "center"
+  },
+  webErrorActions: {
+    marginTop: 16,
+    flexDirection: "row",
+    gap: 8
   }
 })

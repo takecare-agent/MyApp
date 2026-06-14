@@ -7,7 +7,7 @@ import {
   Text,
   View
 } from "react-native"
-import { MaterialCommunityIcons } from "@expo/vector-icons"
+import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityIcons"
 import { mobileDevLogin } from "../lib/api"
 
 const ROLE_OPTIONS = [

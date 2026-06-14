@@ -1,6 +1,11 @@
-import { StatusBar } from "expo-status-bar"
 import { useEffect, useState } from "react"
-import { ActivityIndicator, SafeAreaView, StyleSheet, View } from "react-native"
+import {
+  ActivityIndicator,
+  SafeAreaView,
+  StatusBar,
+  StyleSheet,
+  View
+} from "react-native"
 import AuthScreen from "./src/screens/AuthScreen"
 import BloodPressureScreen from "./src/screens/BloodPressureScreen"
 import RoleHomeScreen from "./src/screens/RoleHomeScreen"
@@ -177,7 +182,7 @@ export default function App() {
             onProceed={handleProceedFromAuth}
           />
         )}
-        <StatusBar style="dark" />
+        <StatusBar barStyle="dark-content" backgroundColor="#f2f7ff" />
       </SafeAreaView>
     )
   }
@@ -229,7 +234,7 @@ export default function App() {
           />
         ) : null}
       </View>
-      <StatusBar style="dark" />
+      <StatusBar barStyle="dark-content" backgroundColor="#f2f7ff" />
     </SafeAreaView>
   )
 }
@@ -237,6 +242,7 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
+    paddingTop: StatusBar.currentHeight || 0,
     backgroundColor: "#f2f7ff"
   },
   bootScreen: {
