@@ -53,7 +53,7 @@ export default function CaregiverSetup() {
         <span className="section-kicker">Caregiver Profile</span>
         <h2 className="section-title">Set up your caregiver account</h2>
         <p className="section-subtitle">
-          Share your basic profile so families can quickly understand your background.
+          填寫基本資料，方便家屬了解您的照護背景。
         </p>
 
         <div className="form-grid">

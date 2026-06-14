@@ -113,7 +113,7 @@ export default function PatientWearable() {
       }
 
       setLatestRecord(data.record || null)
-      setStatusMessage(`已同步第 ${data.sampleIndex + 1} 筆虛擬資料。`)
+      setStatusMessage(`已同步第 ${data.sampleIndex + 1} 筆裝置資料。`)
       await loadHistory()
     } catch (error) {
       console.error(error)
@@ -157,7 +157,7 @@ export default function PatientWearable() {
 
         <h2 className="section-title">手環生理監測面板</h2>
         <p className="section-subtitle">
-          點「同步裝置資料」會寫入 MongoDB 虛擬資料（10 筆輪替），並即時更新此畫面。
+          同步裝置資料後，會即時更新生理數據與異常紀錄。
         </p>
         <p className="section-subtitle">
           最後同步時間：{formatTime(currentRecord.recordedAt)}
@@ -203,7 +203,7 @@ export default function PatientWearable() {
                 <div className="list-card-head">
                   <div>
                     <div className="list-title">{formatTime(item.recordedAt)}</div>
-                    <div className="list-meta">{item.note || "mock-seed"}</div>
+                    <div className="list-meta">{item.note || "裝置同步"}</div>
                   </div>
                   <span className={item.isAbnormal ? "risk-pill risk-high" : "risk-pill risk-low"}>
                     {item.isAbnormal ? "異常" : "正常"}

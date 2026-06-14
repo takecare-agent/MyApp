@@ -98,12 +98,12 @@ export default function CaregiverCareLogs() {
 
         <h2 className="section-title">照護清單與生理資料</h2>
         <p className="section-subtitle">
-          按「同步虛擬紀錄」會寫入 MongoDB 一筆資料，並更新最新照護清單與生理數據。
+          同步照護紀錄後，會更新最新照護清單與生理數據。
         </p>
 
         <div className="action-row">
           <button className="secondary-btn" onClick={handleSync} disabled={syncing}>
-            {syncing ? "同步中..." : "同步虛擬紀錄"}
+            {syncing ? "同步中..." : "同步照護紀錄"}
           </button>
           <button className="secondary-btn" onClick={loadHistory} disabled={loading}>
             {loading ? "載入中..." : "讀取最新 10 筆"}

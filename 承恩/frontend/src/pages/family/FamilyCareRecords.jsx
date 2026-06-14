@@ -74,7 +74,7 @@ export default function FamilyCareRecords() {
       if (!res.ok) {
         throw new Error(data.message || "同步失敗")
       }
-      setStatusMessage(`已同步第 ${data.sampleIndex + 1} 筆虛擬照護紀錄。`)
+      setStatusMessage(`已同步第 ${data.sampleIndex + 1} 筆照護紀錄。`)
       await loadRecords(selectedDate)
     } catch (error) {
       console.error(error)
@@ -96,7 +96,7 @@ export default function FamilyCareRecords() {
 
         <h2 className="section-title">每日照護任務紀錄</h2>
         <p className="section-subtitle">
-          點「同步虛擬紀錄」會寫入 MongoDB 一筆資料，並依日期讀取最新 10 筆紀錄。
+          同步照護紀錄後，可依日期讀取最新紀錄。
         </p>
 
         <div className="toolbar-row">
@@ -116,7 +116,7 @@ export default function FamilyCareRecords() {
 
         <div className="action-row">
           <button className="secondary-btn" onClick={handleSync} disabled={syncing}>
-            {syncing ? "同步中..." : "同步虛擬紀錄"}
+            {syncing ? "同步中..." : "同步照護紀錄"}
           </button>
           <button
             className="secondary-btn"
@@ -144,7 +144,7 @@ export default function FamilyCareRecords() {
             <tbody>
               {records.length === 0 ? (
                 <tr>
-                  <td colSpan={5}>目前無照護紀錄，請先同步虛擬資料。</td>
+                  <td colSpan={5}>目前無照護紀錄，請先同步資料。</td>
                 </tr>
               ) : (
                 records.map(item => (

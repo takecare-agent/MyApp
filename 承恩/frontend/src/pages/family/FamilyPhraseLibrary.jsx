@@ -26,10 +26,6 @@ export default function FamilyPhraseLibrary() {
         </div>
 
         <h2 className="section-title">多語音關懷語句介面</h2>
-        <p className="section-subtitle">
-          提供預設句與自訂句欄位，先做成介面版本，後續由組員接 TTS 與儲存功能。
-        </p>
-
         <div className="stack-list">
           {defaultPhrases.map(item => (
             <div className="list-card" key={item.text}>

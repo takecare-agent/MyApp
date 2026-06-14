@@ -53,7 +53,7 @@ export default function FamilySetup() {
         <span className="section-kicker">Family Profile</span>
         <h2 className="section-title">Set up your family account</h2>
         <p className="section-subtitle">
-          Add your contact profile so caregivers can quickly reach the right person.
+          填寫聯絡資料，方便照護人員快速聯繫家屬。
         </p>
 
         <div className="form-grid">

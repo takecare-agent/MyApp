@@ -1,39 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { API_BASE_URL } from "../../config/runtime"
+import { callPhone, getCurrentLocation, openMapLocation } from "../../lib/nativeBridge"
 
 function formatTime(value) {
   if (!value) return "-"
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return "-"
   return date.toLocaleString("zh-TW", { hour12: false })
-}
-
-function getCurrentLocation() {
-  return new Promise(resolve => {
-    if (!navigator.geolocation) {
-      resolve(null)
-      return
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      position => {
-        const latitude = position.coords.latitude
-        const longitude = position.coords.longitude
-        resolve({
-          latitude,
-          longitude,
-          locationLabel: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
-        })
-      },
-      () => resolve(null),
-      {
-        enableHighAccuracy: true,
-        timeout: 5000,
-        maximumAge: 30000
-      }
-    )
-  })
 }
 
 export default function PatientSos() {
@@ -44,11 +18,15 @@ export default function PatientSos() {
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState("需要立即協助，請盡快前往現場。")
   const [patientPhone, setPatientPhone] = useState("")
+  const [manualLocation, setManualLocation] = useState("")
   const [records, setRecords] = useState([])
   const [statusMessage, setStatusMessage] = useState("")
   const [errorMessage, setErrorMessage] = useState("")
 
-  const latestRecord = useMemo(() => records[0], [records])
+  const latestActive = useMemo(
+    () => records.find(item => item.status === "active"),
+    [records]
+  )
 
   const loadProfile = useCallback(async () => {
     if (!token) {
@@ -61,9 +39,8 @@ export default function PatientSos() {
         headers: { Authorization: `Bearer ${token}` }
       })
       const data = await res.json()
-      if (!res.ok) return
-      if (typeof data.phone === "string" && data.phone.trim()) {
-        setPatientPhone(data.phone.trim())
+      if (res.ok && typeof data.phone === "string") {
+        setPatientPhone(data.phone)
       }
     } catch (error) {
       console.error(error)
@@ -76,26 +53,22 @@ export default function PatientSos() {
       return
     }
 
-    if (!silent) {
-      setLoading(true)
-    }
+    if (!silent) setLoading(true)
 
     try {
-      const res = await fetch(`${API_BASE_URL}/patient/sos/history?limit=10`, {
+      const res = await fetch(`${API_BASE_URL}/patient/sos/history?limit=20`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       const data = await res.json()
       if (!res.ok) {
-        throw new Error(data.message || "Load history failed")
+        throw new Error(data.message || "Load SOS history failed")
       }
       setRecords(Array.isArray(data.records) ? data.records : [])
     } catch (error) {
       console.error(error)
-      setErrorMessage("無法載入 SOS 歷史紀錄，請稍後再試。")
+      setErrorMessage("無法載入 SOS 紀錄，請稍後再試。")
     } finally {
-      if (!silent) {
-        setLoading(false)
-      }
+      if (!silent) setLoading(false)
     }
   }, [navigate, token])
 
@@ -103,10 +76,8 @@ export default function PatientSos() {
     let cancelled = false
 
     const init = async () => {
-      await Promise.all([loadProfile(), loadHistory()])
-      if (!cancelled) {
-        setLoading(false)
-      }
+      await Promise.all([loadProfile(), loadHistory(true)])
+      if (!cancelled) setLoading(false)
     }
 
     init()
@@ -116,23 +87,7 @@ export default function PatientSos() {
     }
   }, [loadHistory, loadProfile])
 
-  const handleCall119 = () => {
-    window.location.href = "tel:119"
-  }
-
-  const openMap = item => {
-    const hasCoordinates = Number.isFinite(item?.latitude) && Number.isFinite(item?.longitude)
-    const query = hasCoordinates
-      ? `${item.latitude},${item.longitude}`
-      : item?.locationLabel
-
-    if (!query) return
-
-    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
-    window.open(url, "_blank", "noopener,noreferrer")
-  }
-
-  const handleTriggerSos = async () => {
+  const triggerSos = async () => {
     if (!token) {
       navigate("/")
       return
@@ -144,6 +99,8 @@ export default function PatientSos() {
 
     try {
       const location = await getCurrentLocation()
+      const locationLabel = location?.locationLabel || manualLocation.trim() || "未取得定位，請電話確認位置"
+
       const res = await fetch(`${API_BASE_URL}/patient/sos/trigger`, {
         method: "POST",
         headers: {
@@ -153,23 +110,22 @@ export default function PatientSos() {
         body: JSON.stringify({
           message,
           patientPhone,
-          locationLabel: location?.locationLabel,
+          locationLabel,
           latitude: location?.latitude,
           longitude: location?.longitude
         })
       })
-
       const data = await res.json()
       if (!res.ok) {
         throw new Error(data.message || "Trigger SOS failed")
       }
 
-      setStatusMessage(`SOS 已送出（事件編號：${data.record?.eventId || "已建立"}）。`)
+      setStatusMessage(`SOS 已送出，事件編號：${data.record?.eventId || "-"}`)
       await loadHistory(true)
-      handleCall119()
+      callPhone("119")
     } catch (error) {
       console.error(error)
-      setErrorMessage("SOS 發送失敗，請再試一次。")
+      setErrorMessage("SOS 送出失敗，請確認網路或直接撥打 119。")
     } finally {
       setSubmitting(false)
     }
@@ -188,7 +144,7 @@ export default function PatientSos() {
 
   return (
     <div className="home-page">
-      <div className="home-card wide-card">
+      <div className="home-card wide-card sos-clean-page">
         <div className="top-line">
           <button className="ghost-btn" onClick={() => navigate("/patient")}>
             返回總覽
@@ -198,35 +154,40 @@ export default function PatientSos() {
 
         <h2 className="section-title">緊急求救中心</h2>
         <p className="section-subtitle">
-          已串接組員 SOS 流程核心：按下按鈕會送出事件、附上定位（可用時），並直接切到 119 撥號。
+          按下 SOS 後會建立事件並同步到家屬端/照護端，同時嘗試開啟電話撥打 119。
         </p>
 
         <div className="sos-panel">
-          <button className="sos-button" onClick={handleTriggerSos} disabled={submitting}>
-            {submitting ? "發送中..." : "SOS"}
+          <button className="sos-button" onClick={triggerSos} disabled={submitting}>
+            {submitting ? "送出中..." : "SOS"}
           </button>
-          <div className="sos-hint">發送後會同步通知照顧端，並建立事件紀錄。</div>
+          <div className="sos-hint">送出後會附上定位或你手動填寫的位置。</div>
           <div className="sos-confirm">{statusMessage || "準備就緒"}</div>
         </div>
 
         <div className="custom-box">
           <div className="form-grid">
             <div>
-              <label className="input-label" htmlFor="patient-sos-message">
-                SOS 說明
-              </label>
+              <label className="input-label" htmlFor="patient-sos-message">SOS 說明</label>
               <textarea
                 id="patient-sos-message"
                 rows="2"
                 value={message}
                 onChange={e => setMessage(e.target.value)}
-                placeholder="例如：我在客廳跌倒，請立刻協助。"
+                placeholder="例如：跌倒、胸悶、需要協助"
               />
             </div>
             <div>
-              <label className="input-label" htmlFor="patient-sos-phone">
-                回撥電話
-              </label>
+              <label className="input-label" htmlFor="patient-sos-location">位置補充</label>
+              <input
+                id="patient-sos-location"
+                value={manualLocation}
+                onChange={e => setManualLocation(e.target.value)}
+                placeholder="例如：客廳、浴室、房間"
+              />
+            </div>
+            <div>
+              <label className="input-label" htmlFor="patient-sos-phone">回撥電話</label>
               <input
                 id="patient-sos-phone"
                 value={patientPhone}
@@ -238,40 +199,24 @@ export default function PatientSos() {
         </div>
 
         <div className="action-row">
-          <button className="secondary-btn" onClick={handleCall119}>
-            直接撥打 119
-          </button>
-          <button className="secondary-btn" onClick={() => loadHistory()}>
-            重新整理紀錄
-          </button>
+          <button className="secondary-btn" onClick={() => callPhone("119")}>直接撥打 119</button>
+          <button className="secondary-btn" onClick={() => loadHistory()}>重新整理紀錄</button>
         </div>
 
         {errorMessage && <p className="error-state">{errorMessage}</p>}
 
-        {latestRecord && latestRecord.status === "active" ? (
+        {latestActive ? (
           <div className="sos-banner">
             <div className="sos-title">最新未結案 SOS</div>
             <div className="sos-value">
-              {latestRecord.eventId} | {formatTime(latestRecord.triggeredAt)}
+              {latestActive.eventId} | {formatTime(latestActive.triggeredAt)}
             </div>
             <div className="action-row">
-              <button
-                className="primary-btn"
-                onClick={() => openMap(latestRecord)}
-                disabled={
-                  !latestRecord.locationLabel &&
-                  !(Number.isFinite(latestRecord.latitude) && Number.isFinite(latestRecord.longitude))
-                }
-              >
+              <button className="primary-btn" onClick={() => openMapLocation(latestActive)}>
                 開啟地圖定位
               </button>
-              <button
-                className="secondary-btn"
-                onClick={() => {
-                  window.location.href = `tel:${latestRecord.patientPhone || "119"}`
-                }}
-              >
-                撥打電話
+              <button className="secondary-btn" onClick={() => callPhone(latestActive.patientPhone || "119")}>
+                回撥電話
               </button>
             </div>
           </div>
@@ -281,18 +226,18 @@ export default function PatientSos() {
           {records.length === 0 ? (
             <div className="list-card">
               <div className="list-title">目前沒有 SOS 紀錄</div>
-              <div className="list-meta">按下 SOS 後會顯示最近事件與處理狀態。</div>
+              <div className="list-meta">送出 SOS 後，家屬端與照護端會輪詢收到事件。</div>
             </div>
           ) : (
             records.map(item => (
               <div className="list-card" key={item._id}>
                 <div className="list-card-head">
                   <div>
-                    <div className="list-title">{item.message || "SOS 事件"}</div>
+                    <div className="list-title">{item.message || "SOS 求救"}</div>
                     <div className="list-meta">事件編號：{item.eventId}</div>
                   </div>
                   <span className={item.status === "active" ? "risk-pill risk-high" : "risk-pill risk-low"}>
-                    {item.status === "active" ? "處理中" : "已結案"}
+                    {item.status === "active" ? "未結案" : "已處理"}
                   </span>
                 </div>
 
@@ -302,11 +247,11 @@ export default function PatientSos() {
                     <div className="field-value">{formatTime(item.triggeredAt)}</div>
                   </div>
                   <div>
-                    <div className="field-key">定位</div>
+                    <div className="field-key">位置</div>
                     <div className="field-value">{item.locationLabel || "-"}</div>
                   </div>
                   <div>
-                    <div className="field-key">回撥電話</div>
+                    <div className="field-key">電話</div>
                     <div className="field-value">{item.patientPhone || "-"}</div>
                   </div>
                 </div>

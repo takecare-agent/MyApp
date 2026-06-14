@@ -652,6 +652,11 @@ const bloodPressureRecordSchema = new mongoose.Schema({
     required: true
   },
   pulse: Number,
+  mood: {
+    type: String,
+    enum: ["開心", "壓力大", "焦慮", "平靜", "未標記"],
+    default: "未標記"
+  },
   level: {
     type: String,
     enum: ["正常", "偏高", "高血壓", "低血壓"],
@@ -996,6 +1001,13 @@ function normalizeAlertStatus(value) {
   return "未處理"
 }
 
+function normalizeBpMood(value) {
+  const mood = typeof value === "string" ? value.trim() : ""
+  return ["開心", "壓力大", "焦慮", "平靜", "未標記"].includes(mood)
+    ? mood
+    : "未標記"
+}
+
 function judgeBloodPressureLevel(sys, dia) {
   if (sys >= 140 || dia >= 90) return "高血壓"
   if (sys < 90 || dia < 60) return "低血壓"
@@ -1179,6 +1191,7 @@ app.post("/patient/blood-pressure/record", async (req, res) => {
   const pulse = pulseRaw === "" || pulseRaw === null || pulseRaw === undefined
     ? undefined
     : Number(pulseRaw)
+  const mood = normalizeBpMood(req.body?.mood)
 
   if (!Number.isFinite(sys) || !Number.isFinite(dia)) {
     return res.status(400).json({ message: "請提供有效的 SYS 與 DIA 數值" })
@@ -1195,6 +1208,7 @@ app.post("/patient/blood-pressure/record", async (req, res) => {
     sys,
     dia,
     pulse,
+    mood,
     level,
     measuredAt: new Date(),
     source: "manual-entry"
@@ -1223,6 +1237,7 @@ app.post("/patient/blood-pressure/sync", async (req, res) => {
     sys: sample.sys,
     dia: sample.dia,
     pulse: sample.pulse,
+    mood: "平靜",
     level: judgeBloodPressureLevel(sample.sys, sample.dia),
     measuredAt: new Date(),
     source: "mock-seed"
@@ -1237,6 +1252,25 @@ app.post("/patient/blood-pressure/sync", async (req, res) => {
     nextCursor: user.bloodPressureCursor,
     record
   })
+})
+
+app.patch("/patient/blood-pressure/:id/mood", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "User not found" })
+
+  const record = await BloodPressureRecord.findOne({
+    _id: req.params.id,
+    userId: user._id
+  })
+  if (!record) return res.status(404).json({ message: "Blood pressure record not found" })
+
+  record.mood = normalizeBpMood(req.body?.mood)
+  await record.save()
+
+  res.json({ message: "Mood updated", record })
 })
 
 app.get("/patient/vision/history", async (req, res) => {
@@ -1932,6 +1966,7 @@ app.post("/caregiver/blood-pressure/record", async (req, res) => {
   const pulse = pulseRaw === "" || pulseRaw === null || pulseRaw === undefined
     ? undefined
     : Number(pulseRaw)
+  const mood = normalizeBpMood(req.body?.mood)
 
   if (!Number.isFinite(sys) || !Number.isFinite(dia)) {
     return res.status(400).json({ message: "請提供有效的 SYS 與 DIA 數值" })
@@ -1947,6 +1982,7 @@ app.post("/caregiver/blood-pressure/record", async (req, res) => {
     sys,
     dia,
     pulse,
+    mood,
     level: judgeBloodPressureLevel(sys, dia),
     measuredAt: new Date(),
     source: "caregiver-entry"
@@ -1976,6 +2012,7 @@ app.post("/caregiver/blood-pressure/sync", async (req, res) => {
     sys: sample.sys,
     dia: sample.dia,
     pulse: sample.pulse,
+    mood: "平靜",
     level: judgeBloodPressureLevel(sample.sys, sample.dia),
     measuredAt: new Date(),
     source: "mock-seed"
@@ -1990,6 +2027,26 @@ app.post("/caregiver/blood-pressure/sync", async (req, res) => {
     nextCursor: user.bloodPressureCursor,
     record
   })
+})
+
+app.patch("/caregiver/blood-pressure/:id/mood", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "User not found" })
+
+  const patientUserId = await resolveTargetPatient(user._id)
+  const record = await BloodPressureRecord.findOne({
+    _id: req.params.id,
+    userId: patientUserId
+  })
+  if (!record) return res.status(404).json({ message: "Blood pressure record not found" })
+
+  record.mood = normalizeBpMood(req.body?.mood)
+  await record.save()
+
+  res.json({ message: "Mood updated", record })
 })
 
 app.get("/caregiver/vision/history", async (req, res) => {

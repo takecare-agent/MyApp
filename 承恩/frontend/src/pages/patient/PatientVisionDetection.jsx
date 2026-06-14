@@ -30,7 +30,7 @@ function severityClass(level) {
 
 function sourceLabel(source) {
   if (source === "vision-model") return "模型回傳"
-  if (source === "vision-mock") return "示範資料"
+  if (source === "vision-mock") return "影像偵測"
   return source || "-"
 }
 
@@ -140,11 +140,11 @@ export default function PatientVisionDetection() {
       if (!res.ok) {
         throw new Error(data.message || "Sync failed")
       }
-      setStatusMessage(`已新增示範偵測資料（第 ${data.sampleIndex + 1} 筆樣本）。`)
+      setStatusMessage(`已新增偵測資料（第 ${data.sampleIndex + 1} 筆）。`)
       await loadHistory()
     } catch (error) {
       console.error(error)
-      setErrorMessage("同步示範影像資料失敗，請稍後再試。")
+      setErrorMessage("同步影像資料失敗，請稍後再試。")
     } finally {
       setSyncing(false)
     }
@@ -161,10 +161,6 @@ export default function PatientVisionDetection() {
         </div>
 
         <h2 className="section-title">影像模型偵測事件</h2>
-        <p className="section-subtitle">
-          整合組員影像模型事件格式，支援模型回傳與示範資料，並可自動轉為高風險警示。
-        </p>
-
         {latestRecord && (
           <div className="sos-banner">
             <div className="sos-title">最新偵測</div>
@@ -217,7 +213,7 @@ export default function PatientVisionDetection() {
             {detecting ? "偵測中..." : "觸發影像偵測"}
           </button>
           <button className="secondary-btn" onClick={handleSyncDemo} disabled={syncing}>
-            {syncing ? "同步中..." : "同步示範事件"}
+            {syncing ? "同步中..." : "同步事件"}
           </button>
           <button className="secondary-btn" onClick={loadHistory} disabled={loading}>
             {loading ? "載入中..." : "重新整理"}

@@ -20,7 +20,7 @@ const modules = [
   },
   {
     title: "受顧者血壓監測",
-    description: "代輸血壓資料、同步示範紀錄與快速風險判定。",
+    description: "代輸血壓資料、同步紀錄與快速風險判定。",
     path: "/caregiver/blood-pressure"
   },
   {
@@ -149,12 +149,7 @@ export default function CaregiverHome() {
         <span className="section-kicker">看護端</span>
         <div className="home-header">
           <h2 className="section-title">看護功能總覽</h2>
-          <span className="status-chip">介面原型</span>
         </div>
-        <p className="section-subtitle">
-          歡迎回來，{profile?.name || "看護人員"}。以下頁面依照簡報需求整理，先提供前端介面。
-        </p>
-
         <div className="metric-row">
           {quickStats.map(item => (
             <div key={item.label} className="metric-card">

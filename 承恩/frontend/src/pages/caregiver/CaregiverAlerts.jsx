@@ -153,11 +153,11 @@ export default function CaregiverAlerts() {
       if (!res.ok) {
         throw new Error(data.message || "Sync failed")
       }
-      setStatusMessage("已新增一筆示範異常事件。")
+      setStatusMessage("已新增一筆異常事件。")
       await loadHistory()
     } catch (error) {
       console.error(error)
-      setErrorMessage("新增示範資料失敗，請稍後再試。")
+      setErrorMessage("新增事件資料失敗，請稍後再試。")
     } finally {
       setSyncing(false)
     }
@@ -294,7 +294,7 @@ export default function CaregiverAlerts() {
             {submitting ? "回報中..." : "回報異常事件"}
           </button>
           <button className="secondary-btn" onClick={handleSyncDemo} disabled={syncing}>
-            {syncing ? "新增中..." : "新增示範資料"}
+            {syncing ? "新增中..." : "新增事件資料"}
           </button>
         </div>
 
@@ -347,7 +347,7 @@ export default function CaregiverAlerts() {
           {records.length === 0 ? (
             <div className="list-card">
               <div className="list-title">目前沒有異常事件</div>
-              <div className="list-meta">可先用上方表單建立事件，或新增示範資料。</div>
+              <div className="list-meta">可先用上方表單建立事件，或同步事件資料。</div>
             </div>
           ) : (
             records.map(item => (

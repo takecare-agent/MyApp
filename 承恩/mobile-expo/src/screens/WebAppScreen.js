@@ -1,5 +1,14 @@
-import { useMemo, useRef, useState } from "react"
-import { Pressable, StyleSheet, Text, View } from "react-native"
+import { useEffect, useMemo, useRef, useState } from "react"
+import {
+  Alert,
+  Linking,
+  PermissionsAndroid,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View
+} from "react-native"
 import { WebView } from "react-native-webview"
 
 function trimTrailingSlash(value) {
@@ -60,6 +69,14 @@ export default function WebAppScreen({
   const [canGoBack, setCanGoBack] = useState(false)
   const [error, setError] = useState("")
 
+  useEffect(() => {
+    if (Platform.OS !== "android") return
+
+    PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+    ).catch(() => {})
+  }, [])
+
   const targetUrl = useMemo(
     () => buildWebUrl(webBaseUrl, routePath, apiBaseUrl),
     [apiBaseUrl, routePath, webBaseUrl]
@@ -97,6 +114,39 @@ export default function WebAppScreen({
 
   const reloadWebView = () => {
     webRef.current?.reload()
+  }
+
+  const openExternalUrl = url => {
+    if (!url) return
+
+    Linking.openURL(url).catch(() => {
+      Alert.alert("Unable to open link", url)
+    })
+  }
+
+  const handleWebMessage = event => {
+    try {
+      const message = JSON.parse(event.nativeEvent?.data || "{}")
+      if (message.type === "open-url" && typeof message.url === "string") {
+        openExternalUrl(message.url)
+      }
+    } catch {}
+  }
+
+  const handleExternalNavigation = request => {
+    const requestUrl = request.url || ""
+    const shouldOpenExternally =
+      requestUrl.startsWith("tel:") ||
+      requestUrl.startsWith("geo:") ||
+      requestUrl.startsWith("https://www.google.com/maps") ||
+      requestUrl.startsWith("https://maps.google.com")
+
+    if (shouldOpenExternally) {
+      openExternalUrl(requestUrl)
+      return false
+    }
+
+    return true
   }
 
   if (!targetUrl) {
@@ -158,10 +208,14 @@ export default function WebAppScreen({
         source={{ uri: targetUrl }}
         javaScriptEnabled
         domStorageEnabled
+        geolocationEnabled
+        setSupportMultipleWindows={false}
         allowsBackForwardNavigationGestures
         originWhitelist={["*"]}
         injectedJavaScriptBeforeContentLoaded={injectedAuthScript}
         injectedJavaScript={injectedAuthScript}
+        onMessage={handleWebMessage}
+        onShouldStartLoadWithRequest={handleExternalNavigation}
         onLoadStart={() => setError("")}
         onNavigationStateChange={navState => {
           setCanGoBack(navState.canGoBack)

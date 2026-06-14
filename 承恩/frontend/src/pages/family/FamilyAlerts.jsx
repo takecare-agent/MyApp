@@ -85,11 +85,11 @@ export default function FamilyAlerts() {
       if (!res.ok) {
         throw new Error(data.message || "Sync failed")
       }
-      setStatusMessage("已新增一筆示範異常事件。")
+      setStatusMessage("已新增一筆異常事件。")
       await loadHistory()
     } catch (error) {
       console.error(error)
-      setErrorMessage("新增示範事件失敗，請稍後再試。")
+      setErrorMessage("新增事件失敗，請稍後再試。")
     } finally {
       setSyncing(false)
     }
@@ -187,7 +187,7 @@ export default function FamilyAlerts() {
 
         <div className="action-row">
           <button className="secondary-btn" onClick={handleSyncDemo} disabled={syncing}>
-            {syncing ? "新增中..." : "新增示範事件"}
+            {syncing ? "新增中..." : "新增事件"}
           </button>
           <button className="secondary-btn" onClick={loadHistory} disabled={loading}>
             重新整理

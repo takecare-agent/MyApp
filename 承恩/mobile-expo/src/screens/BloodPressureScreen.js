@@ -108,7 +108,7 @@ export default function BloodPressureScreen({
         method: "POST",
         token
       })
-      setMessage(data.message || "Mock synced")
+      setMessage(data.message || "同步完成")
       await loadHistory()
     } catch (syncError) {
       setError(syncError.message)
@@ -126,7 +126,7 @@ export default function BloodPressureScreen({
         <Text style={styles.title}>
           {role === "caregiver" ? "Caregiver" : "Patient"} Blood Pressure
         </Text>
-        <Text style={styles.sub}>Record, sync mock data, and inspect history.</Text>
+        <Text style={styles.sub}>記錄、同步並查看歷史資料。</Text>
       </View>
 
       {latest ? (
@@ -181,7 +181,7 @@ export default function BloodPressureScreen({
             {syncing ? (
               <ActivityIndicator color="#1f74d1" />
             ) : (
-              <Text style={styles.buttonSecondaryText}>Sync Mock</Text>
+              <Text style={styles.buttonSecondaryText}>同步</Text>
             )}
           </Pressable>
           <Pressable

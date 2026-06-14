@@ -112,7 +112,7 @@ export default function VisionScreen({ role, apiBaseUrl, token, onBack }) {
         method: "POST",
         token
       })
-      setMessage(data.message || "Mock synced")
+      setMessage(data.message || "同步完成")
       await loadHistory()
     } catch (syncError) {
       setError(syncError.message)
@@ -130,7 +130,7 @@ export default function VisionScreen({ role, apiBaseUrl, token, onBack }) {
         <Text style={styles.title}>
           {role === "caregiver" ? "Caregiver" : "Patient"} Vision Detection
         </Text>
-        <Text style={styles.sub}>Detect events, sync mock results, and review history.</Text>
+        <Text style={styles.sub}>偵測事件、同步並查看歷史資料。</Text>
       </View>
 
       <View style={styles.formCard}>
@@ -171,7 +171,7 @@ export default function VisionScreen({ role, apiBaseUrl, token, onBack }) {
             {syncing ? (
               <ActivityIndicator color="#1f74d1" />
             ) : (
-              <Text style={styles.buttonSecondaryText}>Sync Mock</Text>
+              <Text style={styles.buttonSecondaryText}>同步</Text>
             )}
           </Pressable>
           <Pressable

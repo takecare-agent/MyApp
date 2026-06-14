@@ -54,12 +54,7 @@ export default function FamilyHome() {
         <span className="section-kicker">家屬端</span>
         <div className="home-header">
           <h2 className="section-title">家屬功能總覽</h2>
-          <span className="status-chip">介面原型</span>
         </div>
-        <p className="section-subtitle">
-          以下頁面依照簡報功能細項建立，先提供前端介面供組員串接後端與裝置資料。
-        </p>
-
         <div className="metric-row">
           {quickStats.map(item => (
             <div key={item.label} className="metric-card">

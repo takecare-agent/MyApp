@@ -127,37 +127,30 @@ export default function RoleHomeScreen({
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Full Web App</Text>
-        <Text style={styles.cardDesc}>
-          Open your original React web pages directly inside app.
-        </Text>
+        <Text style={styles.cardTitle}>功能總覽</Text>
         <Pressable
           style={styles.primaryBtn}
           onPress={() => onOpenWebRoute(roleHomePath, `${role} home`)}
         >
-          <Text style={styles.primaryBtnText}>Open Role Home</Text>
+          <Text style={styles.primaryBtnText}>開啟角色首頁</Text>
         </Pressable>
       </View>
 
       {webModules.map(item => (
         <View key={item.id} style={styles.card}>
           <Text style={styles.cardTitle}>{item.title}</Text>
-          <Text style={styles.cardDesc}>Open web route: {item.path}</Text>
           <Pressable
             style={styles.primaryBtn}
             onPress={() => onOpenWebRoute(item.path, item.title)}
           >
-            <Text style={styles.primaryBtnText}>Open Web Module</Text>
+            <Text style={styles.primaryBtnText}>開啟功能</Text>
           </Pressable>
         </View>
       ))}
 
       {nativeModules.length ? (
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Native Quick Modules</Text>
-          <Text style={styles.cardDesc}>
-            Keep these for faster mobile-only workflows.
-          </Text>
+          <Text style={styles.cardTitle}>快速功能</Text>
           {nativeModules.map(item =>
             item.id === "blood-pressure" ? (
               <Pressable
@@ -166,7 +159,7 @@ export default function RoleHomeScreen({
                 onPress={onOpenBloodPressure}
               >
                 <Text style={styles.secondaryBtnText}>
-                  {item.title} (Native)
+                  {item.title}
                 </Text>
               </Pressable>
             ) : (
@@ -175,7 +168,7 @@ export default function RoleHomeScreen({
                 style={styles.secondaryBtn}
                 onPress={onOpenVision}
               >
-                <Text style={styles.secondaryBtnText}>{item.title} (Native)</Text>
+                <Text style={styles.secondaryBtnText}>{item.title}</Text>
               </Pressable>
             )
           )}
@@ -184,12 +177,12 @@ export default function RoleHomeScreen({
 
       {role !== "patient" && role !== "family" && role !== "caregiver" ? (
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Unknown Role</Text>
+          <Text style={styles.cardTitle}>尚未選擇角色</Text>
           <Text style={styles.cardDesc}>
-            This role is not mapped yet. Open /role to continue.
+            請回到角色選擇頁，重新選擇使用身分。
           </Text>
           <Pressable style={styles.primaryBtn} onPress={() => onOpenWebRoute("/role")}>
-            <Text style={styles.primaryBtnText}>Open Role Select</Text>
+            <Text style={styles.primaryBtnText}>前往角色選擇</Text>
           </Pressable>
         </View>
       ) : null}

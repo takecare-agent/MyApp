@@ -95,12 +95,12 @@ export default function CaregiverSystemCenter() {
 
         <h2 className="section-title">系統健康度與備援檔案</h2>
         <p className="section-subtitle">
-          按「同步虛擬系統資料」會寫入 MongoDB 一筆資料，更新網路狀態與備援清單。
+          同步系統資料後，會更新網路狀態與備援清單。
         </p>
 
         <div className="action-row">
           <button className="secondary-btn" onClick={handleSync} disabled={syncing}>
-            {syncing ? "同步中..." : "同步虛擬系統資料"}
+            {syncing ? "同步中..." : "同步系統資料"}
           </button>
           <button className="secondary-btn" onClick={loadHistory} disabled={loading}>
             {loading ? "載入中..." : "讀取最新 10 筆"}

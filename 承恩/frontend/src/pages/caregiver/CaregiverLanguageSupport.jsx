@@ -94,12 +94,12 @@ export default function CaregiverLanguageSupport() {
 
         <h2 className="section-title">母語切換與語句庫</h2>
         <p className="section-subtitle">
-          按「同步虛擬語言資料」會寫入 MongoDB 一筆資料，並更新翻譯與語句列表。
+          同步語言資料後，會更新翻譯與語句列表。
         </p>
 
         <div className="action-row">
           <button className="secondary-btn" onClick={handleSync} disabled={syncing}>
-            {syncing ? "同步中..." : "同步虛擬語言資料"}
+            {syncing ? "同步中..." : "同步語言資料"}
           </button>
           <button className="secondary-btn" onClick={loadHistory} disabled={loading}>
             {loading ? "載入中..." : "讀取最新 10 筆"}

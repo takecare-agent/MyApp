@@ -62,10 +62,6 @@ export default function PatientSetup() {
       <div className="card setup-card">
         <span className="section-kicker">受顧者資料</span>
         <h2 className="section-title">建立受顧者基本檔案</h2>
-        <p className="section-subtitle">
-          此頁先為介面版本，後續可由組員擴充欄位驗證與資料同步流程。
-        </p>
-
         <div className="form-grid">
           <div>
             <label className="input-label" htmlFor="patient-name">

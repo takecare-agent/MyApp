@@ -43,13 +43,8 @@ export default function PatientHome() {
       <div className="home-card wide-card">
         <span className="section-kicker">受顧者端</span>
         <div className="home-header">
-          <h2 className="section-title">受顧者介面總覽</h2>
-          <span className="status-chip">介面原型</span>
+          <h2 className="section-title">受顧者功能總覽</h2>
         </div>
-        <p className="section-subtitle">
-          依照簡報需求建立 SOS、穿戴數據與血壓量測頁，先提供畫面供後續串接。
-        </p>
-
         <div className="metric-row">
           {healthSummary.map(item => (
             <div className="metric-card" key={item.label}>

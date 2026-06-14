@@ -89,7 +89,7 @@ export default function FamilyEventHistory() {
         throw new Error(data.message || "同步失敗")
       }
 
-      setStatusMessage(`已同步第 ${data.sampleIndex + 1} 筆虛擬危險事件。`)
+      setStatusMessage(`已同步第 ${data.sampleIndex + 1} 筆危險事件。`)
       await loadEvents()
     } catch (error) {
       console.error(error)
@@ -111,7 +111,7 @@ export default function FamilyEventHistory() {
 
         <h2 className="section-title">條件查詢與歷史事件清單</h2>
         <p className="section-subtitle">
-          點「同步虛擬事件」會寫入 MongoDB 一筆資料，再依日期與類型查詢最新 10 筆。
+          同步事件後，可依日期與類型查詢最新紀錄。
         </p>
 
         <div className="filter-grid">
@@ -163,7 +163,7 @@ export default function FamilyEventHistory() {
 
         <div className="action-row">
           <button className="secondary-btn" onClick={handleSync} disabled={syncing}>
-            {syncing ? "同步中..." : "同步虛擬事件"}
+            {syncing ? "同步中..." : "同步事件"}
           </button>
           <button className="secondary-btn" onClick={loadEvents} disabled={loading}>
             讀取最新 10 筆
@@ -177,7 +177,7 @@ export default function FamilyEventHistory() {
           {events.length === 0 ? (
             <div className="list-card">
               <div className="list-title">查無事件資料</div>
-              <div className="list-meta">可以先按「同步虛擬事件」。</div>
+              <div className="list-meta">可以先按「同步事件」。</div>
             </div>
           ) : (
             events.map(item => (

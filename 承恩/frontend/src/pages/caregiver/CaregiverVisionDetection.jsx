@@ -30,7 +30,7 @@ function severityClass(level) {
 
 function sourceLabel(source) {
   if (source === "vision-model") return "模型回傳"
-  if (source === "vision-mock") return "示範資料"
+  if (source === "vision-mock") return "影像偵測"
   return source || "-"
 }
 
@@ -148,11 +148,11 @@ export default function CaregiverVisionDetection() {
       if (!res.ok) {
         throw new Error(data.message || "Sync failed")
       }
-      setStatusMessage(`已同步示範偵測資料（第 ${data.sampleIndex + 1} 筆樣本）。`)
+      setStatusMessage(`已同步偵測資料（第 ${data.sampleIndex + 1} 筆）。`)
       await loadHistory()
     } catch (error) {
       console.error(error)
-      setErrorMessage("同步示範影像資料失敗，請稍後再試。")
+      setErrorMessage("同步影像資料失敗，請稍後再試。")
     } finally {
       setSyncing(false)
     }
@@ -225,7 +225,7 @@ export default function CaregiverVisionDetection() {
             {detecting ? "偵測中..." : "觸發影像偵測"}
           </button>
           <button className="secondary-btn" onClick={handleSyncDemo} disabled={syncing}>
-            {syncing ? "同步中..." : "同步示範事件"}
+            {syncing ? "同步中..." : "同步事件"}
           </button>
           <button className="secondary-btn" onClick={loadHistory} disabled={loading}>
             {loading ? "載入中..." : "重新整理"}
