@@ -14,21 +14,17 @@ const DETAIL_MAP   = {
   '活動':   ['散步', '復健運動', '下床活動'],
   '其他':   ['請手動輸入詳細內容'],
 };
-const SLEEP_OPTS = ['睡眠良好', '夜間多次翻身', '難以入睡', '嗜睡', '其他'];
 
 export default function EditRecordScreen({ route, navigation }) {
   const { record, onSaved } = route.params;
 
   const initCat   = MEAL_ITEMS.includes(record.meals) ? record.meals : '其他';
   const initDet   = DETAIL_MAP[initCat]?.includes(record.note) ? record.note : '其他';
-  const initSleep = SLEEP_OPTS.includes(record.sleep) ? record.sleep : (record.sleep ? '其他' : SLEEP_OPTS[0]);
 
   const [category, setCategory]             = useState(initCat);
   const [detail, setDetail]                 = useState(initDet);
   const [customCategory, setCustomCategory] = useState(initCat === '其他' ? (record.meals || '') : '');
   const [customDetail, setCustomDetail]     = useState(initDet === '其他' ? (record.note || '') : '');
-  const [sleepPick, setSleepPick]           = useState(initSleep);
-  const [customSleep, setCustomSleep]       = useState(initSleep === '其他' ? (record.sleep || '') : '');
   const [saving, setSaving]                 = useState(false);
 
   const handleCategoryChange = val => {
@@ -39,12 +35,11 @@ export default function EditRecordScreen({ route, navigation }) {
   const handleSave = async () => {
     const finalMeals = category === '其他' ? customCategory : category;
     const finalNote  = (detail === '其他' || category === '其他') ? customDetail : detail;
-    const finalSleep = sleepPick === '其他' ? customSleep : sleepPick;
     if (!finalMeals || !finalNote) return Alert.alert('提示', '請完整填寫紀錄項目與內容');
 
     setSaving(true);
     try {
-      const res = await client.put(`/care-records/${record._id}`, { meals: finalMeals, note: finalNote, sleep: finalSleep });
+      const res = await client.put(`/care-records/${record._id}`, { meals: finalMeals, note: finalNote });
       if (onSaved) onSaved(res.data);
       Alert.alert('成功', '紀錄已更新', [{ text: '好', onPress: () => navigation.goBack() }]);
     } catch {
@@ -83,21 +78,7 @@ export default function EditRecordScreen({ route, navigation }) {
             onChangeText={setCustomDetail} multiline />
         )}
 
-        <Text style={s.label}>3. 睡眠狀況</Text>
-        <View style={s.picker}>
-          <Picker selectedValue={sleepPick} onValueChange={setSleepPick} itemStyle={{ color: colors.text }}>
-            {SLEEP_OPTS.map(o => <Picker.Item key={o} label={o} value={o} />)}
-          </Picker>
-        </View>
-        {sleepPick === '其他' && (
-          <TextInput style={s.input} placeholder="請描述睡眠狀況..."
-            value={customSleep} onChangeText={setCustomSleep} />
-        )}
 
-        <View style={s.notice}>
-          <Ionicons name="bluetooth" size={13} color={colors.primary} />
-          <Text style={s.noticeText}>血壓、心率、體溫由藍牙裝置自動回傳，無法手動修改</Text>
-        </View>
       </View>
 
       <TouchableOpacity style={[s.saveBtn, saving && { opacity: 0.6 }]} onPress={handleSave} disabled={saving}>

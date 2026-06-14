@@ -2,6 +2,15 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import client from '../api/client';
+import DateRangePicker from '../components/DateRangePicker';
+
+const TYPE_ICONS = {
+  '跌倒/受傷': '🚨',
+  '生理異常': '🩺',
+  '情緒/行為': '😰',
+  '飲食/排泄': '🍽️',
+  '其他': '📝',
+};
 
 export default function AbnormalListScreen({ navigation, route }) {
   const role = route?.params?.role || 'family';
@@ -11,7 +20,7 @@ export default function AbnormalListScreen({ navigation, route }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const [selectedDate, setSelectedDate] = useState(null);
+  const [dateRange, setDateRange] = useState({ start: null, end: null });
   const [selectedType, setSelectedType] = useState(null);
   const [showHandled, setShowHandled] = useState('全部'); // '全部' | '未處理' | '已處理'
 
@@ -32,14 +41,22 @@ export default function AbnormalListScreen({ navigation, route }) {
 
   const onRefresh = () => { setRefreshing(true); fetchEvents(); };
 
+  // 日期范围过滤
+  const handleDateRangeChange = (range) => {
+    setDateRange(range);
+  };
+
   // 套用篩選
   useEffect(() => {
     let result = [...events];
-    if (selectedDate) {
+    if (dateRange.start) {
       result = result.filter(r => {
         const d = new Date(r.createdAt);
-        const ds = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-        return ds === selectedDate;
+        const start = new Date(dateRange.start);
+        const end = dateRange.end ? new Date(dateRange.end) : new Date(dateRange.start);
+        start.setHours(0,0,0,0);
+        end.setHours(23,59,59,999);
+        return d >= start && d <= end;
       });
     }
     if (selectedType) {
@@ -48,7 +65,7 @@ export default function AbnormalListScreen({ navigation, route }) {
     if (showHandled === '已處理') result = result.filter(r => r.isHandled);
     if (showHandled === '未處理') result = result.filter(r => !r.isHandled);
     setFiltered(result);
-  }, [selectedDate, selectedType, showHandled, events]);
+  }, [dateRange, selectedType, showHandled, events]);
 
   // 標記已處理
   const toggleHandled = async (item) => {
@@ -60,87 +77,73 @@ export default function AbnormalListScreen({ navigation, route }) {
     }
   };
 
-  const getUniqueDates = () => {
-    const dates = events.map(r => {
-      const d = new Date(r.createdAt);
-      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    });
-    return [...new Set(dates)];
-  };
-
   const getUniqueTypes = () => {
     const types = events.map(r => r.type || r.eventType).filter(Boolean);
     return [...new Set(types)];
   };
 
-  const renderItem = ({ item }) => (
-    <View style={[styles.card,
-      item.severity === '緊急' ? styles.urgentBorder :
-      item.severity === '輕微' ? styles.mildBorder :
-      styles.noticeBorder
-    ]}>
-      <View style={styles.headerRow}>
-        <Text style={[styles.badge,
-          item.severity === '緊急' ? styles.bgUrgent :
-          item.severity === '輕微' ? styles.bgMild :
-          styles.bgNotice
-        ]}>
-          {item.severity}
-        </Text>
-        <Text style={styles.eventTime}>{new Date(item.createdAt).toLocaleString()}</Text>
-      </View>
+  const renderItem = ({ item }) => {
+    const typeIcon = TYPE_ICONS[item.type || item.eventType] || '📝';
+    return (
+      <View style={[styles.card,
+        item.severity === '緊急' ? styles.urgentBorder :
+        item.severity === '輕微' ? styles.mildBorder :
+        styles.noticeBorder
+      ]}>
+        <View style={styles.headerRow}>
+          <Text style={[styles.badge,
+            item.severity === '緊急' ? styles.bgUrgent :
+            item.severity === '輕微' ? styles.bgMild :
+            styles.bgNotice
+          ]}>
+            {item.severity}
+          </Text>
+          <Text style={styles.eventTime}>{new Date(item.createdAt).toLocaleString()}</Text>
+        </View>
 
-      <Text style={styles.eventTitle}>⚠️ {item.type || item.eventType}</Text>
-      <Text style={styles.description}>{item.description}</Text>
-      <Text style={styles.caregiver}>回報人：{item.caregiverName || '專屬看護'}</Text>
+        <Text style={styles.eventTitle}>{typeIcon} {item.type || item.eventType}</Text>
+        <Text style={styles.description}>{item.description}</Text>
+        <Text style={styles.caregiver}>回報人：{item.caregiverName || '專屬看護'}</Text>
 
-      {/* 是否已處理 */}
-      <TouchableOpacity
-        style={[styles.handledBtn, item.isHandled && styles.handledBtnDone]}
-        onPress={() => toggleHandled(item)}
-      >
-        <Ionicons name={item.isHandled ? 'checkmark-circle' : 'ellipse-outline'} size={16} color={item.isHandled ? '#52c41a' : '#aaa'} />
-        <Text style={[styles.handledText, item.isHandled && styles.handledTextDone]}>
-          {item.isHandled ? '已處理' : '標記為已處理'}
-        </Text>
-      </TouchableOpacity>
-
-      {/* 看護端才顯示「再通報」 */}
-      {role === 'caregiver' && (
-        <TouchableOpacity style={styles.reportBtn} onPress={() => navigation.navigate('AbnormalEvent')}>
-          <Ionicons name="warning-outline" size={16} color="#ff4d4f" />
-          <Text style={styles.reportBtnText}>再通報</Text>
+        {/* 是否已處理 */}
+        <TouchableOpacity
+          style={[styles.handledBtn, item.isHandled && styles.handledBtnDone]}
+          onPress={() => toggleHandled(item)}
+        >
+          <Ionicons name={item.isHandled ? 'checkmark-circle' : 'ellipse-outline'} size={16} color={item.isHandled ? '#52c41a' : '#aaa'} />
+          <Text style={[styles.handledText, item.isHandled && styles.handledTextDone]}>
+            {item.isHandled ? '已處理' : '標記為已處理'}
+          </Text>
         </TouchableOpacity>
-      )}
-    </View>
-  );
+
+        {/* 看護端才顯示「再通報」 */}
+        {role === 'caregiver' && (
+          <TouchableOpacity style={styles.reportBtn} onPress={() => navigation.navigate('AbnormalEvent')}>
+            <Ionicons name="warning-outline" size={16} color="#ff4d4f" />
+            <Text style={styles.reportBtnText}>再通報</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
 
   return (
     <View style={styles.container}>
       {/* 篩選區 */}
       <View style={styles.filterSection}>
-        {/* 日期篩選 */}
-        <Text style={styles.filterLabel}>📅 日期</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-          <TouchableOpacity style={[styles.chip, !selectedDate && styles.chipActive]} onPress={() => setSelectedDate(null)}>
-            <Text style={[styles.chipText, !selectedDate && styles.chipTextActive]}>全部</Text>
-          </TouchableOpacity>
-          {getUniqueDates().map(d => (
-            <TouchableOpacity key={d} style={[styles.chip, selectedDate === d && styles.chipActive]} onPress={() => setSelectedDate(d === selectedDate ? null : d)}>
-              <Text style={[styles.chipText, selectedDate === d && styles.chipTextActive]}>{d}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        {/* 日期區間篩選 */}
+        <Text style={styles.filterLabel}>📅 日期區間</Text>
+        <DateRangePicker onRangeChange={handleDateRangeChange} />
 
         {/* 類型篩選 */}
-        <Text style={styles.filterLabel}>🏷️ 類型</Text>
+        <Text style={[styles.filterLabel, { marginTop: 12 }]}>🏷️ 類型</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
           <TouchableOpacity style={[styles.chip, !selectedType && styles.chipActive]} onPress={() => setSelectedType(null)}>
             <Text style={[styles.chipText, !selectedType && styles.chipTextActive]}>全部</Text>
           </TouchableOpacity>
           {getUniqueTypes().map(t => (
             <TouchableOpacity key={t} style={[styles.chip, selectedType === t && styles.chipActive]} onPress={() => setSelectedType(t === selectedType ? null : t)}>
-              <Text style={[styles.chipText, selectedType === t && styles.chipTextActive]}>{t}</Text>
+              <Text style={[styles.chipText, selectedType === t && styles.chipTextActive]}>{TYPE_ICONS[t] || ''} {t}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>

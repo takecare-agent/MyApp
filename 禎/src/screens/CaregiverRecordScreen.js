@@ -16,17 +16,31 @@ export default function CaregiverRecordScreen({ navigation }) {
   const handleSubmit = async () => {
     try {
       const userId = await AsyncStorage.getItem('userId');
-      const userName = await AsyncStorage.getItem('userName');
-      
-      await client.post('/api/records', {
+      let userName = await AsyncStorage.getItem('userName');
+      if (!userName) {
+        console.warn('AsyncStorage userName 為空，使用預設值');
+        userName = '未知';
+      }
+
+      console.log('上傳資料:', { ...form, caregiverId: userId, caregiverName: userName });
+
+      const res = await client.post('/care-records', {
         ...form,
-        caregiverId: userId,
         caregiverName: userName
       });
 
+      const newRecord = {
+        ...res.data,
+        meals: form.meals,
+        note: form.note
+      };
+
+      console.log('上傳成功:', newRecord);
       Alert.alert('成功', '今天的照護紀錄已上傳', [{ text: '好', onPress: () => navigation.goBack() }]);
     } catch (error) {
-      Alert.alert('錯誤', '儲存失敗，請檢查網路');
+      console.error('上傳失敗:', error.response?.data || error.message);
+      const msg = error.response?.data?.message || '儲存失敗，請檢查網路';
+      Alert.alert('錯誤', msg);
     }
   };
 

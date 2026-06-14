@@ -10,7 +10,7 @@ const todayKey = () => {
   const d = new Date();
   return `dailyTask_${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 };
-const CAT_ICON = { '用藥提醒': '💊', '醫療行程': '🏥', '生理量測': '🩺', '生活照護': '🛁', '其他': '📝' };
+const CAT_ICON = { '用藥提醒': '💊', '醫療行程': '🏥', '生活照護': '🛁', '其他': '📝' };
 
 export default function DailyTaskScreen() {
   const [tasks, setTasks]           = useState([]);

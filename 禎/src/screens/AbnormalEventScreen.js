@@ -8,16 +8,23 @@ export default function AbnormalEventScreen({ navigation }) {
   const [type, setType] = useState('跌倒/受傷');
   const [detail, setDetail] = useState('');
   const [customDetail, setCustomDetail] = useState('');
+  const [customType, setCustomType] = useState('');
   const [severity, setSeverity] = useState('注意'); 
   const [loading, setLoading] = useState(false);
 
-  const eventTypes = ['跌倒/受傷', '生理異常', '情緒/行為', '飲食/排泄', '其他'];
+  const eventTypes = [
+    { label: '跌倒/受傷', icon: '🚨' },
+    { label: '生理異常', icon: '🩺' },
+    { label: '情緒/行為', icon: '😰' },
+    { label: '飲食/排泄', icon: '🍽️' },
+    { label: '其他', icon: '📝' },
+  ];
   const detailPresets = {
     '跌倒/受傷': ['浴室滑倒', '下床跌倒', '行走時絆倒', '撞到傢俱', '皮膚擦傷/瘀青'],
-    '生理異常': ['發燒 (>38度)', '呼吸急促/困難', '血壓過高 (>160)', '持續嘔吐', '意識不清'],
-    '情緒/行為': ['情緒激動/吼叫', '拒絕照護/服藥', '甚至遊走/迷路', '睡眠障礙/失眠'],
+    '生理異常': ['發燒 (>38度)', '呼吸急促/困難', '血壓過高', '持續嘔吐', '意識不清'],
+    '情緒/行為': ['情緒激動/吼叫', '拒絕照護/服藥', '遊走/迷路', '睡眠障礙/失眠'],
     '飲食/排泄': ['完全拒食', '吞嚥困難/嗆咳', '便秘 (>3天)', '嚴重腹瀉'],
-    '其他': ['請手動描述異常狀況']
+    '其他': []
   };
 
   // 🚦 嚴重程度定義 (柔和化顏色)
@@ -49,17 +56,18 @@ export default function AbnormalEventScreen({ navigation }) {
   ];
 
   const handleSubmit = async () => {
-    const finalDescription = (detail === '其他' || type === '其他') ? customDetail : detail;
+    const finalType = type === '其他' ? customType : type;
+    const finalDescription = detail === '其他' ? customDetail : detail;
 
-    if (!finalDescription) {
-      Alert.alert('提示', '請選擇或輸入異常描述');
+    if (!finalType || !finalDescription) {
+      Alert.alert('提示', '請填寫事件類別與狀況描述');
       return;
     }
 
     setLoading(true);
     try {
       const response = await client.post('/api/abnormal-events', {
-        type: type,
+        type: finalType,
         description: finalDescription,
         severity: severity, 
         status: 'pending',  
@@ -94,12 +102,23 @@ export default function AbnormalEventScreen({ navigation }) {
         <View style={styles.pickerBox}>
           <Picker
             selectedValue={type}
-            onValueChange={(val) => { setType(val); setDetail(''); setCustomDetail(''); }}
+            onValueChange={(val) => { setType(val); setDetail(''); setCustomDetail(''); setCustomType(''); }}
             itemStyle={{ color: '#333333' }}
           >
-            {eventTypes.map(t => <Picker.Item key={t} label={t} value={t} />)}
+            {eventTypes.map(t => <Picker.Item key={t.label} label={`${t.icon} ${t.label}`} value={t.label} />)}
           </Picker>
         </View>
+
+        {/* 事件類別為「其他」時的輸入框 */}
+        {type === '其他' && (
+          <TextInput
+            style={styles.customInput}
+            placeholder="請輸入事件類別..."
+            placeholderTextColor="#999"
+            value={customType}
+            onChangeText={setCustomType}
+          />
+        )}
 
         {/* 2. 狀況描述 */}
         <Text style={styles.label}>2. 詳細狀況描述</Text>
@@ -115,8 +134,8 @@ export default function AbnormalEventScreen({ navigation }) {
           </Picker>
         </View>
 
-        {/* 手動輸入框 (改為柔和綠色系) */}
-        {(detail === '其他' || type === '其他') && (
+        {/* 狀況描述為「其他」時的輸入框 */}
+        {detail === '其他' && (
           <TextInput
             style={styles.customInput}
             placeholder="請詳細描述發生經過..."

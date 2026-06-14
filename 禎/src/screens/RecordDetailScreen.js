@@ -1,12 +1,30 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import client from '../api/client';
 import { colors, radius, shadow, text } from '../theme';
 
+const ITEM_ICONS = {
+  '飲食': '🍽️', '用藥': '💊', '生理量測': '🩺', '清潔': '🛁', '活動': '🚶', '其他': '📝'
+};
+const ITEM_COLORS = {
+  '飲食': colors.success, '用藥': colors.danger, '生理量測': colors.primary, '清潔': '#9b59b6', '活動': colors.warning, '其他': colors.textSub
+};
+
 export default function RecordDetailScreen({ route, navigation }) {
-  const [record, setRecord]     = useState(route.params.record);
+  const [record, setRecord]     = useState(route.params.record || {});
   const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    const fetchDetail = async () => {
+      try {
+        const res = await client.get('/care-records');
+        const found = res.data.find(r => r._id === route.params.record._id);
+        if (found) setRecord(found);
+      } catch { /* 保持用 props 資料 */ }
+    };
+    fetchDetail();
+  }, [route.params.record?._id]);
 
   const formatTime = iso => {
     if (!iso) return '--';
@@ -30,14 +48,11 @@ export default function RecordDetailScreen({ route, navigation }) {
     ]);
   };
 
-  const Row = ({ ionIcon, mciIcon, color, label, value }) => {
+  const Row = ({ ionIcon, color, label, value }) => {
     if (!value) return null;
     return (
       <View style={s.row}>
-        {mciIcon
-          ? <MaterialCommunityIcons name={mciIcon} size={18} color={color} style={{ width: 26 }} />
-          : <Ionicons name={ionIcon} size={18} color={color} style={{ width: 26 }} />
-        }
+        <Ionicons name={ionIcon} size={18} color={color} style={{ width: 26 }} />
         <View style={{ flex: 1 }}>
           <Text style={s.rowLabel}>{label}</Text>
           <Text style={s.rowValue}>{value}</Text>
@@ -45,6 +60,9 @@ export default function RecordDetailScreen({ route, navigation }) {
       </View>
     );
   };
+
+  const getIcon = (category) => ITEM_ICONS[category] || '📝';
+  const getColor = (category) => ITEM_COLORS[category] || colors.textSub;
 
   return (
     <ScrollView style={s.container}>
@@ -67,21 +85,17 @@ export default function RecordDetailScreen({ route, navigation }) {
       </View>
 
       <View style={s.card}>
-        <Text style={s.sectionTitle}>📋 照護紀錄</Text>
-        <Row ionIcon="clipboard-outline"    color={colors.success} label="紀錄項目" value={record.meals} />
-        <Row ionIcon="document-text-outline" color={colors.textSub} label="內容"    value={record.note} />
-        <Row ionIcon="moon-outline"          color={colors.purple}  label="睡眠狀況" value={record.sleep} />
-        {!record.meals && !record.note && !record.sleep &&
+        <View style={s.cardHeader}>
+          <Text style={s.categoryIcon}>{getIcon(record.meals)}</Text>
+          <Text style={s.sectionTitle}>照護紀錄</Text>
+        </View>
+        {record.bloodPressure ? <Row ionIcon="heart-outline" color={colors.danger} label="血壓" value={record.bloodPressure} /> : null}
+        {record.heartRate ? <Row ionIcon="pulse-outline" color={colors.warning} label="心率" value={`${record.heartRate} bpm`} /> : null}
+        {record.temperature ? <Row ionIcon="thermometer-outline" color={colors.primary} label="體溫" value={`${record.temperature} °C`} /> : null}
+        {record.meals ? <Row ionIcon="checkmark-circle-outline" color={getColor(record.meals)} label="項目" value={record.meals} /> : null}
+        {record.note ? <Row ionIcon="document-text-outline" color={colors.textSub} label="備註" value={record.note} /> : null}
+        {!record.bloodPressure && !record.heartRate && !record.temperature && !record.meals && !record.note &&
           <Text style={s.empty}>無照護紀錄內容</Text>}
-      </View>
-
-      <View style={s.card}>
-        <Text style={s.sectionTitle}>🩺 生理數據（藍牙回傳）</Text>
-        <Row mciIcon="water-outline" color={colors.danger} label="血壓" value={record.bloodPressure} />
-        <Row mciIcon="heart-pulse"   color={colors.danger} label="心率" value={record.heartRate ? `${record.heartRate} bpm` : null} />
-        <Row mciIcon="thermometer"   color={colors.danger} label="體溫" value={record.temperature ? `${record.temperature}°C` : null} />
-        {!record.bloodPressure && !record.heartRate && !record.temperature &&
-          <Text style={s.empty}>尚無藍牙裝置數據</Text>}
       </View>
 
       <View style={{ height: 30 }} />
@@ -102,7 +116,9 @@ const s = StyleSheet.create({
   deleteBtnText:{ color: colors.danger, fontSize: 15, fontWeight: '600' },
 
   card:         { backgroundColor: colors.card, margin: 16, marginBottom: 0, borderRadius: radius.md, padding: 16, ...shadow.sm },
-  sectionTitle: { ...text.h3, marginBottom: 12, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: colors.border },
+  cardHeader:   { flexDirection: 'row', alignItems: 'center', marginBottom: 12, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: colors.border },
+  categoryIcon: { fontSize: 24, marginRight: 8 },
+  sectionTitle: { ...text.h3 },
   row:          { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 },
   rowLabel:     { ...text.xs, marginBottom: 2 },
   rowValue:     { ...text.body, fontWeight: '500' },
