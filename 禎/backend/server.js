@@ -11,6 +11,65 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// --- 健康檢查端點 (前端自動偵測 IP 用) ---
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: Date.now() });
+});
+
+// --- 搜尋端點 (照護紀錄 + 異常事件 + 提醒) ---
+app.get('/api/search', async (req, res) => {
+  try {
+    const q = (req.query.q || '').trim();
+    if (!q) return res.json({ results: [], total: 0 });
+
+    // 不區分大小寫,跳脫 regex 特殊字元
+    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const rx = new RegExp(escaped, 'i');
+
+    const [records, events, reminders] = await Promise.all([
+      DailyRecord.find({
+        $or: [
+          { caregiverName: rx },
+          { meals: rx },
+          { note: rx },
+          { sleep: rx },
+          { bloodPressure: rx },
+          { heartRate: rx },
+          { temperature: rx },
+        ],
+      }).sort({ createdAt: -1 }).limit(20).lean(),
+
+      AbnormalEvent.find({
+        $or: [
+          { caregiverName: rx },
+          { eventType: rx },
+          { type: rx },
+          { description: rx },
+          { severity: rx },
+        ],
+      }).sort({ createdAt: -1 }).limit(20).lean(),
+
+      Reminder.find({
+        $or: [
+          { category: rx },
+          { content: rx },
+        ],
+      }).sort({ time: -1 }).limit(20).lean(),
+    ]);
+
+    const results = [
+      ...records.map((r) => ({ ...r, _type: 'record', _label: '照護紀錄' })),
+      ...events.map((e) => ({ ...e, _type: 'event', _label: '異常事件' })),
+      ...reminders.map((r) => ({ ...r, _type: 'reminder', _label: '提醒' })),
+    ];
+
+    res.json({ results, total: results.length, q });
+  } catch (err) {
+    console.error('搜尋失敗:', err);
+    res.status(500).json({ message: '搜尋失敗', error: err.message });
+  }
+});
+
 // --- 1. 資料庫連線 ---
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log('✅ MongoDB 資料庫連線成功'))
@@ -180,23 +239,22 @@ app.get('/care-records', async (req, res) => {
 });
 
 // [照護紀錄] POST
-// 【修正】同時支援兩種路徑：CaregiverHomeScreen 用 /care-records，CaregiverRecordScreen 用 /api/records
 app.post('/care-records', async (req, res) => {
   try {
-    const { title, description, bloodPressure, heartRate, temperature, sleep, caregiverName } = req.body;
+    const { meals, note, bloodPressure, heartRate, temperature, sleep, caregiverName } = req.body;
     const newRecord = new DailyRecord({
-      meals: title,
-      note: description,
+      meals,
+      note,
       bloodPressure,
-      heartRate,
-      temperature,
+      heartRate: heartRate ? parseInt(heartRate) : undefined,
+      temperature: temperature ? parseFloat(temperature) : undefined,
       sleep,
       caregiverName
     });
     await newRecord.save();
     res.status(201).json(newRecord);
   } catch (error) {
-    res.status(500).json({ message: '儲存失敗' });
+    res.status(500).json({ message: '儲存失敗', detail: error.message });
   }
 });
 
