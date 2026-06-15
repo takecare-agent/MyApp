@@ -1,0 +1,28 @@
+{
+  "name": "takecare-mobile-native",
+  "version": "1.0.0",
+  "main": "index.js",
+  "private": true,
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-health-connect": "^3.5.3",
+    "react-native-vector-icons": "^10.3.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.29.7",
+    "@babel/runtime": "^7.29.7",
+    "@react-native-community/cli": "20.0.0",
+    "@react-native-community/cli-platform-android": "20.0.0",
+    "@react-native-community/cli-platform-ios": "20.0.0",
+    "@react-native/babel-preset": "0.81.5",
+    "@react-native/metro-config": "0.81.5"
+  },
+  "scripts": {
+    "start": "react-native start",
+    "start:reset-cache": "react-native start --reset-cache",
+    "android": "node scripts/run-android.js",
+    "ios": "react-native run-ios"
+  }
+}
