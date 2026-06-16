@@ -106,6 +106,23 @@ android {
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
     }
+
+    packaging {
+        resources {
+            pickFirsts += [
+                'META-INF/androidx.appcompat_appcompat.version',
+                'META-INF/androidx.core_core.version',
+                'META-INF/androidx.arch.core_core-runtime.version',
+                'META-INF/androidx.lifecycle_lifecycle-runtime.version',
+                'META-INF/androidx.lifecycle_lifecycle-viewmodel.version',
+                'META-INF/DEPENDENCIES',
+                'META-INF/LICENSE',
+                'META-INF/LICENSE.txt',
+                'META-INF/NOTICE',
+                'META-INF/NOTICE.txt'
+            ]
+        }
+    }
 }
 
 dependencies {

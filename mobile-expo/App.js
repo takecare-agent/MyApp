@@ -8,7 +8,10 @@ import {
 } from "react-native"
 import AuthScreen from "./src/screens/AuthScreen"
 import BloodPressureScreen from "./src/screens/BloodPressureScreen"
+import ChatScreen from "./src/screens/ChatScreen"
+import LanguageSupportScreen from "./src/screens/LanguageSupportScreen"
 import NativeFeatureScreen from "./src/screens/NativeFeatureScreen"
+import PhraseLibraryScreen from "./src/screens/PhraseLibraryScreen"
 import RoleHomeScreen from "./src/screens/RoleHomeScreen"
 import RoleSelectScreen from "./src/screens/RoleSelectScreen"
 import VisionScreen from "./src/screens/VisionScreen"
@@ -28,7 +31,8 @@ function trimTrailingSlash(value) {
 
 function normalizeSettings(rawSettings) {
   const apiBaseUrl = trimTrailingSlash(rawSettings?.apiBaseUrl || DEFAULT_API_BASE_URL)
-  return { apiBaseUrl }
+  const uiLang = rawSettings?.uiLang || "zh"
+  return { apiBaseUrl, uiLang }
 }
 
 export default function App() {
@@ -38,6 +42,12 @@ export default function App() {
   const [activeScreen, setActiveScreen] = useState("auth")
   const [activeFeature, setActiveFeature] = useState(null)
   const [loginDraft, setLoginDraft] = useState(null)
+  const [uiLang, setUiLang] = useState("zh")
+
+  const handleUiLangChange = async (lang) => {
+    setUiLang(lang)
+    await saveSettings({ ...settings, uiLang: lang })
+  }
 
   useEffect(() => {
     let mounted = true
@@ -52,6 +62,7 @@ export default function App() {
 
         const mergedSettings = normalizeSettings(savedSettings)
         setSettings(mergedSettings)
+        setUiLang(mergedSettings.uiLang)
 
         if (savedSession?.token) {
           setSession({
@@ -104,7 +115,15 @@ export default function App() {
 
   const handleOpenFeature = feature => {
     setActiveFeature(feature)
-    setActiveScreen("feature")
+    if (feature?.special === "language") {
+      setActiveScreen("language-support")
+    } else if (feature?.special === "phrase-library") {
+      setActiveScreen("phrase-library")
+    } else if (feature?.special === "chat") {
+      setActiveScreen("chat")
+    } else {
+      setActiveScreen("feature")
+    }
   }
 
   const handleProceedFromAuth = async draftInput => {
@@ -157,6 +176,7 @@ export default function App() {
             role={session.role}
             user={session.user}
             apiBaseUrl={session.apiBaseUrl}
+            uiLang={uiLang}
             onOpenBloodPressure={() => setActiveScreen("blood-pressure")}
             onOpenVision={() => setActiveScreen("vision")}
             onOpenFeature={handleOpenFeature}
@@ -188,6 +208,35 @@ export default function App() {
             feature={activeFeature}
             apiBaseUrl={session.apiBaseUrl}
             token={session.token}
+            onBack={() => setActiveScreen("home")}
+          />
+        ) : null}
+
+        {activeScreen === "language-support" ? (
+          <LanguageSupportScreen
+            apiBaseUrl={session.apiBaseUrl}
+            token={session.token}
+            uiLang={uiLang}
+            onUiLangChange={handleUiLangChange}
+            onBack={() => setActiveScreen("home")}
+          />
+        ) : null}
+
+        {activeScreen === "phrase-library" ? (
+          <PhraseLibraryScreen
+            apiBaseUrl={session.apiBaseUrl}
+            token={session.token}
+            onBack={() => setActiveScreen("home")}
+          />
+        ) : null}
+
+        {activeScreen === "chat" ? (
+          <ChatScreen
+            apiBaseUrl={session.apiBaseUrl}
+            token={session.token}
+            myEmail={session.user?.email}
+            role={session.role}
+            uiLang={uiLang}
             onBack={() => setActiveScreen("home")}
           />
         ) : null}
