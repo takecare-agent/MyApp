@@ -17,6 +17,15 @@ const SEVERITY_OPTIONS = [
   { label: "Low", value: "Low" }
 ]
 
+const UI_TEXT = {
+  zh: { back: "返回", caregiverTitle: "看護視覺偵測", patientTitle: "長輩視覺偵測", detect: "偵測", sync: "同步", refresh: "重新整理", history: "歷史紀錄", noRecords: "尚無紀錄。", sub: "偵測事件、同步並查看歷史資料。", syncDone: "同步完成" },
+  en: { back: "Back", caregiverTitle: "Caregiver Vision Detection", patientTitle: "Patient Vision Detection", detect: "Detect", sync: "Sync", refresh: "Refresh", history: "History", noRecords: "No records yet.", sub: "Detect events, sync and view history.", syncDone: "Sync complete" },
+  id: { back: "Kembali", caregiverTitle: "Deteksi Visual Pengasuh", patientTitle: "Deteksi Visual Pasien", detect: "Deteksi", sync: "Sinkronkan", refresh: "Segarkan", history: "Riwayat", noRecords: "Belum ada catatan.", sub: "Deteksi acara, sinkronkan dan lihat riwayat.", syncDone: "Sinkronisasi selesai" },
+  vi: { back: "Quay Lại", caregiverTitle: "Phát Hiện Hình Ảnh (Người Chăm)", patientTitle: "Phát Hiện Hình Ảnh", detect: "Phát Hiện", sync: "Đồng Bộ", refresh: "Làm Mới", history: "Lịch Sử", noRecords: "Chưa có bản ghi.", sub: "Phát hiện sự kiện, đồng bộ và xem lịch sử.", syncDone: "Đồng bộ hoàn tất" },
+  tl: { back: "Bumalik", caregiverTitle: "Pagtuklas ng Bisyon (Tagapag-alaga)", patientTitle: "Pagtuklas ng Bisyon", detect: "Tuklasin", sync: "I-sync", refresh: "I-refresh", history: "Kasaysayan", noRecords: "Wala pang talaan.", sub: "Tuklasin ang mga kaganapan, i-sync at tingnan ang kasaysayan.", syncDone: "Natapos ang pag-sync" },
+  th: { back: "กลับ", caregiverTitle: "การตรวจจับภาพ (ผู้ดูแล)", patientTitle: "การตรวจจับภาพ", detect: "ตรวจจับ", sync: "ซิงค์", refresh: "รีเฟรช", history: "ประวัติ", noRecords: "ยังไม่มีบันทึก", sub: "ตรวจจับเหตุการณ์ ซิงค์และดูประวัติ", syncDone: "ซิงค์สำเร็จ" },
+}
+
 function formatDateTime(value) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return "-"
@@ -40,7 +49,8 @@ function severityColor(value) {
   return "#067647"
 }
 
-export default function VisionScreen({ role, apiBaseUrl, token, onBack }) {
+export default function VisionScreen({ role, apiBaseUrl, token, uiLang, onBack }) {
+  const t = UI_TEXT[uiLang || "zh"] || UI_TEXT.zh
   const apiPrefix = role === "caregiver" ? "/caregiver" : "/patient"
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(false)
@@ -112,7 +122,7 @@ export default function VisionScreen({ role, apiBaseUrl, token, onBack }) {
         method: "POST",
         token
       })
-      setMessage(data.message || "同步完成")
+      setMessage(data.message || t.syncDone)
       await loadHistory()
     } catch (syncError) {
       setError(syncError.message)
@@ -125,12 +135,12 @@ export default function VisionScreen({ role, apiBaseUrl, token, onBack }) {
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.headerCard}>
         <Pressable onPress={onBack}>
-          <Text style={styles.backText}>{"< Back"}</Text>
+          <Text style={styles.backText}>{t.back}</Text>
         </Pressable>
         <Text style={styles.title}>
-          {role === "caregiver" ? "Caregiver" : "Patient"} Vision Detection
+          {role === "caregiver" ? t.caregiverTitle : t.patientTitle}
         </Text>
-        <Text style={styles.sub}>偵測事件、同步並查看歷史資料。</Text>
+        <Text style={styles.sub}>{t.sub}</Text>
       </View>
 
       <View style={styles.formCard}>
@@ -164,14 +174,14 @@ export default function VisionScreen({ role, apiBaseUrl, token, onBack }) {
             {detecting ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.buttonPrimaryText}>Detect</Text>
+              <Text style={styles.buttonPrimaryText}>{t.detect}</Text>
             )}
           </Pressable>
           <Pressable style={styles.buttonSecondary} onPress={handleSync} disabled={syncing}>
             {syncing ? (
               <ActivityIndicator color="#1f74d1" />
             ) : (
-              <Text style={styles.buttonSecondaryText}>同步</Text>
+              <Text style={styles.buttonSecondaryText}>{t.sync}</Text>
             )}
           </Pressable>
           <Pressable
@@ -182,7 +192,7 @@ export default function VisionScreen({ role, apiBaseUrl, token, onBack }) {
             {loading ? (
               <ActivityIndicator color="#1f74d1" />
             ) : (
-              <Text style={styles.buttonSecondaryText}>Refresh</Text>
+              <Text style={styles.buttonSecondaryText}>{t.refresh}</Text>
             )}
           </Pressable>
         </View>
@@ -210,9 +220,9 @@ export default function VisionScreen({ role, apiBaseUrl, token, onBack }) {
       </View>
 
       <View style={styles.historyCard}>
-        <Text style={styles.historyTitle}>History</Text>
+        <Text style={styles.historyTitle}>{t.history}</Text>
         {records.length === 0 ? (
-          <Text style={styles.empty}>No records yet.</Text>
+          <Text style={styles.empty}>{t.noRecords}</Text>
         ) : (
           records.map(item => (
             <View key={item._id} style={styles.row}>

@@ -26,6 +26,615 @@ const MOOD_OPTIONS = [
 ]
 const STRESS_MOODS = new Set(["焦慮", "頭暈"])
 
+const UI_TEXT = {
+  zh: {
+    back: "返回", caregiverTitle: "看護血壓照護", caregiverSub: "同步、代輸入與每日照護任務。",
+    patientTitle: "長輩每日血壓紀錄", patientSub: "Health Connect 同步、手動新增、趨勢分析與心情日記",
+    familyTitle: "長輩每日血壓監控", familySub: "家屬端固定查看近 3 個月資料",
+    tabMeasure: "量測", tabTrend: "趨勢", tabDiary: "日記",
+    noRecord: "尚無紀錄", refresh: "重新整理", syncHC: "從 Health Connect 同步",
+    moodStatus: "心情狀態", sysBP: "收縮壓", diaBP: "舒張壓", pulse: "脈搏", mood: "心情",
+    alertNeedsConfirm: "需要看護確認", bpAlert: "血壓提醒",
+    currentBP: "目前照護血壓", nextStepLabel: "看護下一步",
+    nextCritical: "立即確認長輩症狀，必要時聯絡家屬並協助就醫。",
+    nextDanger: "請安排長輩休息 5 分鐘後複測，並在照護紀錄中註記。",
+    nextWarning: "持續追蹤今日血壓，留意頭暈、疲倦或焦慮狀態。",
+    nextStable: "目前狀態穩定，維持例行量測與同步。",
+    nextNoData: "尚無血壓資料，請先同步或手動新增第一筆紀錄。",
+    dailyTasksTitle: "今日照護任務", completed: "已完成",
+    taskMorning: "晨間血壓確認",
+    taskMorningLatestFn: (sys, dia) => `最新紀錄 ${sys}/${dia} mmHg`,
+    taskMorningNew: "同步或新增今日第一筆血壓。",
+    taskMoodTitle: "心情狀態註記",
+    taskMoodCurrentFn: (emoji, mood) => `目前標記：${emoji} ${mood}`,
+    taskMoodNew: "量測後補上長輩當下狀態。",
+    taskNotify: "異常通知家屬", taskNotifyOk: "目前無需通知，維持觀察。",
+    taskEvening: "晚間回顧", taskEveningDesc: "交班前確認是否已同步資料並完成必要備註。",
+    syncInput: "同步與代輸入", caregiverAddTitle: "看護手動新增", saveCaregiver: "儲存看護血壓紀錄",
+    dataSource: "資料來源", linkedTo: "已連接長輩：", notLinked: "尚未連接長輩帳號",
+    latestSync: "最新一筆血壓同步", sourcePrefix: "來源：",
+    familyFocus: "家屬追蹤重點", waitForSync: "等待長輩端同步血壓資料。",
+    familyDashboard: "家屬追蹤看板", currentStatus: "目前狀態",
+    threeMonthAbnormal: "近 3 個月異常", recordUnit: " 筆",
+    familyNextStepLabel: "家屬下一步", trend3m: "近 3 個月每日血壓趨勢",
+    legendSys: "收縮壓", legendDia: "舒張壓", legendLimit: "警戒線 130/80",
+    summary3m: "近 3 個月血壓監控摘要",
+    avgSysLabel: "平均收縮壓", avgDiaLabel: "平均舒張壓",
+    maxSysLabel: "最高收縮壓", minSysLabel: "最低收縮壓",
+    totalPrefix: "總量測", abnormalSuffix: " 筆，異常優先顯示如下。",
+    noAbnormal: "目前沒有異常血壓紀錄。",
+    bpLabel: "血壓", fiveDayTrend: "近 5 日趨勢", dailyAlert: "每日警示", avgPrefix: "平均",
+    autoImport: "自動匯入", addRecord: "新增一筆紀錄", saveRecord: "儲存血壓紀錄",
+    range1m: "1個月", range3m: "3個月", range6m: "6個月",
+    bpDiary: "血壓日記", dateRecordsSuffix: " 的紀錄", emptyDay: "這天沒有血壓紀錄",
+    pulsePrefix: "脈搏", moodPrefix: "心情：",
+    levelCritical: "超高血壓", levelDanger: "高血壓", levelLow: "偏低",
+    levelPrehypertension: "血壓前期", levelNormal: "正常",
+    familyLabelCritical: "危險高血壓", familyLabelDanger: "高血壓警戒",
+    familyLabelLow: "血壓偏低", familyLabelPrehypertension: "血壓前期", familyLabelNormal: "正常",
+    recCritical: "請立即聯絡長輩，確認症狀並評估就醫。",
+    recDanger: "請儘快確認長輩狀況，安排休息後複測。",
+    recLow: "請確認是否頭暈、無力，必要時聯絡醫師。",
+    recPrehypertension: "建議增加監測頻率，並留意飲食與作息。",
+    recNormal: "目前血壓穩定，維持固定量測與紀錄。",
+    srcManual: "手動輸入", srcOldData: "舊測試資料", srcCareSystem: "照護系統",
+    familyNoData: "等待長輩端同步第一筆血壓資料。",
+    familyCritical: "立即聯絡長輩並確認是否需要就醫。",
+    familyDanger: "請長輩休息後複測，並通知照顧者持續觀察。",
+    familyManyAbnormal: "近 3 個月異常偏多，建議安排固定量測與門診討論。",
+    familyNormal: "維持每日追蹤，必要時提醒長輩補量測。",
+    adviceNoData: "尚未有血壓資料，請先從長輩端同步或手動新增紀錄。",
+    adviceCritical: "出現 180/120 以上的超高血壓紀錄，請立即確認症狀並評估就醫。",
+    adviceDanger: "近期有高血壓紀錄，建議固定複測並觀察是否與睡眠、飲食或情緒相關。",
+    adviceWarning: "血壓已有前期或偏低訊號，建議維持每日量測並留意身體不適。",
+    adviceNormal: "目前血壓趨勢穩定，維持固定量測與健康生活型態。",
+    moodStressHitFn: (n, total) => `近 ${total} 筆中有 ${n} 筆同時出現高血壓與焦慮或頭暈，建議記錄發生情境。`,
+    moodStressContinue: "已有心情標記，可持續觀察情緒、睡眠與血壓波動的關係。",
+    moodStressEmpty: "尚未累積足夠心情標記，建議每次量測後補上當下感受。",
+    pulseNoData: "尚未有脈搏資料，Health Connect 同步時會嘗試一起補入。",
+    pulseOverlapFn: (n) => `有 ${n} 筆紀錄同時出現心跳偏快、血壓偏高與壓力心情，建議留意休息與回診討論。`,
+    pulseAvgFn: (avg) => `近期平均脈搏約 ${avg} bpm，可搭配心情標記一起追蹤。`,
+    savedMsgFn: (sys, dia, level) => `已儲存 ${sys}/${dia} mmHg，狀態：${level}`,
+    pulseUnknown: "未記錄", pulseSlow: "心跳偏慢", pulseFast: "心跳偏快", pulseNormal: "心跳正常",
+    obsNoData: "目前資料量不足，請先累積血壓紀錄。",
+    obsDanger: "高血壓天數比例偏高，建議儘快與醫師討論近期控制策略。",
+    obsWarning: "血壓前期或警示天數較多，建議留意鹽分、睡眠、壓力與固定量測。",
+    obsNormal: "目前大多數紀錄落在穩定範圍，請持續維持規律量測與生活管理。",
+    noMiniTrendData: "尚無血壓趨勢資料", noLongTrendData: "尚無長期趨勢資料",
+    calendarLegend: "標記日期代表當天有血壓紀錄，紅框代表有高風險數值。",
+    weekdays: ["日", "一", "二", "三", "四", "五", "六"],
+    errFamilyReadOnly: "家屬端僅能查看長輩資料，請由受顧者端或照顧者端新增血壓紀錄。",
+    errInvalidBP: "請輸入有效的收縮壓與舒張壓。",
+    errOutOfRange: "血壓數值超出合理範圍，請重新確認。",
+    errInvalidPulse: "脈搏需介於 30 到 220 bpm。",
+    errFamilySync: "家屬端只讀；同步請在受顧者端或照顧者端執行。",
+    errNotAndroid: "Health Connect 同步目前僅支援 Android 實機。",
+    errNoHCPackage: "尚未載入 Health Connect 套件，請重新安裝原生 App。",
+    errHCInitFail: "無法初始化 Health Connect，請確認手機已安裝並啟用 Health Connect。",
+    errNoHCPerms: "尚未取得 Health Connect 血壓與心率讀取權限。",
+    hcNoData: "近 30 天 Health Connect 尚無可同步的血壓資料。",
+    hcSyncDoneFn: (imported, pulse, skipped) => `Health Connect 同步完成：新增 ${imported} 筆，補入脈搏 ${pulse} 筆，略過重複 ${skipped} 筆。`,
+    hcSyncErrFn: (msg) => `${msg}。請確認血壓計 App 已寫入 Health Connect，並授權本 App 讀取血壓與心率。`,
+    periodStats: (days) => `統計 ${days} 個有紀錄的日期，依每日平均血壓分類。`,
+    highRiskDaysFn: (days, pct) => `高血壓風險天數：${days} 天（${pct}%）`,
+    warningDaysFn: (days, pct) => `血壓前期/警示天數：${days} 天（${pct}%）`,
+    normalDaysFn: (days, pct) => `正常天數：${days} 天（${pct}%）`,
+    periodSummaryFn: (months) => `近 ${months} 個月健康摘要`,
+    moodStressTitle: "血壓與心理狀態關聯性分析",
+    pulseStressTitle: "脈搏與情緒壓力分析",
+    observation: "觀察", reference: "參考來源",
+    moodSourceNote: "壓力可能造成短暫血壓上升，建議搭配呼吸、運動、睡眠與生活習慣管理。本分析僅供參考，不能取代醫療診斷。",
+    pulseSourceNote: "安靜狀態下的脈搏會受情緒、壓力、活動量與藥物影響，請搭配血壓、心情與症狀一起觀察。",
+    recordDays: "紀錄天數", highRisk: "高風險", warning: "警示",
+    avgPulse: "平均脈搏", recentPulse: "最近脈搏",
+  },
+  en: {
+    back: "Back", caregiverTitle: "Caregiver BP Care", caregiverSub: "Sync, proxy entry, and daily care tasks.",
+    patientTitle: "Daily Blood Pressure Log", patientSub: "Sync, manual entry, trend analysis & mood diary",
+    familyTitle: "Family BP Monitor", familySub: "Family view of last 3 months",
+    tabMeasure: "Measure", tabTrend: "Trend", tabDiary: "Diary",
+    noRecord: "No record yet", refresh: "Refresh", syncHC: "Sync from Health Connect",
+    moodStatus: "Mood", sysBP: "Systolic", diaBP: "Diastolic", pulse: "Pulse", mood: "Mood",
+    alertNeedsConfirm: "Needs Caregiver Confirmation", bpAlert: "BP Alert",
+    currentBP: "Current Care BP", nextStepLabel: "Caregiver Next Step",
+    nextCritical: "Immediately check elder's symptoms; contact family and assist with medical care if needed.",
+    nextDanger: "Arrange rest for 5 minutes then recheck; note in care log.",
+    nextWarning: "Continue monitoring today's BP; watch for dizziness, fatigue, or anxiety.",
+    nextStable: "Status stable. Continue routine measurement and sync.",
+    nextNoData: "No BP data yet. Please sync or manually add the first record.",
+    dailyTasksTitle: "Today's Care Tasks", completed: "completed",
+    taskMorning: "Morning BP Check",
+    taskMorningLatestFn: (sys, dia) => `Latest: ${sys}/${dia} mmHg`,
+    taskMorningNew: "Sync or add today's first BP reading.",
+    taskMoodTitle: "Mood Note",
+    taskMoodCurrentFn: (emoji, mood) => `Marked: ${emoji} ${mood}`,
+    taskMoodNew: "Add mood after measurement.",
+    taskNotify: "Alert Family", taskNotifyOk: "No alert needed; continue monitoring.",
+    taskEvening: "Evening Review", taskEveningDesc: "Before handoff, confirm sync and notes are complete.",
+    syncInput: "Sync & Proxy Entry", caregiverAddTitle: "Caregiver Manual Entry", saveCaregiver: "Save Caregiver BP Record",
+    dataSource: "Data Source", linkedTo: "Linked elder: ", notLinked: "No elder account linked",
+    latestSync: "Latest BP Sync", sourcePrefix: "Source: ",
+    familyFocus: "Family Focus", waitForSync: "Waiting for elder to sync BP data.",
+    familyDashboard: "Family Dashboard", currentStatus: "Current Status",
+    threeMonthAbnormal: "3-Month Abnormal", recordUnit: " records",
+    familyNextStepLabel: "Family Next Step", trend3m: "3-Month Daily BP Trend",
+    legendSys: "Systolic", legendDia: "Diastolic", legendLimit: "Alert 130/80",
+    summary3m: "3-Month BP Summary",
+    avgSysLabel: "Avg Systolic", avgDiaLabel: "Avg Diastolic",
+    maxSysLabel: "Max Systolic", minSysLabel: "Min Systolic",
+    totalPrefix: "Total", abnormalSuffix: " records, abnormal shown below.",
+    noAbnormal: "No abnormal BP records.",
+    bpLabel: "Blood Pressure", fiveDayTrend: "5-Day Trend", dailyAlert: "Daily Alert", avgPrefix: "Avg",
+    autoImport: "Auto Import", addRecord: "Add a Record", saveRecord: "Save BP Record",
+    range1m: "1 Month", range3m: "3 Months", range6m: "6 Months",
+    bpDiary: "BP Diary", dateRecordsSuffix: " records", emptyDay: "No BP records for this day",
+    pulsePrefix: "Pulse", moodPrefix: "Mood: ",
+    levelCritical: "Hypertensive Crisis", levelDanger: "High BP", levelLow: "Low BP",
+    levelPrehypertension: "Prehypertension", levelNormal: "Normal",
+    familyLabelCritical: "Critical High BP", familyLabelDanger: "High BP Alert",
+    familyLabelLow: "Low BP", familyLabelPrehypertension: "Prehypertension", familyLabelNormal: "Normal",
+    recCritical: "Contact elder immediately and assess need for medical care.",
+    recDanger: "Confirm elder's condition quickly; arrange rest and recheck.",
+    recLow: "Check for dizziness or weakness; contact doctor if needed.",
+    recPrehypertension: "Increase monitoring frequency; watch diet and sleep.",
+    recNormal: "BP is stable. Maintain regular measurement and logging.",
+    srcManual: "Manual Entry", srcOldData: "Old Test Data", srcCareSystem: "Care System",
+    familyNoData: "Waiting for elder's first BP sync.",
+    familyCritical: "Contact elder immediately to assess if medical care is needed.",
+    familyDanger: "Ask elder to rest and recheck; notify caregiver to monitor.",
+    familyManyAbnormal: "Many abnormals in 3 months. Schedule regular checks and a clinic visit.",
+    familyNormal: "Keep daily monitoring; remind elder to measure when needed.",
+    adviceNoData: "No BP data yet. Sync from elder or add manually.",
+    adviceCritical: "BP ≥180/120 recorded. Verify symptoms and consider medical care immediately.",
+    adviceDanger: "Recent high BP. Check regularly; observe link with sleep, diet, or mood.",
+    adviceWarning: "Prehypertension or low BP signal detected. Daily monitoring recommended.",
+    adviceNormal: "BP trend is stable. Keep regular measurement and healthy habits.",
+    moodStressHitFn: (n, total) => `${n} of the last ${total} records show high BP with anxiety or dizziness. Log the context.`,
+    moodStressContinue: "Mood tags recorded. Continue tracking mood, sleep, and BP fluctuations.",
+    moodStressEmpty: "Not enough mood tags yet. Add one after each measurement.",
+    pulseNoData: "No pulse data yet. Health Connect sync will attempt to backfill.",
+    pulseOverlapFn: (n) => `${n} records show high pulse, high BP, and stress mood together. Monitor rest and follow up.`,
+    pulseAvgFn: (avg) => `Recent avg pulse ~${avg} bpm. Track alongside mood tags.`,
+    savedMsgFn: (sys, dia, level) => `Saved ${sys}/${dia} mmHg, status: ${level}`,
+    pulseUnknown: "Unknown", pulseSlow: "Slow Pulse", pulseFast: "Fast Pulse", pulseNormal: "Normal Pulse",
+    obsNoData: "Not enough data. Please accumulate more BP records.",
+    obsDanger: "High BP days are frequent. Discuss management with a doctor soon.",
+    obsWarning: "Several prehypertension or warning days. Watch salt, sleep, stress, and measure regularly.",
+    obsNormal: "Most records are in the stable range. Keep regular measurement and healthy habits.",
+    noMiniTrendData: "No trend data", noLongTrendData: "No long-term trend data",
+    calendarLegend: "Marked dates have BP records. Red border = high-risk value.",
+    weekdays: ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"],
+    errFamilyReadOnly: "Family view is read-only. Use the patient or caregiver app to add records.",
+    errInvalidBP: "Please enter valid systolic and diastolic values.",
+    errOutOfRange: "BP values out of reasonable range. Please check and try again.",
+    errInvalidPulse: "Pulse must be between 30 and 220 bpm.",
+    errFamilySync: "Family view is read-only. Sync must be done from patient or caregiver app.",
+    errNotAndroid: "Health Connect sync is only supported on Android devices.",
+    errNoHCPackage: "Health Connect package not loaded. Please reinstall the native app.",
+    errHCInitFail: "Cannot initialize Health Connect. Please confirm it is installed and enabled.",
+    errNoHCPerms: "Health Connect blood pressure and heart rate read permission not granted.",
+    hcNoData: "No syncable BP data found in Health Connect (last 30 days).",
+    hcSyncDoneFn: (imported, pulse, skipped) => `Health Connect sync done: added ${imported}, pulse backfilled ${pulse}, skipped ${skipped}.`,
+    hcSyncErrFn: (msg) => `${msg}. Make sure the BP app writes to Health Connect and that this app has permission.`,
+    periodStats: (days) => `Stats from ${days} recorded days, by daily avg BP category.`,
+    highRiskDaysFn: (days, pct) => `High BP risk days: ${days} (${pct}%)`,
+    warningDaysFn: (days, pct) => `Prehypertension/warning days: ${days} (${pct}%)`,
+    normalDaysFn: (days, pct) => `Normal days: ${days} (${pct}%)`,
+    periodSummaryFn: (months) => `${months}-Month Health Summary`,
+    moodStressTitle: "BP & Mood Correlation Analysis",
+    pulseStressTitle: "Pulse & Emotional Stress Analysis",
+    observation: "Observation", reference: "Reference",
+    moodSourceNote: "Stress may cause temporary BP elevation. Combine with breathing, exercise, sleep, and lifestyle management. This analysis is for reference only.",
+    pulseSourceNote: "Resting pulse is affected by mood, stress, activity, and medication. Observe alongside BP, mood, and symptoms.",
+    recordDays: "Recorded Days", highRisk: "High Risk", warning: "Warning",
+    avgPulse: "Avg Pulse", recentPulse: "Recent Pulse",
+  },
+  id: {
+    back: "Kembali", caregiverTitle: "Perawatan TD Pengasuh", caregiverSub: "Sinkronkan, masuk pengganti, dan tugas perawatan harian.",
+    patientTitle: "Catatan TD Harian", patientSub: "Sinkron, entri manual, analisis tren & catatan mood",
+    familyTitle: "Pantau TD Keluarga", familySub: "Tampilan keluarga 3 bulan terakhir",
+    tabMeasure: "Ukur", tabTrend: "Tren", tabDiary: "Diary",
+    noRecord: "Belum ada catatan", refresh: "Segarkan", syncHC: "Sinkron dari Health Connect",
+    moodStatus: "Suasana Hati", sysBP: "Sistolik", diaBP: "Diastolik", pulse: "Denyut Nadi", mood: "Mood",
+    alertNeedsConfirm: "Perlu Konfirmasi Pengasuh", bpAlert: "Peringatan TD",
+    currentBP: "TD Perawatan Saat Ini", nextStepLabel: "Langkah Pengasuh Selanjutnya",
+    nextCritical: "Segera periksa gejala; hubungi keluarga dan bantu ke dokter jika perlu.",
+    nextDanger: "Istirahatkan 5 menit lalu ukur ulang; catat di log.",
+    nextWarning: "Terus pantau TD hari ini; perhatikan pusing, lelah, atau cemas.",
+    nextStable: "Status stabil. Lanjutkan pengukuran rutin dan sinkron.",
+    nextNoData: "Belum ada data TD. Sinkron atau tambah catatan pertama.",
+    dailyTasksTitle: "Tugas Perawatan Hari Ini", completed: "selesai",
+    taskMorning: "Cek TD Pagi",
+    taskMorningLatestFn: (sys, dia) => `Terbaru: ${sys}/${dia} mmHg`,
+    taskMorningNew: "Sinkron atau tambahkan TD pertama hari ini.",
+    taskMoodTitle: "Catatan Mood",
+    taskMoodCurrentFn: (emoji, mood) => `Ditandai: ${emoji} ${mood}`,
+    taskMoodNew: "Tambahkan mood setelah pengukuran.",
+    taskNotify: "Beri Tahu Keluarga", taskNotifyOk: "Tidak perlu notifikasi; lanjutkan pemantauan.",
+    taskEvening: "Tinjauan Malam", taskEveningDesc: "Sebelum selesai, pastikan sinkron dan catatan lengkap.",
+    syncInput: "Sinkron & Entri Pengganti", caregiverAddTitle: "Entri Manual Pengasuh", saveCaregiver: "Simpan Catatan TD Pengasuh",
+    dataSource: "Sumber Data", linkedTo: "Terhubung ke: ", notLinked: "Akun pasien belum terhubung",
+    latestSync: "Sinkron TD Terbaru", sourcePrefix: "Sumber: ",
+    familyFocus: "Fokus Keluarga", waitForSync: "Menunggu pasien sinkron data TD.",
+    familyDashboard: "Dasbor Keluarga", currentStatus: "Status Saat Ini",
+    threeMonthAbnormal: "Abnormal 3 Bulan", recordUnit: " catatan",
+    familyNextStepLabel: "Langkah Keluarga Selanjutnya", trend3m: "Tren TD Harian 3 Bulan",
+    legendSys: "Sistolik", legendDia: "Diastolik", legendLimit: "Batas 130/80",
+    summary3m: "Ringkasan TD 3 Bulan",
+    avgSysLabel: "Rata-rata Sistolik", avgDiaLabel: "Rata-rata Diastolik",
+    maxSysLabel: "Sistolik Maks", minSysLabel: "Sistolik Min",
+    totalPrefix: "Total", abnormalSuffix: " catatan, abnormal di bawah.",
+    noAbnormal: "Tidak ada catatan TD abnormal.",
+    bpLabel: "Tekanan Darah", fiveDayTrend: "Tren 5 Hari", dailyAlert: "Peringatan Harian", avgPrefix: "Rata-rata",
+    autoImport: "Impor Otomatis", addRecord: "Tambah Catatan", saveRecord: "Simpan Catatan TD",
+    range1m: "1 Bulan", range3m: "3 Bulan", range6m: "6 Bulan",
+    bpDiary: "Diary TD", dateRecordsSuffix: " catatan", emptyDay: "Tidak ada catatan TD untuk hari ini",
+    pulsePrefix: "Denyut", moodPrefix: "Mood: ",
+    levelCritical: "Krisis Hipertensi", levelDanger: "TD Tinggi", levelLow: "TD Rendah",
+    levelPrehypertension: "Pra-Hipertensi", levelNormal: "Normal",
+    familyLabelCritical: "TD Kritis", familyLabelDanger: "Peringatan TD Tinggi",
+    familyLabelLow: "TD Rendah", familyLabelPrehypertension: "Pra-Hipertensi", familyLabelNormal: "Normal",
+    recCritical: "Segera hubungi pasien dan pertimbangkan perawatan medis.",
+    recDanger: "Periksa kondisi; istirahatkan dan ukur ulang.",
+    recLow: "Cek pusing atau lemas; hubungi dokter jika perlu.",
+    recPrehypertension: "Tingkatkan frekuensi pemantauan; perhatikan diet dan istirahat.",
+    recNormal: "TD stabil. Pertahankan pengukuran dan pencatatan rutin.",
+    srcManual: "Entri Manual", srcOldData: "Data Tes Lama", srcCareSystem: "Sistem Perawatan",
+    familyNoData: "Menunggu sinkron TD pertama dari pasien.",
+    familyCritical: "Segera hubungi pasien untuk perawatan medis.",
+    familyDanger: "Minta pasien istirahat dan ukur ulang; beri tahu pengasuh.",
+    familyManyAbnormal: "Banyak abnormal dalam 3 bulan. Jadwalkan pemeriksaan rutin.",
+    familyNormal: "Terus pantau harian; ingatkan pasien untuk mengukur.",
+    adviceNoData: "Belum ada data TD. Sinkron atau tambah secara manual.",
+    adviceCritical: "TD ≥180/120 tercatat. Periksa gejala dan pertimbangkan ke dokter.",
+    adviceDanger: "TD tinggi baru-baru ini. Ukur ulang dan perhatikan pola tidur, makan, mood.",
+    adviceWarning: "Sinyal pra-hipertensi atau TD rendah. Pantau harian.",
+    adviceNormal: "Tren TD stabil. Pertahankan pengukuran rutin.",
+    moodStressHitFn: (n, total) => `${n} dari ${total} catatan terakhir menunjukkan TD tinggi dengan kecemasan/pusing.`,
+    moodStressContinue: "Tag mood tercatat. Terus pantau mood, tidur, dan TD.",
+    moodStressEmpty: "Belum cukup tag mood. Tambahkan setelah setiap pengukuran.",
+    pulseNoData: "Belum ada data denyut nadi. Sinkron Health Connect akan mencoba mengisinya.",
+    pulseOverlapFn: (n) => `${n} catatan menunjukkan denyut tinggi, TD tinggi, dan mood stres. Pantau istirahat.`,
+    pulseAvgFn: (avg) => `Rata-rata denyut terakhir ~${avg} bpm. Pantau bersama tag mood.`,
+    savedMsgFn: (sys, dia, level) => `Disimpan ${sys}/${dia} mmHg, status: ${level}`,
+    pulseUnknown: "Tidak Dicatat", pulseSlow: "Denyut Lambat", pulseFast: "Denyut Cepat", pulseNormal: "Denyut Normal",
+    obsNoData: "Data belum cukup. Kumpulkan lebih banyak catatan TD.",
+    obsDanger: "Hari TD tinggi terlalu banyak. Diskusikan dengan dokter segera.",
+    obsWarning: "Banyak hari pra-hipertensi. Perhatikan garam, tidur, stres.",
+    obsNormal: "Sebagian besar catatan stabil. Pertahankan rutinitas.",
+    noMiniTrendData: "Belum ada data tren", noLongTrendData: "Belum ada data tren jangka panjang",
+    calendarLegend: "Tanggal bertanda memiliki catatan TD. Batas merah = nilai risiko tinggi.",
+    weekdays: ["Mi", "Se", "Se", "Ra", "Ka", "Ju", "Sa"],
+    errFamilyReadOnly: "Tampilan keluarga hanya baca. Tambah catatan dari app pasien atau pengasuh.",
+    errInvalidBP: "Masukkan nilai sistolik dan diastolik yang valid.",
+    errOutOfRange: "Nilai TD di luar rentang wajar. Periksa kembali.",
+    errInvalidPulse: "Denyut harus antara 30 dan 220 bpm.",
+    errFamilySync: "Tampilan keluarga hanya baca. Sinkron dari app pasien atau pengasuh.",
+    errNotAndroid: "Sinkron Health Connect hanya didukung di perangkat Android.",
+    errNoHCPackage: "Paket Health Connect belum dimuat. Pasang ulang app native.",
+    errHCInitFail: "Tidak dapat menginisialisasi Health Connect. Pastikan sudah diinstal.",
+    errNoHCPerms: "Izin baca TD dan detak jantung Health Connect belum diberikan.",
+    hcNoData: "Tidak ada data TD yang dapat disinkron di Health Connect (30 hari terakhir).",
+    hcSyncDoneFn: (imported, pulse, skipped) => `Sinkron selesai: ditambahkan ${imported}, denyut ${pulse}, dilewati ${skipped}.`,
+    hcSyncErrFn: (msg) => `${msg}. Pastikan app TD menulis ke Health Connect dan izin diberikan.`,
+    periodStats: (days) => `Statistik dari ${days} hari tercatat, per kategori rata-rata harian.`,
+    highRiskDaysFn: (days, pct) => `Hari risiko TD tinggi: ${days} (${pct}%)`,
+    warningDaysFn: (days, pct) => `Hari pra-hipertensi/peringatan: ${days} (${pct}%)`,
+    normalDaysFn: (days, pct) => `Hari normal: ${days} (${pct}%)`,
+    periodSummaryFn: (months) => `Ringkasan Kesehatan ${months} Bulan`,
+    moodStressTitle: "Analisis Korelasi TD & Mood",
+    pulseStressTitle: "Analisis Denyut & Stres Emosi",
+    observation: "Pengamatan", reference: "Referensi",
+    moodSourceNote: "Stres dapat menyebabkan lonjakan TD sementara. Kombinasikan dengan pernapasan, olahraga, tidur, dan manajemen gaya hidup.",
+    pulseSourceNote: "Denyut nadi istirahat dipengaruhi oleh mood, stres, aktivitas, dan obat-obatan. Amati bersama TD, mood, dan gejala.",
+    recordDays: "Hari Tercatat", highRisk: "Risiko Tinggi", warning: "Peringatan",
+    avgPulse: "Denyut Rata-rata", recentPulse: "Denyut Terbaru",
+  },
+  vi: {
+    back: "Quay Lại", caregiverTitle: "Chăm Sóc HA (Người Chăm)", caregiverSub: "Đồng bộ, nhập thay và công việc chăm sóc hàng ngày.",
+    patientTitle: "Nhật Ký HA Hàng Ngày", patientSub: "Đồng bộ, nhập tay, phân tích xu hướng & nhật ký tâm trạng",
+    familyTitle: "Theo Dõi HA Người Cao Tuổi", familySub: "Chế độ xem gia đình 3 tháng gần nhất",
+    tabMeasure: "Đo", tabTrend: "Xu Hướng", tabDiary: "Nhật Ký",
+    noRecord: "Chưa có dữ liệu", refresh: "Làm Mới", syncHC: "Đồng Bộ Health Connect",
+    moodStatus: "Tâm Trạng", sysBP: "Tâm Thu", diaBP: "Tâm Trương", pulse: "Mạch", mood: "Tâm Trạng",
+    alertNeedsConfirm: "Cần Xác Nhận Người Chăm", bpAlert: "Cảnh Báo HA",
+    currentBP: "HA Chăm Sóc Hiện Tại", nextStepLabel: "Bước Tiếp Theo (Người Chăm)",
+    nextCritical: "Ngay lập tức kiểm tra triệu chứng; liên hệ gia đình và hỗ trợ điều trị.",
+    nextDanger: "Cho nghỉ 5 phút rồi đo lại; ghi chú vào nhật ký.",
+    nextWarning: "Tiếp tục theo dõi HA hôm nay; chú ý chóng mặt, mệt hoặc lo lắng.",
+    nextStable: "Trạng thái ổn định. Tiếp tục đo định kỳ và đồng bộ.",
+    nextNoData: "Chưa có dữ liệu HA. Vui lòng đồng bộ hoặc thêm dữ liệu đầu tiên.",
+    dailyTasksTitle: "Công Việc Chăm Sóc Hôm Nay", completed: "hoàn thành",
+    taskMorning: "Kiểm Tra HA Sáng",
+    taskMorningLatestFn: (sys, dia) => `Gần nhất: ${sys}/${dia} mmHg`,
+    taskMorningNew: "Đồng bộ hoặc thêm HA đầu tiên hôm nay.",
+    taskMoodTitle: "Ghi Chú Tâm Trạng",
+    taskMoodCurrentFn: (emoji, mood) => `Đã đánh dấu: ${emoji} ${mood}`,
+    taskMoodNew: "Thêm tâm trạng sau khi đo.",
+    taskNotify: "Thông Báo Gia Đình", taskNotifyOk: "Không cần thông báo; tiếp tục theo dõi.",
+    taskEvening: "Tổng Kết Buổi Tối", taskEveningDesc: "Trước khi kết thúc, xác nhận đồng bộ và ghi chú.",
+    syncInput: "Đồng Bộ & Nhập Thay", caregiverAddTitle: "Người Chăm Nhập Tay", saveCaregiver: "Lưu Dữ Liệu HA Người Chăm",
+    dataSource: "Nguồn Dữ Liệu", linkedTo: "Đã kết nối: ", notLinked: "Chưa kết nối tài khoản",
+    latestSync: "Đồng Bộ HA Gần Nhất", sourcePrefix: "Nguồn: ",
+    familyFocus: "Trọng Tâm Gia Đình", waitForSync: "Đang đợi đồng bộ dữ liệu HA.",
+    familyDashboard: "Bảng Điều Khiển Gia Đình", currentStatus: "Trạng Thái Hiện Tại",
+    threeMonthAbnormal: "Bất Thường 3 Tháng", recordUnit: " bản ghi",
+    familyNextStepLabel: "Bước Tiếp Theo (Gia Đình)", trend3m: "Xu Hướng HA 3 Tháng",
+    legendSys: "Tâm Thu", legendDia: "Tâm Trương", legendLimit: "Ngưỡng 130/80",
+    summary3m: "Tóm Tắt HA 3 Tháng",
+    avgSysLabel: "TB Tâm Thu", avgDiaLabel: "TB Tâm Trương",
+    maxSysLabel: "Tâm Thu Tối Đa", minSysLabel: "Tâm Thu Tối Thiểu",
+    totalPrefix: "Tổng", abnormalSuffix: " bản ghi, bất thường hiển thị dưới.",
+    noAbnormal: "Không có bản ghi HA bất thường.",
+    bpLabel: "Huyết Áp", fiveDayTrend: "Xu Hướng 5 Ngày", dailyAlert: "Cảnh Báo Hàng Ngày", avgPrefix: "TB",
+    autoImport: "Nhập Tự Động", addRecord: "Thêm Bản Ghi", saveRecord: "Lưu Bản Ghi HA",
+    range1m: "1 Tháng", range3m: "3 Tháng", range6m: "6 Tháng",
+    bpDiary: "Nhật Ký HA", dateRecordsSuffix: " bản ghi", emptyDay: "Không có bản ghi HA cho ngày này",
+    pulsePrefix: "Mạch", moodPrefix: "Tâm Trạng: ",
+    levelCritical: "Khủng Hoảng HA", levelDanger: "HA Cao", levelLow: "HA Thấp",
+    levelPrehypertension: "Tiền Tăng HA", levelNormal: "Bình Thường",
+    familyLabelCritical: "HA Nguy Kịch", familyLabelDanger: "Cảnh Báo HA Cao",
+    familyLabelLow: "HA Thấp", familyLabelPrehypertension: "Tiền Tăng HA", familyLabelNormal: "Bình Thường",
+    recCritical: "Liên hệ ngay và đánh giá nhu cầu điều trị y tế.",
+    recDanger: "Xác nhận tình trạng; cho nghỉ và đo lại.",
+    recLow: "Kiểm tra chóng mặt hoặc yếu; liên hệ bác sĩ nếu cần.",
+    recPrehypertension: "Tăng tần suất theo dõi; chú ý chế độ ăn và nghỉ ngơi.",
+    recNormal: "HA ổn định. Duy trì đo đạc và ghi chép định kỳ.",
+    srcManual: "Nhập Tay", srcOldData: "Dữ Liệu Cũ", srcCareSystem: "Hệ Thống Chăm Sóc",
+    familyNoData: "Đang chờ đồng bộ HA đầu tiên.",
+    familyCritical: "Liên hệ ngay để đánh giá nhu cầu y tế.",
+    familyDanger: "Yêu cầu nghỉ và đo lại; thông báo người chăm.",
+    familyManyAbnormal: "Nhiều bất thường trong 3 tháng. Đặt lịch kiểm tra định kỳ.",
+    familyNormal: "Tiếp tục theo dõi hàng ngày; nhắc nhở đo khi cần.",
+    adviceNoData: "Chưa có dữ liệu HA. Đồng bộ hoặc nhập thủ công.",
+    adviceCritical: "HA ≥180/120 được ghi nhận. Kiểm tra triệu chứng ngay.",
+    adviceDanger: "HA cao gần đây. Đo lại và theo dõi giấc ngủ, chế độ ăn, tâm trạng.",
+    adviceWarning: "Phát hiện tín hiệu tiền tăng HA hoặc HA thấp. Theo dõi hàng ngày.",
+    adviceNormal: "Xu hướng HA ổn định. Duy trì đo đạc và lối sống lành mạnh.",
+    moodStressHitFn: (n, total) => `${n}/${total} bản ghi cho thấy HA cao kèm lo lắng/chóng mặt.`,
+    moodStressContinue: "Đã có ghi chú tâm trạng. Tiếp tục theo dõi tâm trạng, giấc ngủ và HA.",
+    moodStressEmpty: "Chưa đủ ghi chú tâm trạng. Thêm sau mỗi lần đo.",
+    pulseNoData: "Chưa có dữ liệu mạch. Health Connect sẽ thử điền khi đồng bộ.",
+    pulseOverlapFn: (n) => `${n} bản ghi cho thấy mạch nhanh, HA cao và tâm trạng căng thẳng. Theo dõi nghỉ ngơi.`,
+    pulseAvgFn: (avg) => `Mạch TB gần đây ~${avg} bpm. Theo dõi cùng ghi chú tâm trạng.`,
+    savedMsgFn: (sys, dia, level) => `Đã lưu ${sys}/${dia} mmHg, trạng thái: ${level}`,
+    pulseUnknown: "Không Ghi Nhận", pulseSlow: "Mạch Chậm", pulseFast: "Mạch Nhanh", pulseNormal: "Mạch Bình Thường",
+    obsNoData: "Dữ liệu chưa đủ. Cần thêm bản ghi HA.",
+    obsDanger: "Tỷ lệ ngày HA cao quá lớn. Thảo luận với bác sĩ sớm.",
+    obsWarning: "Nhiều ngày tiền tăng HA. Chú ý muối, giấc ngủ, căng thẳng.",
+    obsNormal: "Hầu hết các bản ghi đều ổn định. Tiếp tục duy trì.",
+    noMiniTrendData: "Chưa có dữ liệu xu hướng", noLongTrendData: "Chưa có dữ liệu xu hướng dài hạn",
+    calendarLegend: "Ngày có đánh dấu có bản ghi HA. Viền đỏ = giá trị nguy cơ cao.",
+    weekdays: ["CN", "T2", "T3", "T4", "T5", "T6", "T7"],
+    errFamilyReadOnly: "Chế độ gia đình chỉ đọc. Thêm từ app người cao tuổi hoặc người chăm.",
+    errInvalidBP: "Vui lòng nhập giá trị tâm thu và tâm trương hợp lệ.",
+    errOutOfRange: "Giá trị HA ngoài phạm vi hợp lý. Kiểm tra lại.",
+    errInvalidPulse: "Mạch phải từ 30 đến 220 bpm.",
+    errFamilySync: "Chế độ gia đình chỉ đọc. Đồng bộ từ app người cao tuổi hoặc người chăm.",
+    errNotAndroid: "Đồng bộ Health Connect chỉ hỗ trợ thiết bị Android.",
+    errNoHCPackage: "Gói Health Connect chưa được tải. Cài lại app native.",
+    errHCInitFail: "Không thể khởi tạo Health Connect. Đảm bảo đã cài và bật.",
+    errNoHCPerms: "Chưa cấp quyền đọc HA và nhịp tim từ Health Connect.",
+    hcNoData: "Không có dữ liệu HA có thể đồng bộ trong Health Connect (30 ngày qua).",
+    hcSyncDoneFn: (imported, pulse, skipped) => `Đồng bộ xong: đã thêm ${imported}, mạch ${pulse}, bỏ qua ${skipped}.`,
+    hcSyncErrFn: (msg) => `${msg}. Đảm bảo app HA ghi vào Health Connect và cấp quyền.`,
+    periodStats: (days) => `Thống kê từ ${days} ngày có bản ghi, theo danh mục HA TB hàng ngày.`,
+    highRiskDaysFn: (days, pct) => `Ngày nguy cơ HA cao: ${days} (${pct}%)`,
+    warningDaysFn: (days, pct) => `Ngày tiền tăng HA/cảnh báo: ${days} (${pct}%)`,
+    normalDaysFn: (days, pct) => `Ngày bình thường: ${days} (${pct}%)`,
+    periodSummaryFn: (months) => `Tóm Tắt Sức Khỏe ${months} Tháng`,
+    moodStressTitle: "Phân Tích Tương Quan HA & Tâm Trạng",
+    pulseStressTitle: "Phân Tích Mạch & Áp Lực Cảm Xúc",
+    observation: "Quan Sát", reference: "Tham Khảo",
+    moodSourceNote: "Căng thẳng có thể gây tăng HA tạm thời. Kết hợp với hơi thở, vận động, giấc ngủ và quản lý lối sống.",
+    pulseSourceNote: "Mạch lúc nghỉ ngơi bị ảnh hưởng bởi tâm trạng, căng thẳng, hoạt động và thuốc. Quan sát cùng HA, tâm trạng và triệu chứng.",
+    recordDays: "Ngày Có Bản Ghi", highRisk: "Nguy Cơ Cao", warning: "Cảnh Báo",
+    avgPulse: "Mạch TB", recentPulse: "Mạch Gần Nhất",
+  },
+  tl: {
+    back: "Bumalik", caregiverTitle: "Pag-aalaga ng BP", caregiverSub: "I-sync, proxy entry, at mga gawain sa pag-aalaga.",
+    patientTitle: "Araw-araw na Talaan ng BP", patientSub: "Sync, manu-manong entry, pagsusuri ng trend at mood diary",
+    familyTitle: "Subaybayan ang BP ng Pasyente", familySub: "Tingnan ng pamilya ang nakalipas na 3 buwan",
+    tabMeasure: "Sukatin", tabTrend: "Trend", tabDiary: "Talaarawan",
+    noRecord: "Wala pang talaan", refresh: "I-refresh", syncHC: "I-sync mula sa Health Connect",
+    moodStatus: "Mood", sysBP: "Systolic", diaBP: "Diastolic", pulse: "Pulso", mood: "Mood",
+    alertNeedsConfirm: "Kailangan ng Kumpirmasyon ng Tagapag-alaga", bpAlert: "Babala ng BP",
+    currentBP: "Kasalukuyang BP ng Pag-aalaga", nextStepLabel: "Susunod na Hakbang (Tagapag-alaga)",
+    nextCritical: "Agad na suriin ang sintomas; makipag-ugnayan sa pamilya at tulungan sa medikal kung kailangan.",
+    nextDanger: "Pahintulutan ng 5 minuto pagkatapos sukatin muli; itala sa log.",
+    nextWarning: "Patuloy na subaybayan ang BP ngayon; bantayan ang pagkahilo, pagod, o pagkabalisa.",
+    nextStable: "Matatag ang kalagayan. Ipagpatuloy ang regular na pagsukat at sync.",
+    nextNoData: "Wala pang data ng BP. Mag-sync o magdagdag ng unang talaan.",
+    dailyTasksTitle: "Mga Gawain sa Pag-aalaga Ngayon", completed: "nakumpleto",
+    taskMorning: "Pagsusuri ng BP sa Umaga",
+    taskMorningLatestFn: (sys, dia) => `Pinakabago: ${sys}/${dia} mmHg`,
+    taskMorningNew: "Mag-sync o magdagdag ng unang BP ngayon.",
+    taskMoodTitle: "Tala ng Mood",
+    taskMoodCurrentFn: (emoji, mood) => `Minarkahan: ${emoji} ${mood}`,
+    taskMoodNew: "Magdagdag ng mood pagkatapos sukatin.",
+    taskNotify: "Abisuhan ang Pamilya", taskNotifyOk: "Hindi kailangan ng abiso; ipagpatuloy ang pagmamanman.",
+    taskEvening: "Pagsusuri sa Gabi", taskEveningDesc: "Bago matapos, kumpirmahin ang sync at mga tala.",
+    syncInput: "Sync at Proxy Entry", caregiverAddTitle: "Mano-manong Entry ng Tagapag-alaga", saveCaregiver: "I-save ang Talaan ng BP ng Tagapag-alaga",
+    dataSource: "Pinagmulan ng Data", linkedTo: "Nakakonekta sa: ", notLinked: "Walang konektadong account ng pasyente",
+    latestSync: "Pinakabagong BP Sync", sourcePrefix: "Pinagmulan: ",
+    familyFocus: "Pokus ng Pamilya", waitForSync: "Naghihintay ng sync ng BP mula sa pasyente.",
+    familyDashboard: "Dashboard ng Pamilya", currentStatus: "Kasalukuyang Kalagayan",
+    threeMonthAbnormal: "Hindi Normal sa 3 Buwan", recordUnit: " talaan",
+    familyNextStepLabel: "Susunod na Hakbang (Pamilya)", trend3m: "Trend ng BP sa 3 Buwan",
+    legendSys: "Systolic", legendDia: "Diastolic", legendLimit: "Limitasyon 130/80",
+    summary3m: "Buod ng BP sa 3 Buwan",
+    avgSysLabel: "Avg Systolic", avgDiaLabel: "Avg Diastolic",
+    maxSysLabel: "Max Systolic", minSysLabel: "Min Systolic",
+    totalPrefix: "Kabuuan", abnormalSuffix: " talaan, hindi normal ay ipinapakita sa ibaba.",
+    noAbnormal: "Walang hindi normal na talaan ng BP.",
+    bpLabel: "Blood Pressure", fiveDayTrend: "Trend sa 5 Araw", dailyAlert: "Araw-araw na Babala", avgPrefix: "Avg",
+    autoImport: "Auto Import", addRecord: "Magdagdag ng Talaan", saveRecord: "I-save ang Talaan ng BP",
+    range1m: "1 Buwan", range3m: "3 Buwan", range6m: "6 Buwan",
+    bpDiary: "Talaarawan ng BP", dateRecordsSuffix: " talaan", emptyDay: "Walang talaan ng BP para sa araw na ito",
+    pulsePrefix: "Pulso", moodPrefix: "Mood: ",
+    levelCritical: "Krisis ng Hypertension", levelDanger: "Mataas na BP", levelLow: "Mababang BP",
+    levelPrehypertension: "Pre-hypertension", levelNormal: "Normal",
+    familyLabelCritical: "Kritikal na BP", familyLabelDanger: "Babala ng Mataas na BP",
+    familyLabelLow: "Mababang BP", familyLabelPrehypertension: "Pre-hypertension", familyLabelNormal: "Normal",
+    recCritical: "Makipag-ugnayan agad at suriin ang pangangailangan sa medikal.",
+    recDanger: "Kumpirmahin ang kalagayan; magpahinga at sukatin muli.",
+    recLow: "Suriin ang pagkahilo o kahinaan; makipag-ugnayan sa doktor kung kailangan.",
+    recPrehypertension: "Dagdagan ang dalas ng pagmamanman; bantayan ang diyeta at pahinga.",
+    recNormal: "Matatag ang BP. Panatilihin ang regular na pagsukat at pagtatala.",
+    srcManual: "Mano-manong Entry", srcOldData: "Lumang Test Data", srcCareSystem: "Care System",
+    familyNoData: "Naghihintay ng unang BP sync mula sa pasyente.",
+    familyCritical: "Makipag-ugnayan agad para sa pangangailangang medikal.",
+    familyDanger: "Humingi ng pahinga at sukatin muli; abisuhan ang tagapag-alaga.",
+    familyManyAbnormal: "Maraming hindi normal sa 3 buwan. Mag-iskedyul ng regular na pagsusuri.",
+    familyNormal: "Ipagpatuloy ang araw-araw na pagmamanman; paalalahanin na sukatin.",
+    adviceNoData: "Wala pang data ng BP. Mag-sync o mano-manong magdagdag.",
+    adviceCritical: "BP ≥180/120 natala. Suriin ang sintomas agad.",
+    adviceDanger: "Kamakailang mataas na BP. Sukatin muli at bantayan ang tulog, pagkain, mood.",
+    adviceWarning: "Senyales ng pre-hypertension o mababang BP. Araw-araw na pagmamanman.",
+    adviceNormal: "Matatag ang trend ng BP. Panatilihin ang regular na pagsukat.",
+    moodStressHitFn: (n, total) => `${n}/${total} talaan ay nagpapakita ng mataas na BP na may pagkabalisa/pagkahilo.`,
+    moodStressContinue: "May mga mood tag. Patuloy na subaybayan ang mood, tulog, at BP.",
+    moodStressEmpty: "Hindi pa sapat na mood tags. Magdagdag pagkatapos ng bawat pagsukat.",
+    pulseNoData: "Wala pang data ng pulso. Susubukan ng Health Connect sync na punan ito.",
+    pulseOverlapFn: (n) => `${n} talaan ay nagpapakita ng mabilis na pulso, mataas na BP, at stress mood. Bantayan ang pahinga.`,
+    pulseAvgFn: (avg) => `Avg na pulso kamakailan ~${avg} bpm. Subaybayan kasama ang mood tags.`,
+    savedMsgFn: (sys, dia, level) => `Na-save ${sys}/${dia} mmHg, status: ${level}`,
+    pulseUnknown: "Hindi Naitala", pulseSlow: "Mabagal na Pulso", pulseFast: "Mabilis na Pulso", pulseNormal: "Normal na Pulso",
+    obsNoData: "Hindi pa sapat ang data. Mangailangan ng mas maraming talaan ng BP.",
+    obsDanger: "Masyadong maraming araw ng mataas na BP. Kumonsulta sa doktor.",
+    obsWarning: "Maraming araw na pre-hypertension. Bantayan ang asin, tulog, stress.",
+    obsNormal: "Karamihan sa mga talaan ay matatag. Ipagpatuloy ang rutina.",
+    noMiniTrendData: "Walang data ng trend", noLongTrendData: "Walang data ng pangmatagalang trend",
+    calendarLegend: "Minarkahang petsa ay may talaan ng BP. Pulang hangganan = mataas na panganib.",
+    weekdays: ["Li", "Lu", "Ma", "Mi", "Hu", "Bi", "Sa"],
+    errFamilyReadOnly: "Read-only ang view ng pamilya. Magdagdag mula sa app ng pasyente o tagapag-alaga.",
+    errInvalidBP: "Mangyaring magpasok ng wastong systolic at diastolic na halaga.",
+    errOutOfRange: "Ang mga halaga ng BP ay wala sa makatwirang hanay. Suriin muli.",
+    errInvalidPulse: "Ang pulso ay dapat na nasa pagitan ng 30 at 220 bpm.",
+    errFamilySync: "Read-only ang view ng pamilya. I-sync mula sa app ng pasyente o tagapag-alaga.",
+    errNotAndroid: "Ang Health Connect sync ay sinusuportahan lamang sa Android.",
+    errNoHCPackage: "Hindi na-load ang pakete ng Health Connect. Muling i-install ang native app.",
+    errHCInitFail: "Hindi mapasimulan ang Health Connect. Tiyaking naka-install at naka-enable.",
+    errNoHCPerms: "Hindi pa ibinibigay ang pahintulot sa pagbabasa ng BP at heart rate mula sa Health Connect.",
+    hcNoData: "Walang data ng BP na maaaring i-sync sa Health Connect (nakalipas na 30 araw).",
+    hcSyncDoneFn: (imported, pulse, skipped) => `Sync tapos na: naidagdag ${imported}, pulso ${pulse}, nilaktawan ${skipped}.`,
+    hcSyncErrFn: (msg) => `${msg}. Tiyaking nagsusulat ang BP app sa Health Connect at may pahintulot.`,
+    periodStats: (days) => `Istatistika mula sa ${days} na naitala na araw, ayon sa kategorya ng avg na BP sa bawat araw.`,
+    highRiskDaysFn: (days, pct) => `Mga araw na may mataas na panganib ng BP: ${days} (${pct}%)`,
+    warningDaysFn: (days, pct) => `Mga araw ng pre-hypertension/babala: ${days} (${pct}%)`,
+    normalDaysFn: (days, pct) => `Mga normal na araw: ${days} (${pct}%)`,
+    periodSummaryFn: (months) => `Buod ng Kalusugan ng ${months} Buwan`,
+    moodStressTitle: "Pagsusuri ng Ugnayan ng BP at Mood",
+    pulseStressTitle: "Pagsusuri ng Pulso at Emosyonal na Stress",
+    observation: "Pagmamasid", reference: "Sanggunian",
+    moodSourceNote: "Maaaring magdulot ng pansamantalang pagtaas ng BP ang stress. Pagsamahin sa paghinga, ehersisyo, tulog, at pamamahala ng pamumuhay.",
+    pulseSourceNote: "Ang pulso sa pahinga ay naaapektuhan ng mood, stress, aktibidad, at gamot. Obserbahin kasama ang BP, mood, at sintomas.",
+    recordDays: "Naitala na Mga Araw", highRisk: "Mataas na Panganib", warning: "Babala",
+    avgPulse: "Avg na Pulso", recentPulse: "Pinakabagong Pulso",
+  },
+  th: {
+    back: "กลับ", caregiverTitle: "ดูแลความดันโลหิต (ผู้ดูแล)", caregiverSub: "ซิงค์ บันทึกแทน และงานดูแลรายวัน",
+    patientTitle: "บันทึกความดันโลหิตรายวัน", patientSub: "ซิงค์ บันทึกด้วยตนเอง วิเคราะห์แนวโน้ม และไดอารี่อารมณ์",
+    familyTitle: "ติดตามความดันโลหิตผู้สูงอายุ", familySub: "มุมมองครอบครัว 3 เดือนล่าสุด",
+    tabMeasure: "วัด", tabTrend: "แนวโน้ม", tabDiary: "ไดอารี่",
+    noRecord: "ยังไม่มีบันทึก", refresh: "รีเฟรช", syncHC: "ซิงค์จาก Health Connect",
+    moodStatus: "อารมณ์", sysBP: "ซิสโตลิก", diaBP: "ไดแอสโตลิก", pulse: "ชีพจร", mood: "อารมณ์",
+    alertNeedsConfirm: "ต้องการการยืนยันจากผู้ดูแล", bpAlert: "แจ้งเตือนความดันโลหิต",
+    currentBP: "ความดันโลหิตปัจจุบัน", nextStepLabel: "ขั้นตอนถัดไป (ผู้ดูแล)",
+    nextCritical: "ตรวจสอบอาการทันที ติดต่อครอบครัวและช่วยรับการรักษาหากจำเป็น",
+    nextDanger: "ให้พักผ่อน 5 นาทีแล้ววัดซ้ำ บันทึกในบันทึกการดูแล",
+    nextWarning: "ติดตามความดันโลหิตวันนี้ต่อไป ระวังอาการวิงเวียน อ่อนเพลีย หรือวิตกกังวล",
+    nextStable: "สถานะคงที่ วัดและซิงค์ตามปกติ",
+    nextNoData: "ยังไม่มีข้อมูลความดันโลหิต กรุณาซิงค์หรือเพิ่มบันทึกแรก",
+    dailyTasksTitle: "งานดูแลวันนี้", completed: "เสร็จแล้ว",
+    taskMorning: "ตรวจความดันโลหิตตอนเช้า",
+    taskMorningLatestFn: (sys, dia) => `ล่าสุด: ${sys}/${dia} mmHg`,
+    taskMorningNew: "ซิงค์หรือเพิ่มความดันโลหิตแรกของวันนี้",
+    taskMoodTitle: "บันทึกอารมณ์",
+    taskMoodCurrentFn: (emoji, mood) => `ทำเครื่องหมาย: ${emoji} ${mood}`,
+    taskMoodNew: "เพิ่มอารมณ์หลังการวัด",
+    taskNotify: "แจ้งครอบครัว", taskNotifyOk: "ไม่จำเป็นต้องแจ้ง ติดตามต่อไป",
+    taskEvening: "ทบทวนตอนเย็น", taskEveningDesc: "ก่อนสิ้นสุด ยืนยันการซิงค์และบันทึก",
+    syncInput: "ซิงค์และบันทึกแทน", caregiverAddTitle: "ผู้ดูแลบันทึกด้วยตนเอง", saveCaregiver: "บันทึกข้อมูลความดันโลหิตของผู้ดูแล",
+    dataSource: "แหล่งข้อมูล", linkedTo: "เชื่อมต่อกับ: ", notLinked: "ยังไม่ได้เชื่อมต่อบัญชีผู้ป่วย",
+    latestSync: "ซิงค์ความดันโลหิตล่าสุด", sourcePrefix: "แหล่งที่มา: ",
+    familyFocus: "จุดสนใจครอบครัว", waitForSync: "รอการซิงค์ข้อมูลความดันโลหิต",
+    familyDashboard: "แดชบอร์ดครอบครัว", currentStatus: "สถานะปัจจุบัน",
+    threeMonthAbnormal: "ผิดปกติ 3 เดือน", recordUnit: " บันทึก",
+    familyNextStepLabel: "ขั้นตอนถัดไป (ครอบครัว)", trend3m: "แนวโน้มความดันโลหิตรายวัน 3 เดือน",
+    legendSys: "ซิสโตลิก", legendDia: "ไดแอสโตลิก", legendLimit: "เกณฑ์ 130/80",
+    summary3m: "สรุปความดันโลหิต 3 เดือน",
+    avgSysLabel: "ซิสโตลิกเฉลี่ย", avgDiaLabel: "ไดแอสโตลิกเฉลี่ย",
+    maxSysLabel: "ซิสโตลิกสูงสุด", minSysLabel: "ซิสโตลิกต่ำสุด",
+    totalPrefix: "รวม", abnormalSuffix: " บันทึก ผิดปกติแสดงด้านล่าง",
+    noAbnormal: "ไม่มีบันทึกความดันโลหิตที่ผิดปกติ",
+    bpLabel: "ความดันโลหิต", fiveDayTrend: "แนวโน้ม 5 วัน", dailyAlert: "แจ้งเตือนรายวัน", avgPrefix: "เฉลี่ย",
+    autoImport: "นำเข้าอัตโนมัติ", addRecord: "เพิ่มบันทึก", saveRecord: "บันทึกข้อมูลความดันโลหิต",
+    range1m: "1 เดือน", range3m: "3 เดือน", range6m: "6 เดือน",
+    bpDiary: "ไดอารี่ความดันโลหิต", dateRecordsSuffix: " บันทึก", emptyDay: "ไม่มีบันทึกความดันโลหิตสำหรับวันนี้",
+    pulsePrefix: "ชีพจร", moodPrefix: "อารมณ์: ",
+    levelCritical: "วิกฤตความดันโลหิต", levelDanger: "ความดันโลหิตสูง", levelLow: "ความดันโลหิตต่ำ",
+    levelPrehypertension: "ก่อนความดันโลหิตสูง", levelNormal: "ปกติ",
+    familyLabelCritical: "ความดันโลหิตวิกฤต", familyLabelDanger: "แจ้งเตือนความดันโลหิตสูง",
+    familyLabelLow: "ความดันโลหิตต่ำ", familyLabelPrehypertension: "ก่อนความดันโลหิตสูง", familyLabelNormal: "ปกติ",
+    recCritical: "ติดต่อทันทีและประเมินความจำเป็นในการรักษาพยาบาล",
+    recDanger: "ยืนยันสภาพ พักและวัดซ้ำ",
+    recLow: "ตรวจสอบอาการวิงเวียนหรืออ่อนแรง ติดต่อแพทย์หากจำเป็น",
+    recPrehypertension: "เพิ่มความถี่ในการติดตาม ดูแลอาหารและการพักผ่อน",
+    recNormal: "ความดันโลหิตคงที่ รักษาการวัดและบันทึกสม่ำเสมอ",
+    srcManual: "บันทึกด้วยตนเอง", srcOldData: "ข้อมูลทดสอบเก่า", srcCareSystem: "ระบบดูแล",
+    familyNoData: "รอการซิงค์ความดันโลหิตแรก",
+    familyCritical: "ติดต่อทันทีเพื่อประเมินความต้องการทางการแพทย์",
+    familyDanger: "ให้พักและวัดซ้ำ แจ้งผู้ดูแล",
+    familyManyAbnormal: "ผิดปกติหลายครั้งใน 3 เดือน นัดตรวจสม่ำเสมอ",
+    familyNormal: "ติดตามรายวัน เตือนให้วัดเมื่อจำเป็น",
+    adviceNoData: "ยังไม่มีข้อมูลความดันโลหิต ซิงค์หรือเพิ่มด้วยตนเอง",
+    adviceCritical: "บันทึก BP ≥180/120 ตรวจสอบอาการทันที",
+    adviceDanger: "ความดันโลหิตสูงเร็วๆ นี้ วัดซ้ำและดูรูปแบบการนอน อาหาร อารมณ์",
+    adviceWarning: "พบสัญญาณก่อนความดันโลหิตสูงหรือต่ำ ติดตามรายวัน",
+    adviceNormal: "แนวโน้มความดันโลหิตคงที่ รักษาการวัดสม่ำเสมอ",
+    moodStressHitFn: (n, total) => `${n}/${total} บันทึกแสดงความดันโลหิตสูงพร้อมความวิตกกังวล/วิงเวียน`,
+    moodStressContinue: "มีการบันทึกอารมณ์แล้ว ติดตามอารมณ์ การนอน และความดันโลหิตต่อไป",
+    moodStressEmpty: "ยังไม่มีการบันทึกอารมณ์เพียงพอ เพิ่มหลังการวัดแต่ละครั้ง",
+    pulseNoData: "ยังไม่มีข้อมูลชีพจร Health Connect จะพยายามเติมเมื่อซิงค์",
+    pulseOverlapFn: (n) => `${n} บันทึกแสดงชีพจรเร็ว ความดันโลหิตสูง และอารมณ์เครียด ดูแลการพักผ่อน`,
+    pulseAvgFn: (avg) => `ชีพจรเฉลี่ยล่าสุด ~${avg} bpm ติดตามพร้อมบันทึกอารมณ์`,
+    savedMsgFn: (sys, dia, level) => `บันทึกแล้ว ${sys}/${dia} mmHg สถานะ: ${level}`,
+    pulseUnknown: "ไม่ได้บันทึก", pulseSlow: "ชีพจรช้า", pulseFast: "ชีพจรเร็ว", pulseNormal: "ชีพจรปกติ",
+    obsNoData: "ข้อมูลไม่เพียงพอ สะสมบันทึกความดันโลหิตเพิ่มเติม",
+    obsDanger: "วันที่ความดันโลหิตสูงมีสัดส่วนสูง ปรึกษาแพทย์เร็วๆ นี้",
+    obsWarning: "หลายวันก่อนความดันโลหิตสูง ดูแลเกลือ การนอน ความเครียด",
+    obsNormal: "ส่วนใหญ่บันทึกอยู่ในเกณฑ์คงที่ รักษาวิถีชีวิตที่ดี",
+    noMiniTrendData: "ยังไม่มีข้อมูลแนวโน้ม", noLongTrendData: "ยังไม่มีข้อมูลแนวโน้มระยะยาว",
+    calendarLegend: "วันที่มีเครื่องหมายมีบันทึกความดันโลหิต กรอบสีแดง = ค่าความเสี่ยงสูง",
+    weekdays: ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"],
+    errFamilyReadOnly: "มุมมองครอบครัวเป็นแบบอ่านอย่างเดียว เพิ่มจากแอปผู้ป่วยหรือผู้ดูแล",
+    errInvalidBP: "กรุณาใส่ค่าซิสโตลิกและไดแอสโตลิกที่ถูกต้อง",
+    errOutOfRange: "ค่าความดันโลหิตอยู่นอกช่วงที่สมเหตุสมผล ตรวจสอบอีกครั้ง",
+    errInvalidPulse: "ชีพจรต้องอยู่ระหว่าง 30 ถึง 220 bpm",
+    errFamilySync: "มุมมองครอบครัวเป็นแบบอ่านอย่างเดียว ซิงค์จากแอปผู้ป่วยหรือผู้ดูแล",
+    errNotAndroid: "การซิงค์ Health Connect รองรับเฉพาะ Android เท่านั้น",
+    errNoHCPackage: "แพ็คเกจ Health Connect ยังไม่โหลด ติดตั้งแอป native ใหม่",
+    errHCInitFail: "ไม่สามารถเริ่มต้น Health Connect ตรวจสอบว่าติดตั้งและเปิดใช้งานแล้ว",
+    errNoHCPerms: "ยังไม่ได้รับอนุญาตอ่านความดันโลหิตและอัตราการเต้นของหัวใจจาก Health Connect",
+    hcNoData: "ไม่มีข้อมูลความดันโลหิตที่ซิงค์ได้ใน Health Connect (30 วันที่ผ่านมา)",
+    hcSyncDoneFn: (imported, pulse, skipped) => `ซิงค์เสร็จ: เพิ่ม ${imported} รายการ ชีพจร ${pulse} รายการ ข้าม ${skipped} รายการ`,
+    hcSyncErrFn: (msg) => `${msg} ตรวจสอบว่าแอปความดันโลหิตเขียนข้อมูลลง Health Connect และมีการอนุญาต`,
+    periodStats: (days) => `สถิติจาก ${days} วันที่มีบันทึก ตามหมวดหมู่ค่าเฉลี่ยรายวัน`,
+    highRiskDaysFn: (days, pct) => `วันที่มีความเสี่ยงสูง: ${days} วัน (${pct}%)`,
+    warningDaysFn: (days, pct) => `วันก่อนความดันโลหิตสูง/แจ้งเตือน: ${days} วัน (${pct}%)`,
+    normalDaysFn: (days, pct) => `วันปกติ: ${days} วัน (${pct}%)`,
+    periodSummaryFn: (months) => `สรุปสุขภาพ ${months} เดือน`,
+    moodStressTitle: "การวิเคราะห์ความสัมพันธ์ระหว่างความดันโลหิตและอารมณ์",
+    pulseStressTitle: "การวิเคราะห์ชีพจรและความเครียดทางอารมณ์",
+    observation: "การสังเกต", reference: "อ้างอิง",
+    moodSourceNote: "ความเครียดอาจทำให้ความดันโลหิตสูงชั่วคราว ควรผสมผสานกับการหายใจ การออกกำลังกาย การนอน และการจัดการวิถีชีวิต",
+    pulseSourceNote: "ชีพจรขณะพักได้รับผลจากอารมณ์ ความเครียด กิจกรรม และยา ควรสังเกตร่วมกับความดันโลหิต อารมณ์ และอาการ",
+    recordDays: "วันที่มีบันทึก", highRisk: "ความเสี่ยงสูง", warning: "คำเตือน",
+    avgPulse: "ชีพจรเฉลี่ย", recentPulse: "ชีพจรล่าสุด",
+  },
+}
+
 function getAndroidHealthConnect() {
   if (Platform.OS !== "android") return null
   try {
@@ -167,69 +776,54 @@ function formatShortDate(dateKey) {
 function getBpStatus(sys, dia) {
   if (sys >= 180 || dia >= 120) {
     return {
-      level: "超高血壓",
-      familyLabel: "危險高血壓",
-      color: "#cf1322",
-      softColor: "#fff1f0",
-      category: "danger",
-      isAbnormal: true,
-      isCritical: true,
-      recommendation: "請立即聯絡長輩，確認症狀並評估就醫。"
+      level: "超高血壓", levelKey: "levelCritical",
+      familyLabel: "危險高血壓", familyLabelKey: "familyLabelCritical",
+      color: "#cf1322", softColor: "#fff1f0",
+      category: "danger", isAbnormal: true, isCritical: true,
+      recommendation: "請立即聯絡長輩，確認症狀並評估就醫。", recommendationKey: "recCritical"
     }
   }
   if (sys >= 140 || dia >= 90) {
     return {
-      level: "高血壓",
-      familyLabel: "高血壓警戒",
-      color: "#cf1322",
-      softColor: "#fff1f0",
-      category: "danger",
-      isAbnormal: true,
-      isCritical: false,
-      recommendation: "請儘快確認長輩狀況，安排休息後複測。"
+      level: "高血壓", levelKey: "levelDanger",
+      familyLabel: "高血壓警戒", familyLabelKey: "familyLabelDanger",
+      color: "#cf1322", softColor: "#fff1f0",
+      category: "danger", isAbnormal: true, isCritical: false,
+      recommendation: "請儘快確認長輩狀況，安排休息後複測。", recommendationKey: "recDanger"
     }
   }
   if (sys < 90 || dia < 60) {
     return {
-      level: "偏低",
-      familyLabel: "血壓偏低",
-      color: "#722ed1",
-      softColor: "#f9f0ff",
-      category: "warning",
-      isAbnormal: true,
-      isCritical: false,
-      recommendation: "請確認是否頭暈、無力，必要時聯絡醫師。"
+      level: "偏低", levelKey: "levelLow",
+      familyLabel: "血壓偏低", familyLabelKey: "familyLabelLow",
+      color: "#722ed1", softColor: "#f9f0ff",
+      category: "warning", isAbnormal: true, isCritical: false,
+      recommendation: "請確認是否頭暈、無力，必要時聯絡醫師。", recommendationKey: "recLow"
     }
   }
   if (sys >= 120 || dia >= 80) {
     return {
-      level: "血壓前期",
-      familyLabel: "血壓前期",
-      color: "#b54708",
-      softColor: "#fff7e6",
-      category: "warning",
-      isAbnormal: false,
-      isCritical: false,
-      recommendation: "建議增加監測頻率，並留意飲食與作息。"
+      level: "血壓前期", levelKey: "levelPrehypertension",
+      familyLabel: "血壓前期", familyLabelKey: "familyLabelPrehypertension",
+      color: "#b54708", softColor: "#fff7e6",
+      category: "warning", isAbnormal: false, isCritical: false,
+      recommendation: "建議增加監測頻率，並留意飲食與作息。", recommendationKey: "recPrehypertension"
     }
   }
   return {
-    level: "正常",
-    familyLabel: "正常",
-    color: "#067647",
-    softColor: "#ecfdf3",
-    category: "normal",
-    isAbnormal: false,
-    isCritical: false,
-    recommendation: "目前血壓穩定，維持固定量測與紀錄。"
+    level: "正常", levelKey: "levelNormal",
+    familyLabel: "正常", familyLabelKey: "familyLabelNormal",
+    color: "#067647", softColor: "#ecfdf3",
+    category: "normal", isAbnormal: false, isCritical: false,
+    recommendation: "目前血壓穩定，維持固定量測與紀錄。", recommendationKey: "recNormal"
   }
 }
 
-function getPulseStatus(pulse) {
-  if (pulse == null) return { label: "未記錄", color: "#667085" }
-  if (pulse < 50) return { label: "心跳偏慢", color: "#722ed1" }
-  if (pulse > 100) return { label: "心跳偏快", color: "#cf1322" }
-  return { label: "心跳正常", color: "#067647" }
+function getPulseStatus(pulse, t) {
+  if (pulse == null) return { label: t ? t.pulseUnknown : "未記錄", color: "#667085" }
+  if (pulse < 50) return { label: t ? t.pulseSlow : "心跳偏慢", color: "#722ed1" }
+  if (pulse > 100) return { label: t ? t.pulseFast : "心跳偏快", color: "#cf1322" }
+  return { label: t ? t.pulseNormal : "心跳正常", color: "#067647" }
 }
 
 function getMoodEmoji(mood) {
@@ -336,11 +930,11 @@ function getSampledTrendSummaries(daily, maxPoints = 8) {
   return Array.from({ length: maxPoints }, (_, index) => daily[Math.round(index * step)])
 }
 
-function getPeriodicObservation(summary) {
-  if (!summary.totalDays) return "目前資料量不足，請先累積血壓紀錄。"
-  if (summary.danger.percent >= 30) return "高血壓天數比例偏高，建議儘快與醫師討論近期控制策略。"
-  if (summary.warning.percent >= 40) return "血壓前期或警示天數較多，建議留意鹽分、睡眠、壓力與固定量測。"
-  return "目前大多數紀錄落在穩定範圍，請持續維持規律量測與生活管理。"
+function getPeriodicObservationKey(summary) {
+  if (!summary.totalDays) return "obsNoData"
+  if (summary.danger.percent >= 30) return "obsDanger"
+  if (summary.warning.percent >= 40) return "obsWarning"
+  return "obsNormal"
 }
 
 function getTrendSummary(records, months) {
@@ -348,7 +942,7 @@ function getTrendSummary(records, months) {
   const summary = getHealthSummary(periodRecords)
   return {
     ...summary,
-    periodicObservation: getPeriodicObservation(summary)
+    periodicObservationKey: getPeriodicObservationKey(summary)
   }
 }
 
@@ -416,53 +1010,52 @@ function getFamilyStats(records) {
   }
 }
 
-function getSourceLabel(source) {
+function getSourceLabel(source, t) {
   if (source === "health-connect") return "Health Connect"
-  if (source === "manual") return "手動輸入"
-  if (source === "mock" || source === "mock-seed") return "舊測試資料"
-  return "照護系統"
+  if (source === "manual") return t ? t.srcManual : "手動輸入"
+  if (source === "mock" || source === "mock-seed") return t ? t.srcOldData : "舊測試資料"
+  return t ? t.srcCareSystem : "照護系統"
 }
 
-function getFamilyNextStep(latest, abnormalCount) {
-  if (!latest) return "等待長輩端同步第一筆血壓資料。"
-  if (latest.status.isCritical) return "立即聯絡長輩並確認是否需要就醫。"
-  if (latest.status.category === "danger") return "請長輩休息後複測，並通知照顧者持續觀察。"
-  if (abnormalCount >= 3) return "近 3 個月異常偏多，建議安排固定量測與門診討論。"
-  return "維持每日追蹤，必要時提醒長輩補量測。"
+function getFamilyNextStep(latest, abnormalCount, t) {
+  if (!latest) return t ? t.familyNoData : "等待長輩端同步第一筆血壓資料。"
+  if (latest.status.isCritical) return t ? t.familyCritical : "立即聯絡長輩並確認是否需要就醫。"
+  if (latest.status.category === "danger") return t ? t.familyDanger : "請長輩休息後複測，並通知照顧者持續觀察。"
+  if (abnormalCount >= 3) return t ? t.familyManyAbnormal : "近 3 個月異常偏多，建議安排固定量測與門診討論。"
+  return t ? t.familyNormal : "維持每日追蹤，必要時提醒長輩補量測。"
 }
 
-function getHealthAdvice(records) {
-  if (!records.length) return "尚未有血壓資料，請先從長輩端同步或手動新增紀錄。"
+function getHealthAdvice(records, t) {
+  if (!records.length) return t ? t.adviceNoData : "尚未有血壓資料，請先從長輩端同步或手動新增紀錄。"
   if (records.some(record => record.status.isCritical)) {
-    return "出現 180/120 以上的超高血壓紀錄，請立即確認症狀並評估就醫。"
+    return t ? t.adviceCritical : "出現 180/120 以上的超高血壓紀錄，請立即確認症狀並評估就醫。"
   }
   if (records.some(record => record.status.category === "danger")) {
-    return "近期有高血壓紀錄，建議固定複測並觀察是否與睡眠、飲食或情緒相關。"
+    return t ? t.adviceDanger : "近期有高血壓紀錄，建議固定複測並觀察是否與睡眠、飲食或情緒相關。"
   }
   if (records.some(record => record.status.category === "warning")) {
-    return "血壓已有前期或偏低訊號，建議維持每日量測並留意身體不適。"
+    return t ? t.adviceWarning : "血壓已有前期或偏低訊號，建議維持每日量測並留意身體不適。"
   }
-  return "目前血壓趨勢穩定，維持固定量測與健康生活型態。"
+  return t ? t.adviceNormal : "目前血壓趨勢穩定，維持固定量測與健康生活型態。"
 }
 
-function getMoodStressAnalysis(records) {
+function getMoodStressAnalysis(records, t) {
   const recent = records.slice(0, 14)
   const stressHits = recent.filter(record => record.sys > 140 && isStressMood(record.mood)).length
   const markedCount = recent.filter(record => isMarkedMood(record.mood)).length
 
   if (stressHits > 0) {
-    return `近 ${recent.length} 筆中有 ${stressHits} 筆同時出現高血壓與焦慮或頭暈，建議記錄發生情境。`
+    return t ? t.moodStressHitFn(stressHits, recent.length)
+      : `近 ${recent.length} 筆中有 ${stressHits} 筆同時出現高血壓與焦慮或頭暈，建議記錄發生情境。`
   }
-  if (markedCount > 0) {
-    return "已有心情標記，可持續觀察情緒、睡眠與血壓波動的關係。"
-  }
-  return "尚未累積足夠心情標記，建議每次量測後補上當下感受。"
+  if (markedCount > 0) return t ? t.moodStressContinue : "已有心情標記，可持續觀察情緒、睡眠與血壓波動的關係。"
+  return t ? t.moodStressEmpty : "尚未累積足夠心情標記，建議每次量測後補上當下感受。"
 }
 
-function getPulseMoodAnalysis(records) {
+function getPulseMoodAnalysis(records, t) {
   const recent = records.slice(0, 14)
   const pulseRecords = recent.filter(record => record.pulse != null)
-  if (!pulseRecords.length) return "尚未有脈搏資料，Health Connect 同步時會嘗試一起補入。"
+  if (!pulseRecords.length) return t ? t.pulseNoData : "尚未有脈搏資料，Health Connect 同步時會嘗試一起補入。"
 
   const averagePulse = Math.round(
     pulseRecords.reduce((sum, record) => sum + record.pulse, 0) / pulseRecords.length
@@ -472,9 +1065,9 @@ function getPulseMoodAnalysis(records) {
   ).length
 
   if (overlap > 0) {
-    return `有 ${overlap} 筆紀錄同時出現心跳偏快、血壓偏高與壓力心情，建議留意休息與回診討論。`
+    return t ? t.pulseOverlapFn(overlap) : `有 ${overlap} 筆紀錄同時出現心跳偏快、血壓偏高與壓力心情，建議留意休息與回診討論。`
   }
-  return `近期平均脈搏約 ${averagePulse} bpm，可搭配心情標記一起追蹤。`
+  return t ? t.pulseAvgFn(averagePulse) : `近期平均脈搏約 ${averagePulse} bpm，可搭配心情標記一起追蹤。`
 }
 
 function sortRecordsAbnormalFirst(records) {
@@ -501,9 +1094,9 @@ function toChartLineBottom(value, chartHeight, labelSpace) {
   return labelSpace + toChartHeight(value, chartHeight)
 }
 
-function MiniTrendChart({ summaries }) {
+function MiniTrendChart({ summaries, t }) {
   if (!summaries.length) {
-    return <Text style={styles.emptyText}>{"\u5c1a\u7121\u8840\u58d3\u8da8\u52e2\u8cc7\u6599"}</Text>
+    return <Text style={styles.emptyText}>{t ? t.noMiniTrendData : "\u5c1a\u7121\u8840\u58d3\u8da8\u52e2\u8cc7\u6599"}</Text>
   }
 
   return (
@@ -536,9 +1129,9 @@ function MiniTrendChart({ summaries }) {
   )
 }
 
-function LongTrendChart({ summaries }) {
+function LongTrendChart({ summaries, t }) {
   if (!summaries.length) {
-    return <Text style={styles.emptyText}>{"\u5c1a\u7121\u9577\u671f\u8da8\u52e2\u8cc7\u6599"}</Text>
+    return <Text style={styles.emptyText}>{t ? t.noLongTrendData : "\u5c1a\u7121\u9577\u671f\u8da8\u52e2\u8cc7\u6599"}</Text>
   }
 
   return (
@@ -570,15 +1163,16 @@ function LongTrendChart({ summaries }) {
         })}
       </View>
       <View style={styles.legendRow}>
-        <Text style={styles.legendSys}>{"\u6536\u7e2e\u58d3"}</Text>
-        <Text style={styles.legendDia}>{"\u8212\u5f35\u58d3"}</Text>
-        <Text style={styles.legendLimit}>{"\u8b66\u793a\u7dda 130/80"}</Text>
+        <Text style={styles.legendSys}>{t ? t.legendSys : "\u6536\u7e2e\u58d3"}</Text>
+        <Text style={styles.legendDia}>{t ? t.legendDia : "\u8212\u5f35\u58d3"}</Text>
+        <Text style={styles.legendLimit}>{t ? t.legendLimit : "\u8b66\u6212\u7dda 130/80"}</Text>
       </View>
     </View>
   )
 }
 
-function CalendarMonth({ dateKey, days, selectedDate, onSelectDate, onShiftMonth }) {
+function CalendarMonth({ dateKey, days, selectedDate, onSelectDate, onShiftMonth, t }) {
+  const weekdays = t ? t.weekdays : ["日", "一", "二", "三", "四", "五", "六"]
   return (
     <View style={styles.calendarCard}>
       <View style={styles.calendarHeader}>
@@ -591,8 +1185,8 @@ function CalendarMonth({ dateKey, days, selectedDate, onSelectDate, onShiftMonth
         </Pressable>
       </View>
       <View style={styles.weekRow}>
-        {["日", "一", "二", "三", "四", "五", "六"].map(day => (
-          <Text key={day} style={styles.weekLabel}>{day}</Text>
+        {weekdays.map((day, idx) => (
+          <Text key={idx} style={styles.weekLabel}>{day}</Text>
         ))}
       </View>
       <View style={styles.calendarGrid}>
@@ -631,7 +1225,7 @@ function CalendarMonth({ dateKey, days, selectedDate, onSelectDate, onShiftMonth
         })}
       </View>
       <View style={styles.calendarLegend}>
-        <Text style={styles.calendarLegendText}>標記日期代表當天有血壓紀錄，紅框代表有高風險數值。</Text>
+        <Text style={styles.calendarLegendText}>{t ? t.calendarLegend : "標記日期代表當天有血壓紀錄，紅框代表有高風險數值。"}</Text>
       </View>
     </View>
   )
@@ -642,8 +1236,10 @@ export default function BloodPressureScreen({
   user,
   apiBaseUrl,
   token,
+  uiLang,
   onBack
 }) {
+  const t = UI_TEXT[uiLang || "zh"] || UI_TEXT.zh
   const apiPrefix =
     role === "caregiver" ? "/caregiver" : role === "family" ? "/family" : "/patient"
   const readOnly = role === "family"
@@ -759,7 +1355,7 @@ export default function BloodPressureScreen({
 
   const handleRecord = async () => {
     if (readOnly) {
-      setError("家屬端僅能查看長輩資料，請由受顧者端或照顧者端新增血壓紀錄。")
+      setError(t.errFamilyReadOnly)
       return
     }
 
@@ -768,15 +1364,15 @@ export default function BloodPressureScreen({
     const pulse = form.pulse === "" ? "" : Number(form.pulse)
 
     if (!Number.isFinite(sys) || !Number.isFinite(dia)) {
-      setError("請輸入有效的收縮壓與舒張壓。")
+      setError(t.errInvalidBP)
       return
     }
     if (sys < 50 || sys > 260 || dia < 30 || dia > 180) {
-      setError("血壓數值超出合理範圍，請重新確認。")
+      setError(t.errOutOfRange)
       return
     }
     if (form.pulse !== "" && (!Number.isFinite(pulse) || pulse < 30 || pulse > 220)) {
-      setError("脈搏需介於 30 到 220 bpm。")
+      setError(t.errInvalidPulse)
       return
     }
 
@@ -792,7 +1388,7 @@ export default function BloodPressureScreen({
         body: { sys, dia, pulse, mood: form.mood }
       })
       const status = getBpStatus(sys, dia)
-      setMessage(`已儲存 ${data.record?.sys || sys}/${data.record?.dia || dia} mmHg，狀態：${status.level}`)
+      setMessage(t.savedMsgFn(data.record?.sys || sys, data.record?.dia || dia, t[status.levelKey] || status.level))
       setForm({ sys: "", dia: "", pulse: "", mood: UNMARKED_MOOD })
       await loadHistory()
     } catch (saveError) {
@@ -804,7 +1400,7 @@ export default function BloodPressureScreen({
 
   const handleSync = async () => {
     if (readOnly) {
-      setError("家屬端只讀；同步請在受顧者端或照顧者端執行。")
+      setError(t.errFamilySync)
       return
     }
 
@@ -813,19 +1409,19 @@ export default function BloodPressureScreen({
     setError("")
     try {
       if (Platform.OS !== "android") {
-        setError("Health Connect 同步目前僅支援 Android 實機。")
+        setError(t.errNotAndroid)
         return
       }
 
       const healthConnect = getAndroidHealthConnect()
       if (!healthConnect?.initialize || !healthConnect?.readRecords) {
-        setError("尚未載入 Health Connect 套件，請重新安裝原生 App。")
+        setError(t.errNoHCPackage)
         return
       }
 
       const initialized = await healthConnect.initialize()
       if (!initialized) {
-        setError("無法初始化 Health Connect，請確認手機已安裝並啟用 Health Connect。")
+        setError(t.errHCInitFail)
         return
       }
 
@@ -851,7 +1447,7 @@ export default function BloodPressureScreen({
       }
 
       if (!hasPermissions) {
-        setError("尚未取得 Health Connect 血壓與心率讀取權限。")
+        setError(t.errNoHCPerms)
         return
       }
 
@@ -873,7 +1469,7 @@ export default function BloodPressureScreen({
 
       const mappedRecords = mapHealthConnectBloodPressureRecords(bpRecords, heartRateRecords)
       if (!mappedRecords.length) {
-        setMessage("近 30 天 Health Connect 尚無可同步的血壓資料。")
+        setMessage(t.hcNoData)
         return
       }
 
@@ -884,14 +1480,10 @@ export default function BloodPressureScreen({
         token,
         body: { records: mappedRecords }
       })
-      setMessage(
-        `Health Connect 同步完成：新增 ${data.importedCount || 0} 筆，補入脈搏 ${data.pulseBackfillCount || 0} 筆，略過重複 ${data.skippedCount || 0} 筆。`
-      )
+      setMessage(t.hcSyncDoneFn(data.importedCount || 0, data.pulseBackfillCount || 0, data.skippedCount || 0))
       await loadHistory()
     } catch (syncError) {
-      setError(
-        `${syncError.message || "Health Connect 同步失敗"}。請確認血壓計 App 已寫入 Health Connect，並授權本 App 讀取血壓與心率。`
-      )
+      setError(t.hcSyncErrFn(syncError.message || "Health Connect sync failed"))
     } finally {
       setSyncing(false)
     }
@@ -928,34 +1520,31 @@ export default function BloodPressureScreen({
 
   if (role === "caregiver") {
     const caregiverNextStep = latest
-      ? latest.status.isCritical
-        ? "立即確認長輩症狀，必要時聯絡家屬並協助就醫。"
-        : latest.status.category === "danger"
-          ? "請安排長輩休息 5 分鐘後複測，並在照護紀錄中註記。"
-          : latest.status.category === "warning"
-            ? "持續追蹤今日血壓，留意頭暈、疲倦或焦慮狀態。"
-            : "目前狀態穩定，維持例行量測與同步。"
-      : "尚無血壓資料，請先同步或手動新增第一筆紀錄。"
+      ? latest.status.isCritical ? t.nextCritical
+        : latest.status.category === "danger" ? t.nextDanger
+        : latest.status.category === "warning" ? t.nextWarning
+        : t.nextStable
+      : t.nextNoData
     const caregiverDailyTasks = [
       {
         key: "morning-check",
-        title: "晨間血壓確認",
-        desc: latest ? `最新紀錄 ${latest.sys}/${latest.dia} mmHg` : "同步或新增今日第一筆血壓。"
+        title: t.taskMorning,
+        desc: latest ? t.taskMorningLatestFn(latest.sys, latest.dia) : t.taskMorningNew
       },
       {
         key: "mood-note",
-        title: "心情狀態註記",
-        desc: latest ? `目前標記：${getMoodEmoji(latest.mood)} ${latest.mood}` : "量測後補上長輩當下狀態。"
+        title: t.taskMoodTitle,
+        desc: latest ? t.taskMoodCurrentFn(getMoodEmoji(latest.mood), latest.mood) : t.taskMoodNew
       },
       {
         key: "family-notify",
-        title: "異常通知家屬",
-        desc: latest?.status.isAbnormal ? latest.status.recommendation : "目前無需通知，維持觀察。"
+        title: t.taskNotify,
+        desc: latest?.status.isAbnormal ? (t[latest.status.recommendationKey] || latest.status.recommendation) : t.taskNotifyOk
       },
       {
         key: "evening-review",
-        title: "晚間回顧",
-        desc: "交班前確認是否已同步資料並完成必要備註。"
+        title: t.taskEvening,
+        desc: t.taskEveningDesc
       }
     ]
     const completedCount = caregiverDailyTasks.filter(
@@ -966,10 +1555,10 @@ export default function BloodPressureScreen({
       <View style={styles.screen}>
         <View style={styles.headerCard}>
           <Pressable onPress={onBack}>
-            <Text style={styles.backText}>返回</Text>
+            <Text style={styles.backText}>{t.back}</Text>
           </Pressable>
-          <Text style={styles.title}>看護血壓照護</Text>
-          <Text style={styles.sub}>同步、代輸入與每日照護任務。</Text>
+          <Text style={styles.title}>{t.caregiverTitle}</Text>
+          <Text style={styles.sub}>{t.caregiverSub}</Text>
         </View>
 
         <ScrollView contentContainerStyle={styles.container}>
@@ -979,44 +1568,44 @@ export default function BloodPressureScreen({
 
           {latest?.status.isAbnormal ? (
             <View style={[styles.alertBanner, { borderLeftColor: latest.status.color }]}>
-              <Text style={styles.alertTitle}>需要看護確認</Text>
-              <Text style={styles.bodyText}>{latest.status.recommendation}</Text>
+              <Text style={styles.alertTitle}>{t.alertNeedsConfirm}</Text>
+              <Text style={styles.bodyText}>{t[latest.status.recommendationKey] || latest.status.recommendation}</Text>
             </View>
           ) : null}
 
           <View style={[styles.latestCard, latest && { borderLeftColor: latest.status.color, borderLeftWidth: 5 }]}>
             <View style={styles.cardHead}>
               <View>
-                <Text style={styles.sectionTitle}>目前照護血壓</Text>
-                <Text style={styles.rowSub}>{latest ? formatDateTime(latest.measuredAt) : "尚無紀錄"}</Text>
+                <Text style={styles.sectionTitle}>{t.currentBP}</Text>
+                <Text style={styles.rowSub}>{latest ? formatDateTime(latest.measuredAt) : t.noRecord}</Text>
               </View>
               {latest ? (
                 <Text style={[styles.statusBadge, { color: latest.status.color, backgroundColor: latest.status.softColor }]}>
-                  {latest.status.level}
+                  {t[latest.status.levelKey] || latest.status.level}
                 </Text>
               ) : null}
             </View>
 
             <View style={styles.valueGrid}>
               <View style={styles.valueBox}>
-                <Text style={styles.valueLabel}>收縮壓</Text>
+                <Text style={styles.valueLabel}>{t.sysBP}</Text>
                 <Text style={styles.bigValue}>{latest?.sys ?? "--"}</Text>
                 <Text style={styles.unitText}>mmHg</Text>
               </View>
               <View style={styles.valueBox}>
-                <Text style={styles.valueLabel}>舒張壓</Text>
+                <Text style={styles.valueLabel}>{t.diaBP}</Text>
                 <Text style={styles.bigValue}>{latest?.dia ?? "--"}</Text>
                 <Text style={styles.unitText}>mmHg</Text>
               </View>
               <View style={styles.valueBox}>
-                <Text style={styles.valueLabel}>脈搏</Text>
+                <Text style={styles.valueLabel}>{t.pulse}</Text>
                 <Text style={styles.bigValue}>{latest?.pulse ?? "--"}</Text>
                 <Text style={styles.unitText}>bpm</Text>
               </View>
             </View>
 
             <View style={styles.moodStrip}>
-              <Text style={styles.moodStripLabel}>心情狀態</Text>
+              <Text style={styles.moodStripLabel}>{t.moodStatus}</Text>
               <Text style={styles.moodStripValue}>
                 {latest ? `${getMoodEmoji(latest.mood)} ${latest.mood}` : "--"}
               </Text>
@@ -1037,7 +1626,7 @@ export default function BloodPressureScreen({
             ) : null}
 
             <View style={styles.adviceBox}>
-              <Text style={styles.adviceTitle}>看護下一步</Text>
+              <Text style={styles.adviceTitle}>{t.nextStepLabel}</Text>
               <Text style={styles.bodyText}>{caregiverNextStep}</Text>
             </View>
           </View>
@@ -1045,8 +1634,8 @@ export default function BloodPressureScreen({
           <View style={styles.taskCard}>
             <View style={styles.cardHead}>
               <View>
-                <Text style={styles.sectionTitle}>今日照護任務</Text>
-                <Text style={styles.rowSub}>{completedCount}/{caregiverDailyTasks.length} 已完成</Text>
+                <Text style={styles.sectionTitle}>{t.dailyTasksTitle}</Text>
+                <Text style={styles.rowSub}>{completedCount}/{caregiverDailyTasks.length} {t.completed}</Text>
               </View>
               <Text style={styles.taskDate}>{todayTaskKey}</Text>
             </View>
@@ -1071,19 +1660,19 @@ export default function BloodPressureScreen({
           </View>
 
           <View style={styles.formCard}>
-            <Text style={styles.sectionTitle}>同步與代輸入</Text>
+            <Text style={styles.sectionTitle}>{t.syncInput}</Text>
             <Pressable style={styles.buttonSecondary} onPress={handleSync} disabled={syncing}>
               {syncing ? (
                 <ActivityIndicator color="#1f74d1" />
               ) : (
-                <Text style={styles.buttonSecondaryText}>從 Health Connect 同步</Text>
+                <Text style={styles.buttonSecondaryText}>{t.syncHC}</Text>
               )}
             </Pressable>
 
-            <Text style={styles.sectionTitleSpacing}>看護手動新增</Text>
+            <Text style={styles.sectionTitleSpacing}>{t.caregiverAddTitle}</Text>
             <View style={styles.inputGrid}>
               <View style={styles.inputCell}>
-                <Text style={styles.label}>收縮壓</Text>
+                <Text style={styles.label}>{t.sysBP}</Text>
                 <TextInput
                   style={styles.input}
                   value={form.sys}
@@ -1093,7 +1682,7 @@ export default function BloodPressureScreen({
                 />
               </View>
               <View style={styles.inputCell}>
-                <Text style={styles.label}>舒張壓</Text>
+                <Text style={styles.label}>{t.diaBP}</Text>
                 <TextInput
                   style={styles.input}
                   value={form.dia}
@@ -1103,7 +1692,7 @@ export default function BloodPressureScreen({
                 />
               </View>
               <View style={styles.inputCell}>
-                <Text style={styles.label}>脈搏</Text>
+                <Text style={styles.label}>{t.pulse}</Text>
                 <TextInput
                   style={styles.input}
                   value={form.pulse}
@@ -1114,7 +1703,7 @@ export default function BloodPressureScreen({
               </View>
             </View>
 
-            <Text style={styles.label}>心情</Text>
+            <Text style={styles.label}>{t.mood}</Text>
             <View style={styles.moodGrid}>
               {MOOD_OPTIONS.map(option => (
                 <Pressable
@@ -1132,220 +1721,7 @@ export default function BloodPressureScreen({
               {saving ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.buttonPrimaryText}>儲存看護血壓紀錄</Text>
-              )}
-            </Pressable>
-          </View>
-        </ScrollView>
-      </View>
-    )
-  }
-
-  if (false && role === "caregiver") {
-    const caregiverPriorityRecords = recentThreeMonthRecords
-      .filter(record => record.status.isAbnormal || getPulseStatus(record.pulse).color === "#cf1322")
-      .slice(0, 6)
-    const caregiverNextStep = latest
-      ? latest.status.isCritical
-        ? "立即確認長輩症狀，必要時聯絡家屬並協助就醫。"
-        : latest.status.category === "danger"
-          ? "請安排長輩休息 5 分鐘後複測，並在照護紀錄中註記。"
-          : latest.status.category === "warning"
-            ? "持續追蹤今日血壓，留意頭暈、疲倦或焦慮狀態。"
-            : "目前狀態穩定，維持例行量測與同步。"
-      : "尚無血壓資料，請先同步或代為新增第一筆紀錄。"
-
-    return (
-      <View style={styles.screen}>
-        <View style={styles.headerCard}>
-          <Pressable onPress={onBack}>
-            <Text style={styles.backText}>返回</Text>
-          </Pressable>
-          <Text style={styles.title}>看護端血壓照護工作台</Text>
-          <Text style={styles.sub}>同步、代輸入、異常優先追蹤與照護建議</Text>
-        </View>
-
-        <ScrollView contentContainerStyle={styles.container}>
-          {loading ? <ActivityIndicator color="#1f74d1" /> : null}
-          {message ? <Text style={styles.message}>{message}</Text> : null}
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-
-          {latest?.status.isAbnormal ? (
-            <View style={[styles.alertBanner, { borderLeftColor: latest.status.color }]}>
-              <Text style={styles.alertTitle}>需要看護確認</Text>
-              <Text style={styles.bodyText}>{latest.status.recommendation}</Text>
-            </View>
-          ) : null}
-
-          <View style={[styles.latestCard, latest && { borderLeftColor: latest.status.color, borderLeftWidth: 5 }]}>
-            <View style={styles.cardHead}>
-              <View>
-                <Text style={styles.sectionTitle}>目前照護血壓</Text>
-                <Text style={styles.rowSub}>{latest ? formatDateTime(latest.measuredAt) : "尚無紀錄"}</Text>
-              </View>
-              {latest ? (
-                <Text style={[styles.statusBadge, { color: latest.status.color, backgroundColor: latest.status.softColor }]}>
-                  {latest.status.level}
-                </Text>
-              ) : null}
-            </View>
-
-            <View style={styles.valueGrid}>
-              <View style={styles.valueBox}>
-                <Text style={styles.valueLabel}>收縮壓</Text>
-                <Text style={styles.bigValue}>{latest?.sys ?? "--"}</Text>
-                <Text style={styles.unitText}>mmHg</Text>
-              </View>
-              <View style={styles.valueBox}>
-                <Text style={styles.valueLabel}>舒張壓</Text>
-                <Text style={styles.bigValue}>{latest?.dia ?? "--"}</Text>
-                <Text style={styles.unitText}>mmHg</Text>
-              </View>
-              <View style={styles.valueBox}>
-                <Text style={styles.valueLabel}>脈搏</Text>
-                <Text style={styles.bigValue}>{latest?.pulse ?? "--"}</Text>
-                <Text style={styles.unitText}>bpm</Text>
-              </View>
-            </View>
-
-            <View style={styles.moodStrip}>
-              <Text style={styles.moodStripLabel}>心情狀態</Text>
-              <Text style={styles.moodStripValue}>
-                {latest ? `${getMoodEmoji(latest.mood)} ${latest.mood}` : "--"}
-              </Text>
-            </View>
-
-            {latest ? (
-              <View style={styles.inlineMoodRow}>
-                {MOOD_OPTIONS.map(option => (
-                  <Pressable
-                    key={option.value}
-                    style={[styles.moodChipSmall, latest.mood === option.value && styles.moodChipSelected]}
-                    onPress={() => updateMood(latest, option.value)}
-                  >
-                    <Text style={styles.moodChipText}>{option.emoji}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            ) : null}
-
-            <View style={styles.adviceBox}>
-              <Text style={styles.adviceTitle}>看護下一步</Text>
-              <Text style={styles.bodyText}>{caregiverNextStep}</Text>
-            </View>
-          </View>
-
-          <View style={styles.analysisCard}>
-            <Text style={styles.sectionTitle}>舊版看護分析</Text>
-            <View style={styles.summaryGrid}>
-              <View style={styles.summaryBox}>
-                <Text style={styles.summaryLabel}>近 3 個月異常</Text>
-                <Text style={styles.summaryValue}>{familyStats.abnormalCount} 筆</Text>
-              </View>
-              <View style={styles.summaryBox}>
-                <Text style={styles.summaryLabel}>總量測</Text>
-                <Text style={styles.summaryValue}>{familyStats.total} 筆</Text>
-              </View>
-            </View>
-            <MiniTrendChart summaries={groupDaily(recentThreeMonthRecords).slice(-7)} />
-            <View style={styles.legendRow}>
-              <Text style={styles.legendSys}>收縮壓</Text>
-              <Text style={styles.legendDia}>舒張壓</Text>
-              <Text style={styles.legendLimit}>警戒線 130/80</Text>
-            </View>
-          </View>
-
-          <View style={styles.historyCard}>
-            <View style={styles.cardHead}>
-              <Text style={styles.sectionTitle}>優先處理紀錄</Text>
-              <Pressable onPress={loadHistory} disabled={loading}>
-                <Text style={styles.refreshText}>重新整理</Text>
-              </Pressable>
-            </View>
-            {caregiverPriorityRecords.length ? (
-              caregiverPriorityRecords.map(record => (
-                <View key={record._id || `${record.dateKey}-${record.sys}-${record.dia}`} style={styles.recordCard}>
-                  <View style={styles.cardHead}>
-                    <View>
-                      <Text style={styles.rowMain}>{record.sys}/{record.dia} mmHg</Text>
-                      <Text style={styles.rowSub}>{formatDateTime(record.measuredAt)}</Text>
-                      <Text style={styles.rowSub}>脈搏 {record.pulse ?? "--"} bpm・{getSourceLabel(record.source)}</Text>
-                    </View>
-                    <Text style={[styles.statusBadge, { color: record.status.color, backgroundColor: record.status.softColor }]}>
-                      {record.status.level}
-                    </Text>
-                  </View>
-                  <Text style={styles.recordMood}>心情：{getMoodEmoji(record.mood)} {record.mood}</Text>
-                </View>
-              ))
-            ) : (
-              <Text style={styles.emptyText}>目前沒有需要優先處理的異常紀錄。</Text>
-            )}
-          </View>
-
-          <View style={styles.formCard}>
-            <Text style={styles.sectionTitle}>同步與代輸入</Text>
-            <Pressable style={styles.buttonSecondary} onPress={handleSync} disabled={syncing}>
-              {syncing ? (
-                <ActivityIndicator color="#1f74d1" />
-              ) : (
-                <Text style={styles.buttonSecondaryText}>從 Health Connect 同步</Text>
-              )}
-            </Pressable>
-
-            <Text style={styles.sectionTitleSpacing}>看護代新增一筆</Text>
-            <View style={styles.inputGrid}>
-              <View style={styles.inputCell}>
-                <Text style={styles.label}>收縮壓</Text>
-                <TextInput
-                  style={styles.input}
-                  value={form.sys}
-                  onChangeText={value => updateForm("sys", value)}
-                  keyboardType="numeric"
-                  placeholder="128"
-                />
-              </View>
-              <View style={styles.inputCell}>
-                <Text style={styles.label}>舒張壓</Text>
-                <TextInput
-                  style={styles.input}
-                  value={form.dia}
-                  onChangeText={value => updateForm("dia", value)}
-                  keyboardType="numeric"
-                  placeholder="82"
-                />
-              </View>
-              <View style={styles.inputCell}>
-                <Text style={styles.label}>脈搏</Text>
-                <TextInput
-                  style={styles.input}
-                  value={form.pulse}
-                  onChangeText={value => updateForm("pulse", value)}
-                  keyboardType="numeric"
-                  placeholder="76"
-                />
-              </View>
-            </View>
-
-            <Text style={styles.label}>心情</Text>
-            <View style={styles.moodGrid}>
-              {MOOD_OPTIONS.map(option => (
-                <Pressable
-                  key={option.value}
-                  style={[styles.moodChip, form.mood === option.value && styles.moodChipSelected]}
-                  onPress={() => updateForm("mood", option.value)}
-                >
-                  <Text style={styles.moodEmoji}>{option.emoji}</Text>
-                  <Text style={styles.moodLabel}>{option.value}</Text>
-                </Pressable>
-              ))}
-            </View>
-
-            <Pressable style={styles.buttonPrimary} onPress={handleRecord} disabled={saving}>
-              {saving ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.buttonPrimaryText}>儲存看護血壓紀錄</Text>
+                <Text style={styles.buttonPrimaryText}>{t.saveCaregiver}</Text>
               )}
             </Pressable>
           </View>
@@ -1355,25 +1731,25 @@ export default function BloodPressureScreen({
   }
 
   if (role === "family") {
-    const pulseStatus = getPulseStatus(latest?.pulse)
-    const familyNextStep = getFamilyNextStep(latest, familyStats.abnormalCount)
+    const pulseStatus = getPulseStatus(latest?.pulse, t)
+    const familyNextStep = getFamilyNextStep(latest, familyStats.abnormalCount, t)
     const connectionLabel = linkedPatientEmail
-      ? `已連接長輩：${linkedPatientEmail}`
-      : "尚未連接長輩帳號"
+      ? `${t.linkedTo}${linkedPatientEmail}`
+      : t.notLinked
 
     return (
       <View style={styles.screen}>
         <View style={styles.headerCard}>
           <Pressable onPress={onBack}>
-            <Text style={styles.backText}>返回</Text>
+            <Text style={styles.backText}>{t.back}</Text>
           </Pressable>
-          <Text style={styles.title}>長輩每日血壓監控</Text>
-          <Text style={styles.sub}>家屬端固定查看近 3 個月資料</Text>
+          <Text style={styles.title}>{t.familyTitle}</Text>
+          <Text style={styles.sub}>{t.familySub}</Text>
         </View>
 
         <ScrollView contentContainerStyle={styles.container}>
           <View style={styles.connectionBox}>
-            <Text style={styles.connectionTitle}>資料來源</Text>
+            <Text style={styles.connectionTitle}>{t.dataSource}</Text>
             <Text style={styles.connectionText}>{connectionLabel}</Text>
           </View>
 
@@ -1383,118 +1759,118 @@ export default function BloodPressureScreen({
 
           {latest?.status.isAbnormal ? (
             <View style={[styles.alertBanner, { borderLeftColor: latest.status.color }]}>
-              <Text style={styles.alertTitle}>血壓提醒</Text>
-              <Text style={styles.bodyText}>{latest.status.recommendation}</Text>
+              <Text style={styles.alertTitle}>{t.bpAlert}</Text>
+              <Text style={styles.bodyText}>{t[latest.status.recommendationKey] || latest.status.recommendation}</Text>
             </View>
           ) : null}
 
           <View style={[styles.latestCard, latest && { borderLeftColor: latest.status.color, borderLeftWidth: 5 }]}>
             <View style={styles.cardHead}>
               <View>
-                <Text style={styles.sectionTitle}>最新一筆血壓同步</Text>
-                <Text style={styles.rowSub}>{latest ? formatDateTime(latest.measuredAt) : "尚無紀錄"}</Text>
+                <Text style={styles.sectionTitle}>{t.latestSync}</Text>
+                <Text style={styles.rowSub}>{latest ? formatDateTime(latest.measuredAt) : t.noRecord}</Text>
               </View>
               {latest ? (
                 <Text style={[styles.statusBadge, { color: latest.status.color, backgroundColor: latest.status.softColor }]}>
-                  {latest.status.familyLabel}
+                  {t[latest.status.familyLabelKey] || latest.status.familyLabel}
                 </Text>
               ) : null}
             </View>
 
             <View style={styles.valueGrid}>
               <View style={styles.valueBox}>
-                <Text style={styles.valueLabel}>收縮壓</Text>
+                <Text style={styles.valueLabel}>{t.sysBP}</Text>
                 <Text style={styles.bigValue}>{latest?.sys ?? "--"}</Text>
                 <Text style={styles.unitText}>mmHg</Text>
               </View>
               <View style={styles.valueBox}>
-                <Text style={styles.valueLabel}>舒張壓</Text>
+                <Text style={styles.valueLabel}>{t.diaBP}</Text>
                 <Text style={styles.bigValue}>{latest?.dia ?? "--"}</Text>
                 <Text style={styles.unitText}>mmHg</Text>
               </View>
               <View style={styles.valueBox}>
-                <Text style={styles.valueLabel}>脈搏</Text>
+                <Text style={styles.valueLabel}>{t.pulse}</Text>
                 <Text style={styles.bigValue}>{latest?.pulse ?? "--"}</Text>
                 <Text style={styles.unitText}>bpm</Text>
               </View>
             </View>
 
             <View style={styles.familyInfoRow}>
-              <Text style={styles.familyInfoText}>來源：{getSourceLabel(latest?.source)}</Text>
+              <Text style={styles.familyInfoText}>{t.sourcePrefix}{getSourceLabel(latest?.source, t)}</Text>
               <Text style={[styles.familyInfoText, { color: pulseStatus.color }]}>{pulseStatus.label}</Text>
             </View>
 
             <View style={[styles.recommendationBox, latest && { borderLeftColor: latest.status.color }]}>
-              <Text style={styles.adviceTitle}>家屬追蹤重點</Text>
-              <Text style={styles.bodyText}>{latest?.status.recommendation || "等待長輩端同步血壓資料。"}</Text>
+              <Text style={styles.adviceTitle}>{t.familyFocus}</Text>
+              <Text style={styles.bodyText}>{latest ? (t[latest.status.recommendationKey] || latest.status.recommendation) : t.waitForSync}</Text>
             </View>
           </View>
 
           <View style={styles.analysisCard}>
-            <Text style={styles.sectionTitle}>家屬追蹤看板</Text>
+            <Text style={styles.sectionTitle}>{t.familyDashboard}</Text>
             <View style={styles.summaryGrid}>
               <View style={styles.summaryBox}>
-                <Text style={styles.summaryLabel}>目前狀態</Text>
+                <Text style={styles.summaryLabel}>{t.currentStatus}</Text>
                 <Text style={[styles.summaryValue, latest && { color: latest.status.color }]}>
-                  {latest?.status.familyLabel || "--"}
+                  {latest ? (t[latest.status.familyLabelKey] || latest.status.familyLabel) : "--"}
                 </Text>
               </View>
               <View style={styles.summaryBox}>
-                <Text style={styles.summaryLabel}>近 3 個月異常</Text>
-                <Text style={styles.summaryValue}>{familyStats.abnormalCount} 筆</Text>
+                <Text style={styles.summaryLabel}>{t.threeMonthAbnormal}</Text>
+                <Text style={styles.summaryValue}>{familyStats.abnormalCount}{t.recordUnit}</Text>
               </View>
             </View>
             <View style={styles.adviceBox}>
-              <Text style={styles.adviceTitle}>家屬下一步</Text>
+              <Text style={styles.adviceTitle}>{t.familyNextStepLabel}</Text>
               <Text style={styles.bodyText}>{familyNextStep}</Text>
             </View>
           </View>
 
           <View style={styles.analysisCard}>
             <View style={styles.cardHead}>
-              <Text style={styles.sectionTitle}>近 3 個月每日血壓趨勢</Text>
+              <Text style={styles.sectionTitle}>{t.trend3m}</Text>
               <Pressable onPress={loadHistory} disabled={loading}>
-                <Text style={styles.refreshText}>重新整理</Text>
+                <Text style={styles.refreshText}>{t.refresh}</Text>
               </Pressable>
             </View>
-            <MiniTrendChart summaries={groupDaily(recentThreeMonthRecords).slice(-7)} />
+            <MiniTrendChart summaries={groupDaily(recentThreeMonthRecords).slice(-7)} t={t} />
             <View style={styles.legendRow}>
-              <Text style={styles.legendSys}>收縮壓</Text>
-              <Text style={styles.legendDia}>舒張壓</Text>
-              <Text style={styles.legendLimit}>警戒線 130/80</Text>
+              <Text style={styles.legendSys}>{t.legendSys}</Text>
+              <Text style={styles.legendDia}>{t.legendDia}</Text>
+              <Text style={styles.legendLimit}>{t.legendLimit}</Text>
             </View>
           </View>
 
           <View style={styles.analysisCard}>
-            <Text style={styles.sectionTitle}>近 3 個月血壓監控摘要</Text>
+            <Text style={styles.sectionTitle}>{t.summary3m}</Text>
             <View style={styles.statsGrid}>
               <View style={styles.statCell}>
-                <Text style={styles.summaryLabel}>平均收縮壓</Text>
+                <Text style={styles.summaryLabel}>{t.avgSysLabel}</Text>
                 <Text style={styles.summaryValue}>{familyStats.avgSys}</Text>
               </View>
               <View style={styles.statCell}>
-                <Text style={styles.summaryLabel}>平均舒張壓</Text>
+                <Text style={styles.summaryLabel}>{t.avgDiaLabel}</Text>
                 <Text style={styles.summaryValue}>{familyStats.avgDia}</Text>
               </View>
               <View style={styles.statCell}>
-                <Text style={styles.summaryLabel}>最高收縮壓</Text>
+                <Text style={styles.summaryLabel}>{t.maxSysLabel}</Text>
                 <Text style={styles.summaryValue}>{familyStats.maxSys}</Text>
               </View>
               <View style={styles.statCell}>
-                <Text style={styles.summaryLabel}>最低收縮壓</Text>
+                <Text style={styles.summaryLabel}>{t.minSysLabel}</Text>
                 <Text style={styles.summaryValue}>{familyStats.minSys}</Text>
               </View>
             </View>
-            <Text style={styles.bodyText}>總量測 {familyStats.total} 筆，異常優先顯示如下。</Text>
+            <Text style={styles.bodyText}>{t.totalPrefix}{familyStats.total}{t.recordUnit}，{t.abnormalSuffix}</Text>
             {familyAbnormalRecords.length ? (
               familyAbnormalRecords.map(record => (
                 <View key={record._id || `${record.dateKey}-${record.sys}-${record.dia}`} style={styles.alertRecord}>
                   <Text style={styles.rowMain}>{record.sys}/{record.dia} mmHg</Text>
-                  <Text style={styles.rowSub}>{formatDateTime(record.measuredAt)}・{record.status.familyLabel}</Text>
+                  <Text style={styles.rowSub}>{formatDateTime(record.measuredAt)}・{t[record.status.familyLabelKey] || record.status.familyLabel}</Text>
                 </View>
               ))
             ) : (
-              <Text style={styles.emptyText}>目前沒有異常血壓紀錄。</Text>
+              <Text style={styles.emptyText}>{t.noAbnormal}</Text>
             )}
           </View>
         </ScrollView>
@@ -1506,19 +1882,17 @@ export default function BloodPressureScreen({
     <View style={styles.screen}>
       <View style={styles.headerCard}>
         <Pressable onPress={onBack}>
-          <Text style={styles.backText}>返回</Text>
+          <Text style={styles.backText}>{t.back}</Text>
         </Pressable>
-        <Text style={styles.title}>
-          {role === "caregiver" ? "照顧者血壓照護" : "長輩每日血壓紀錄"}
-        </Text>
-        <Text style={styles.sub}>Health Connect 同步、手動新增、趨勢分析與心情日記</Text>
+        <Text style={styles.title}>{t.patientTitle}</Text>
+        <Text style={styles.sub}>{t.patientSub}</Text>
       </View>
 
       <View style={styles.tabRow}>
         {[
-          ["measure", "量測"],
-          ["trend", "趨勢"],
-          ["diary", "日記"]
+          ["measure", t.tabMeasure],
+          ["trend", t.tabTrend],
+          ["diary", t.tabDiary]
         ].map(([key, label]) => (
           <Pressable
             key={key}
@@ -1540,36 +1914,36 @@ export default function BloodPressureScreen({
             <View style={styles.latestCard}>
               <View style={styles.cardHead}>
                 <View>
-                  <Text style={styles.sectionTitle}>血壓</Text>
-                  <Text style={styles.rowSub}>{latest ? formatDateTime(latest.measuredAt) : "尚無紀錄"}</Text>
+                  <Text style={styles.sectionTitle}>{t.bpLabel}</Text>
+                  <Text style={styles.rowSub}>{latest ? formatDateTime(latest.measuredAt) : t.noRecord}</Text>
                 </View>
                 {latest ? (
                   <Text style={[styles.statusBadge, { color: latest.status.color, backgroundColor: latest.status.softColor }]}>
-                    {latest.status.level}
+                    {t[latest.status.levelKey] || latest.status.level}
                   </Text>
                 ) : null}
               </View>
 
               <View style={styles.valueGrid}>
                 <View style={styles.valueBox}>
-                  <Text style={styles.valueLabel}>收縮壓</Text>
+                  <Text style={styles.valueLabel}>{t.sysBP}</Text>
                   <Text style={styles.bigValue}>{latest?.sys ?? "--"}</Text>
                   <Text style={styles.unitText}>mmHg</Text>
                 </View>
                 <View style={styles.valueBox}>
-                  <Text style={styles.valueLabel}>舒張壓</Text>
+                  <Text style={styles.valueLabel}>{t.diaBP}</Text>
                   <Text style={styles.bigValue}>{latest?.dia ?? "--"}</Text>
                   <Text style={styles.unitText}>mmHg</Text>
                 </View>
                 <View style={styles.valueBox}>
-                  <Text style={styles.valueLabel}>脈搏</Text>
+                  <Text style={styles.valueLabel}>{t.pulse}</Text>
                   <Text style={styles.bigValue}>{latest?.pulse ?? "--"}</Text>
                   <Text style={styles.unitText}>bpm</Text>
                 </View>
               </View>
 
               <View style={styles.moodStrip}>
-                <Text style={styles.moodStripLabel}>心情狀態</Text>
+                <Text style={styles.moodStripLabel}>{t.moodStatus}</Text>
                 <Text style={styles.moodStripValue}>
                   {latest ? `${getMoodEmoji(latest.mood)} ${latest.mood}` : "--"}
                 </Text>
@@ -1589,20 +1963,20 @@ export default function BloodPressureScreen({
                 </View>
               ) : null}
 
-              <Text style={styles.sectionHint}>近 5 日趨勢</Text>
-              <MiniTrendChart summaries={latestFiveDays} />
+              <Text style={styles.sectionHint}>{t.fiveDayTrend}</Text>
+              <MiniTrendChart summaries={latestFiveDays} t={t} />
               <View style={styles.legendRow}>
-                <Text style={styles.legendSys}>收縮壓</Text>
-                <Text style={styles.legendDia}>舒張壓</Text>
-                <Text style={styles.legendLimit}>警戒線 130/80</Text>
+                <Text style={styles.legendSys}>{t.legendSys}</Text>
+                <Text style={styles.legendDia}>{t.legendDia}</Text>
+                <Text style={styles.legendLimit}>{t.legendLimit}</Text>
               </View>
 
               {warningDays.length ? (
                 <View style={styles.warningBox}>
-                  <Text style={styles.adviceTitle}>每日警示</Text>
+                  <Text style={styles.adviceTitle}>{t.dailyAlert}</Text>
                   {warningDays.map(day => (
                     <Text key={day.dateKey} style={styles.bodyText}>
-                      {day.label} 平均 {day.avgSys}/{day.avgDia}，{day.status.level}
+                      {day.label} {t.avgPrefix} {day.avgSys}/{day.avgDia}，{t[day.status.levelKey] || day.status.level}
                     </Text>
                   ))}
                 </View>
@@ -1610,19 +1984,19 @@ export default function BloodPressureScreen({
             </View>
 
             <View style={styles.formCard}>
-              <Text style={styles.sectionTitle}>自動匯入</Text>
+              <Text style={styles.sectionTitle}>{t.autoImport}</Text>
               <Pressable style={styles.buttonSecondary} onPress={handleSync} disabled={syncing}>
                 {syncing ? (
                   <ActivityIndicator color="#1f74d1" />
                 ) : (
-                  <Text style={styles.buttonSecondaryText}>從 Health Connect 同步</Text>
+                  <Text style={styles.buttonSecondaryText}>{t.syncHC}</Text>
                 )}
               </Pressable>
 
-              <Text style={styles.sectionTitleSpacing}>新增一筆紀錄</Text>
+              <Text style={styles.sectionTitleSpacing}>{t.addRecord}</Text>
               <View style={styles.inputGrid}>
                 <View style={styles.inputCell}>
-                  <Text style={styles.label}>收縮壓</Text>
+                  <Text style={styles.label}>{t.sysBP}</Text>
                   <TextInput
                     style={styles.input}
                     value={form.sys}
@@ -1632,7 +2006,7 @@ export default function BloodPressureScreen({
                   />
                 </View>
                 <View style={styles.inputCell}>
-                  <Text style={styles.label}>舒張壓</Text>
+                  <Text style={styles.label}>{t.diaBP}</Text>
                   <TextInput
                     style={styles.input}
                     value={form.dia}
@@ -1642,7 +2016,7 @@ export default function BloodPressureScreen({
                   />
                 </View>
                 <View style={styles.inputCell}>
-                  <Text style={styles.label}>脈搏</Text>
+                  <Text style={styles.label}>{t.pulse}</Text>
                   <TextInput
                     style={styles.input}
                     value={form.pulse}
@@ -1653,7 +2027,7 @@ export default function BloodPressureScreen({
                 </View>
               </View>
 
-              <Text style={styles.label}>心情</Text>
+              <Text style={styles.label}>{t.mood}</Text>
               <View style={styles.moodGrid}>
                 {MOOD_OPTIONS.map(option => (
                   <Pressable
@@ -1671,7 +2045,7 @@ export default function BloodPressureScreen({
                 {saving ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.buttonPrimaryText}>儲存血壓紀錄</Text>
+                  <Text style={styles.buttonPrimaryText}>{t.saveRecord}</Text>
                 )}
               </Pressable>
             </View>
@@ -1680,10 +2054,11 @@ export default function BloodPressureScreen({
 
         {activeTab === "trend" ? (
           <View style={styles.analysisCard}>
-            <Text style={styles.analysisTitle}>{"\u9577\u671f\u8840\u58d3\u8da8\u52e2"}</Text>
+            <Text style={styles.analysisTitle}>{t.trend3m}</Text>
             <View style={styles.segmentedControl}>
               {HEALTH_SUMMARY_RANGES.map(range => {
                 const selected = summaryMonths === range.months
+                const rangeLabel = range.months === 1 ? t.range1m : range.months === 3 ? t.range3m : t.range6m
                 return (
                   <Pressable
                     key={range.months}
@@ -1691,104 +2066,92 @@ export default function BloodPressureScreen({
                     onPress={() => setSummaryMonths(range.months)}
                   >
                     <Text style={[styles.segmentButtonText, selected && styles.segmentButtonTextActive]}>
-                      {range.label}
+                      {rangeLabel}
                     </Text>
                   </Pressable>
                 )
               })}
             </View>
 
-            <LongTrendChart summaries={trendChartSummaries} />
+            <LongTrendChart summaries={trendChartSummaries} t={t} />
 
             <View style={styles.chartSummaryRow}>
               <View style={styles.chartSummaryPill}>
-                <Text style={styles.chartSummaryLabel}>{"\u7d00\u9304\u5929\u6578"}</Text>
+                <Text style={styles.chartSummaryLabel}>{t.recordDays}</Text>
                 <Text style={styles.chartSummaryValue}>{trendSummary.totalDays}</Text>
               </View>
               <View style={styles.chartSummaryPill}>
-                <Text style={styles.chartSummaryLabel}>{"\u9ad8\u98a8\u96aa"}</Text>
+                <Text style={styles.chartSummaryLabel}>{t.highRisk}</Text>
                 <Text style={styles.chartSummaryValue}>{trendSummary.danger.days}</Text>
               </View>
               <View style={styles.chartSummaryPill}>
-                <Text style={styles.chartSummaryLabel}>{"\u8b66\u793a"}</Text>
+                <Text style={styles.chartSummaryLabel}>{t.warning}</Text>
                 <Text style={styles.chartSummaryValue}>{trendSummary.warning.days}</Text>
               </View>
             </View>
 
             <View style={styles.adviceBox}>
-              <Text style={styles.adviceText}>{getHealthAdvice(trendRecords)}</Text>
+              <Text style={styles.adviceText}>{getHealthAdvice(trendRecords, t)}</Text>
             </View>
 
             {trendPulseRecords.length ? (
               <View style={styles.pulseSummaryBox}>
                 <View style={styles.pulseSummaryItem}>
-                  <Text style={styles.pulseSummaryLabel}>{"\u5e73\u5747\u8108\u640f"}</Text>
+                  <Text style={styles.pulseSummaryLabel}>{t.avgPulse}</Text>
                   <Text style={styles.pulseSummaryValue}>{avgTrendPulse} bpm</Text>
                 </View>
                 <View style={styles.pulseSummaryDivider} />
                 <View style={styles.pulseSummaryItem}>
-                  <Text style={styles.pulseSummaryLabel}>{"\u6700\u8fd1\u8108\u640f"}</Text>
+                  <Text style={styles.pulseSummaryLabel}>{t.recentPulse}</Text>
                   <Text style={styles.pulseSummaryValue}>{latestTrendPulse} bpm</Text>
                 </View>
               </View>
             ) : null}
 
             <View style={styles.macroSummaryBox}>
-              <Text style={styles.macroSummaryTitle}>{"\u8fd1"} {summaryMonths} {"\u500b\u6708\u5065\u5eb7\u6458\u8981"}</Text>
-              <Text style={styles.macroSummaryMeta}>
-                {"\u7d71\u8a08"} {trendSummary.totalDays} {"\u500b\u6709\u7d00\u9304\u7684\u65e5\u671f\uff0c\u4f9d\u6bcf\u65e5\u5e73\u5747\u8840\u58d3\u5206\u985e\u3002"}
-              </Text>
+              <Text style={styles.macroSummaryTitle}>{t.periodSummaryFn(summaryMonths)}</Text>
+              <Text style={styles.macroSummaryMeta}>{t.periodStats(trendSummary.totalDays)}</Text>
               <View style={styles.macroSummaryRow}>
                 <View style={[styles.macroSummaryDot, styles.macroSummaryDotDanger]} />
-                <Text style={styles.macroSummaryText}>
-                  {"\u9ad8\u8840\u58d3\u98a8\u96aa\u5929\u6578\uff1a"}{trendSummary.danger.days}{" \u5929\uff08"}{trendSummary.danger.percent}{"%\uff09"}
-                </Text>
+                <Text style={styles.macroSummaryText}>{t.highRiskDaysFn(trendSummary.danger.days, trendSummary.danger.percent)}</Text>
               </View>
               <View style={styles.macroSummaryRow}>
                 <View style={[styles.macroSummaryDot, styles.macroSummaryDotWarning]} />
-                <Text style={styles.macroSummaryText}>
-                  {"\u8840\u58d3\u524d\u671f/\u8b66\u793a\u5929\u6578\uff1a"}{trendSummary.warning.days}{" \u5929\uff08"}{trendSummary.warning.percent}{"%\uff09"}
-                </Text>
+                <Text style={styles.macroSummaryText}>{t.warningDaysFn(trendSummary.warning.days, trendSummary.warning.percent)}</Text>
               </View>
               <View style={styles.macroSummaryRow}>
                 <View style={[styles.macroSummaryDot, styles.macroSummaryDotNormal]} />
-                <Text style={styles.macroSummaryText}>
-                  {"\u6b63\u5e38\u5929\u6578\uff1a"}{trendSummary.normal.days}{" \u5929\uff08"}{trendSummary.normal.percent}{"%\uff09"}
-                </Text>
+                <Text style={styles.macroSummaryText}>{t.normalDaysFn(trendSummary.normal.days, trendSummary.normal.percent)}</Text>
               </View>
-              <Text style={styles.macroSummaryObservation}>{trendSummary.periodicObservation}</Text>
+              <Text style={styles.macroSummaryObservation}>{t[trendSummary.periodicObservationKey]}</Text>
             </View>
 
             <View style={styles.moodAnalysisBox}>
-              <Text style={styles.moodAnalysisTitle}>{"\u8840\u58d3\u8207\u5fc3\u7406\u72c0\u614b\u95dc\u806f\u6027\u5206\u6790"}</Text>
-              <Text style={styles.analysisLabel}>{"\u89c0\u5bdf"}</Text>
-              <Text style={styles.moodAnalysisText}>{getMoodStressAnalysis(trendRecords)}</Text>
-              <Text style={styles.analysisLabel}>{"\u53c3\u8003\u4f86\u6e90"}</Text>
+              <Text style={styles.moodAnalysisTitle}>{t.moodStressTitle}</Text>
+              <Text style={styles.analysisLabel}>{t.observation}</Text>
+              <Text style={styles.moodAnalysisText}>{getMoodStressAnalysis(trendRecords, t)}</Text>
+              <Text style={styles.analysisLabel}>{t.reference}</Text>
               <Text
                 style={styles.sourceLinkText}
                 onPress={() => Linking.openURL("https://www.heart.org/en/health-topics/high-blood-pressure/changes-you-can-make-to-manage-high-blood-pressure/managing-stress-to-control-high-blood-pressure")}
               >
                 American Heart Association - Managing Stress to Control High Blood Pressure
               </Text>
-              <Text style={styles.moodSourceText}>
-                {"\u58d3\u529b\u53ef\u80fd\u9020\u6210\u77ed\u66ab\u8840\u58d3\u4e0a\u5347\uff0c\u5efa\u8b70\u642d\u914d\u547c\u5438\u3001\u904b\u52d5\u3001\u7761\u7720\u8207\u751f\u6d3b\u7fd2\u6163\u7ba1\u7406\u3002\u672c\u5206\u6790\u50c5\u4f9b\u53c3\u8003\uff0c\u4e0d\u80fd\u53d6\u4ee3\u91ab\u7642\u8a3a\u65b7\u3002"}
-              </Text>
+              <Text style={styles.moodSourceText}>{t.moodSourceNote}</Text>
             </View>
 
             <View style={styles.pulseAnalysisBox}>
-              <Text style={styles.pulseAnalysisTitle}>{"\u8108\u640f\u8207\u60c5\u7dd2\u58d3\u529b\u5206\u6790"}</Text>
-              <Text style={styles.analysisLabel}>{"\u89c0\u5bdf"}</Text>
-              <Text style={styles.pulseAnalysisText}>{getPulseMoodAnalysis(trendRecords)}</Text>
-              <Text style={styles.analysisLabel}>{"\u53c3\u8003\u4f86\u6e90"}</Text>
+              <Text style={styles.pulseAnalysisTitle}>{t.pulseStressTitle}</Text>
+              <Text style={styles.analysisLabel}>{t.observation}</Text>
+              <Text style={styles.pulseAnalysisText}>{getPulseMoodAnalysis(trendRecords, t)}</Text>
+              <Text style={styles.analysisLabel}>{t.reference}</Text>
               <Text
                 style={styles.sourceLinkText}
                 onPress={() => Linking.openURL("https://www.health.harvard.edu/heart-health/hows-your-heart-rate-and-why-it-matters")}
               >
                 Harvard Health Publishing - How's your heart rate and why it matters?
               </Text>
-              <Text style={styles.pulseSourceText}>
-                {"\u5b89\u975c\u72c0\u614b\u4e0b\u7684\u8108\u640f\u6703\u53d7\u60c5\u7dd2\u3001\u58d3\u529b\u3001\u6d3b\u52d5\u91cf\u8207\u85e5\u7269\u5f71\u97ff\uff0c\u8acb\u642d\u914d\u8840\u58d3\u3001\u5fc3\u60c5\u8207\u75c7\u72c0\u4e00\u8d77\u89c0\u5bdf\u3002"}
-              </Text>
+              <Text style={styles.pulseSourceText}>{t.pulseSourceNote}</Text>
             </View>
           </View>
         ) : null}
@@ -1796,9 +2159,9 @@ export default function BloodPressureScreen({
         {activeTab === "diary" ? (
           <View style={styles.historyCard}>
             <View style={styles.cardHead}>
-              <Text style={styles.sectionTitle}>血壓日記</Text>
+              <Text style={styles.sectionTitle}>{t.bpDiary}</Text>
               <Pressable onPress={loadHistory} disabled={loading}>
-                <Text style={styles.refreshText}>重新整理</Text>
+                <Text style={styles.refreshText}>{t.refresh}</Text>
               </Pressable>
             </View>
 
@@ -1808,14 +2171,15 @@ export default function BloodPressureScreen({
               selectedDate={selectedDate}
               onSelectDate={setSelectedDate}
               onShiftMonth={offset => setSelectedDate(current => shiftMonth(current, offset))}
+              t={t}
             />
 
             <View style={styles.diaryDetailHeader}>
-              <Text style={styles.detailTitle}>{selectedDate} 的紀錄</Text>
-              <Text style={styles.detailMeta}>{selectedRecords.length} 筆</Text>
+              <Text style={styles.detailTitle}>{selectedDate}{t.dateRecordsSuffix}</Text>
+              <Text style={styles.detailMeta}>{selectedRecords.length}{t.recordUnit}</Text>
             </View>
             {selectedRecords.length === 0 ? (
-              <Text style={styles.emptyDayText}>這天沒有血壓紀錄</Text>
+              <Text style={styles.emptyDayText}>{t.emptyDay}</Text>
             ) : (
               selectedRecords.map(record => (
                 <View key={record._id || `${record.dateKey}-${record.sys}-${record.dia}`} style={styles.diaryRecordItem}>
@@ -1825,8 +2189,8 @@ export default function BloodPressureScreen({
                       <Text style={styles.recordVal}>{record.sys}/{record.dia} mmHg</Text>
                       <Text style={styles.recordMoodIcon}>{getMoodEmoji(record.mood)}</Text>
                     </View>
-                    <Text style={styles.recordPulse}>脈搏 {record.pulse ?? "--"} bpm</Text>
-                    <Text style={styles.recordMood}>心情：{getMoodEmoji(record.mood)} {record.mood}</Text>
+                    <Text style={styles.recordPulse}>{t.pulsePrefix} {record.pulse ?? "--"} bpm</Text>
+                    <Text style={styles.recordMood}>{t.moodPrefix}{getMoodEmoji(record.mood)} {record.mood}</Text>
                     <View style={styles.recordMoodPicker}>
                       {MOOD_OPTIONS.map(option => (
                         <Pressable
@@ -1840,7 +2204,7 @@ export default function BloodPressureScreen({
                     </View>
                   </View>
                   <View style={[styles.levelTag, { backgroundColor: record.status.color }]}>
-                    <Text style={styles.levelTagText}>{record.status.level}</Text>
+                    <Text style={styles.levelTagText}>{t[record.status.levelKey] || record.status.level}</Text>
                   </View>
                 </View>
               ))

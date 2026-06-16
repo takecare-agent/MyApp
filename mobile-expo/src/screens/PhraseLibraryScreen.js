@@ -10,6 +10,15 @@ import {
 } from "react-native"
 import { apiRequest } from "../lib/api"
 
+const UI_TEXT = {
+  zh: { back: "返回", title: "關懷語句庫", subtitle: "自訂語句、翻譯工具與危險警示", myLang: "我的語言", saveLang: "儲存語言設定", savingLang: "儲存中...", myPhrases: "我的自訂語句", refreshing: "載入中", refresh: "重新整理", noCustom: "尚未新增自訂語句", addPhrase: "新增語句", placeholder: "輸入希望新增的關懷語句...", savePhrase: "儲存語句", saving: "儲存中...", clear: "清除", clickHint: "點擊填入翻譯工具", delete: "刪除", defaultPhrases: "預設照護語句", defaultHint: "點擊填入翻譯工具，或直接追蹤", translateTool: "翻譯工具", translateHint: "語氣柔化 + 多語翻譯（Gemini AI）", translateInput: "語句內容", translatePlaceholder: "輸入要翻譯的語句...", translateTarget: "翻譯目標語言", translate: "翻譯語句", translating: "翻譯中...", dangerTitle: "危險語句警示", noDanger: "近期無危險語句", dangerBadge: "危險" },
+  en: { back: "Back", title: "Phrase Library", subtitle: "Custom phrases, translation & alerts", myLang: "My Language", saveLang: "Save Language", savingLang: "Saving...", myPhrases: "My Custom Phrases", refreshing: "Loading", refresh: "Refresh", noCustom: "No custom phrases yet", addPhrase: "Add Phrase", placeholder: "Enter a care phrase...", savePhrase: "Save Phrase", saving: "Saving...", clear: "Clear", clickHint: "Tap to fill translation tool", delete: "Delete", defaultPhrases: "Default Care Phrases", defaultHint: "Tap to fill or track", translateTool: "Translation Tool", translateHint: "Tone softening + multi-language (Gemini AI)", translateInput: "Phrase", translatePlaceholder: "Enter phrase to translate...", translateTarget: "Target Language", translate: "Translate", translating: "Translating...", dangerTitle: "Danger Phrase Alert", noDanger: "No danger phrases recently", dangerBadge: "Danger" },
+  id: { back: "Kembali", title: "Perpustakaan Frasa", subtitle: "Frasa kustom, terjemahan & peringatan", myLang: "Bahasa Saya", saveLang: "Simpan Bahasa", savingLang: "Menyimpan...", myPhrases: "Frasa Kustom Saya", refreshing: "Memuat", refresh: "Segarkan", noCustom: "Belum ada frasa kustom", addPhrase: "Tambah Frasa", placeholder: "Masukkan frasa perawatan...", savePhrase: "Simpan Frasa", saving: "Menyimpan...", clear: "Hapus", clickHint: "Ketuk untuk mengisi alat terjemahan", delete: "Hapus", defaultPhrases: "Frasa Perawatan Default", defaultHint: "Ketuk untuk mengisi atau lacak", translateTool: "Alat Terjemahan", translateHint: "Nada lembut + multibahasa (Gemini AI)", translateInput: "Frasa", translatePlaceholder: "Masukkan frasa untuk diterjemahkan...", translateTarget: "Bahasa Tujuan", translate: "Terjemahkan", translating: "Menerjemahkan...", dangerTitle: "Peringatan Frasa Berbahaya", noDanger: "Tidak ada frasa berbahaya baru-baru ini", dangerBadge: "Bahaya" },
+  vi: { back: "Quay Lại", title: "Thư Viện Câu", subtitle: "Câu tùy chỉnh, dịch thuật & cảnh báo", myLang: "Ngôn Ngữ Của Tôi", saveLang: "Lưu Ngôn Ngữ", savingLang: "Đang lưu...", myPhrases: "Câu Tùy Chỉnh Của Tôi", refreshing: "Đang tải", refresh: "Làm Mới", noCustom: "Chưa có câu tùy chỉnh", addPhrase: "Thêm Câu", placeholder: "Nhập câu chăm sóc...", savePhrase: "Lưu Câu", saving: "Đang lưu...", clear: "Xóa", clickHint: "Nhấn để điền vào công cụ dịch", delete: "Xóa", defaultPhrases: "Câu Chăm Sóc Mặc Định", defaultHint: "Nhấn để điền hoặc theo dõi", translateTool: "Công Cụ Dịch", translateHint: "Giọng nhẹ nhàng + đa ngôn ngữ (Gemini AI)", translateInput: "Câu", translatePlaceholder: "Nhập câu cần dịch...", translateTarget: "Ngôn Ngữ Đích", translate: "Dịch", translating: "Đang dịch...", dangerTitle: "Cảnh Báo Câu Nguy Hiểm", noDanger: "Không có câu nguy hiểm gần đây", dangerBadge: "Nguy Hiểm" },
+  tl: { back: "Bumalik", title: "Aklatan ng Parirala", subtitle: "Mga custom na parirala, pagsasalin & alerto", myLang: "Aking Wika", saveLang: "I-save ang Wika", savingLang: "Sine-save...", myPhrases: "Aking Mga Custom na Parirala", refreshing: "Naglo-load", refresh: "I-refresh", noCustom: "Wala pang custom na parirala", addPhrase: "Magdagdag ng Parirala", placeholder: "Mag-enter ng parirala ng pag-aalaga...", savePhrase: "I-save ang Parirala", saving: "Sine-save...", clear: "I-clear", clickHint: "Tapikin para punan ang tool ng pagsasalin", delete: "Tanggalin", defaultPhrases: "Mga Default na Parirala", defaultHint: "Tapikin para punan o subaybayan", translateTool: "Tool ng Pagsasalin", translateHint: "Malambot na tono + maraming wika (Gemini AI)", translateInput: "Parirala", translatePlaceholder: "Mag-enter ng parirala para isalin...", translateTarget: "Target na Wika", translate: "Isalin", translating: "Isinasalin...", dangerTitle: "Alerto ng Mapanganib na Parirala", noDanger: "Walang mapanganib na parirala kamakailan", dangerBadge: "Panganib" },
+  th: { back: "กลับ", title: "คลังวลี", subtitle: "วลีที่กำหนดเอง การแปล & การแจ้งเตือน", myLang: "ภาษาของฉัน", saveLang: "บันทึกภาษา", savingLang: "กำลังบันทึก...", myPhrases: "วลีที่กำหนดเองของฉัน", refreshing: "กำลังโหลด", refresh: "รีเฟรช", noCustom: "ยังไม่มีวลีที่กำหนดเอง", addPhrase: "เพิ่มวลี", placeholder: "ป้อนวลีดูแลผู้สูงอายุ...", savePhrase: "บันทึกวลี", saving: "กำลังบันทึก...", clear: "ล้าง", clickHint: "แตะเพื่อเติมในเครื่องมือแปล", delete: "ลบ", defaultPhrases: "วลีดูแลเริ่มต้น", defaultHint: "แตะเพื่อเติมหรือติดตาม", translateTool: "เครื่องมือแปลภาษา", translateHint: "น้ำเสียงอ่อนโยน + หลายภาษา (Gemini AI)", translateInput: "วลี", translatePlaceholder: "ป้อนวลีที่ต้องการแปล...", translateTarget: "ภาษาเป้าหมาย", translate: "แปล", translating: "กำลังแปล...", dangerTitle: "การแจ้งเตือนวลีอันตราย", noDanger: "ไม่มีวลีอันตรายเร็วๆ นี้", dangerBadge: "อันตราย" },
+}
+
 const LANG_OPTIONS = [
   { code: "zh", label: "中文" },
   { code: "en", label: "English" },
@@ -30,7 +39,8 @@ const SYSTEM_PHRASES = [
   { text: "放輕鬆，我幫你。" }
 ]
 
-export default function PhraseLibraryScreen({ apiBaseUrl, token, onBack }) {
+export default function PhraseLibraryScreen({ apiBaseUrl, token, uiLang, onBack }) {
+  const t = UI_TEXT[uiLang || "zh"] || UI_TEXT.zh
   const [myLang, setMyLang] = useState("zh")
   const [savingLang, setSavingLang] = useState(false)
   const [langMsg, setLangMsg] = useState("")
@@ -142,17 +152,17 @@ export default function PhraseLibraryScreen({ apiBaseUrl, token, onBack }) {
     <View style={styles.screen}>
       <View style={styles.header}>
         <Pressable onPress={onBack}>
-          <Text style={styles.backText}>返回</Text>
+          <Text style={styles.backText}>{t.back}</Text>
         </Pressable>
-        <Text style={styles.title}>關懷語句庫</Text>
-        <Text style={styles.subtitle}>自訂語句、翻譯工具與危險警示</Text>
+        <Text style={styles.title}>{t.title}</Text>
+        <Text style={styles.subtitle}>{t.subtitle}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.container}>
 
         {/* ── 語言設定 ── */}
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>我的語言</Text>
+          <Text style={styles.sectionTitle}>{t.myLang}</Text>
           <View style={styles.langRow}>
             {LANG_OPTIONS.map(l => (
               <Pressable
@@ -167,7 +177,7 @@ export default function PhraseLibraryScreen({ apiBaseUrl, token, onBack }) {
             ))}
           </View>
           <Pressable style={styles.primaryBtn} onPress={handleSaveLang} disabled={savingLang}>
-            <Text style={styles.primaryBtnText}>{savingLang ? "儲存中..." : "儲存語言設定"}</Text>
+            <Text style={styles.primaryBtnText}>{savingLang ? t.savingLang : t.saveLang}</Text>
           </Pressable>
           {langMsg ? <Text style={styles.successText}>{langMsg}</Text> : null}
         </View>
@@ -175,16 +185,16 @@ export default function PhraseLibraryScreen({ apiBaseUrl, token, onBack }) {
         {/* ── 自訂語句庫 ── */}
         <View style={styles.card}>
           <View style={styles.rowBetween}>
-            <Text style={styles.sectionTitle}>我的自訂語句</Text>
+            <Text style={styles.sectionTitle}>{t.myPhrases}</Text>
             <Pressable style={styles.refreshBtn} onPress={loadPhrases} disabled={loadingPhrases}>
-              <Text style={styles.refreshBtnText}>{loadingPhrases ? "載入中" : "重新整理"}</Text>
+              <Text style={styles.refreshBtnText}>{loadingPhrases ? t.refreshing : t.refresh}</Text>
             </Pressable>
           </View>
 
           {loadingPhrases
             ? <ActivityIndicator color="#1f74d1" />
             : phrases.length === 0
-              ? <Text style={styles.emptyText}>尚未新增自訂語句</Text>
+              ? <Text style={styles.emptyText}>{t.noCustom}</Text>
               : phrases.map(p => (
                 <View key={p.id} style={styles.phraseRow}>
                   <Pressable
@@ -192,21 +202,21 @@ export default function PhraseLibraryScreen({ apiBaseUrl, token, onBack }) {
                     onPress={() => { setTranslateInput(p.text); trackPhrase(p.text) }}
                   >
                     <Text style={styles.phrasePrimary}>{p.text}</Text>
-                    <Text style={styles.phraseHint}>點擊填入翻譯工具</Text>
+                    <Text style={styles.phraseHint}>{t.clickHint}</Text>
                   </Pressable>
                   <Pressable style={styles.deleteBtn} onPress={() => handleDeletePhrase(p.id)}>
-                    <Text style={styles.deleteBtnText}>刪除</Text>
+                    <Text style={styles.deleteBtnText}>{t.delete}</Text>
                   </Pressable>
                 </View>
               ))
           }
 
-          <Text style={styles.label}>新增語句</Text>
+          <Text style={styles.label}>{t.addPhrase}</Text>
           <TextInput
             style={styles.textArea}
             value={newPhraseText}
             onChangeText={setNewPhraseText}
-            placeholder="輸入希望新增的關懷語句..."
+            placeholder={t.placeholder}
             multiline
             numberOfLines={3}
           />
@@ -216,13 +226,13 @@ export default function PhraseLibraryScreen({ apiBaseUrl, token, onBack }) {
               onPress={handleAddPhrase}
               disabled={saving || !newPhraseText.trim()}
             >
-              <Text style={styles.primaryBtnText}>{saving ? "儲存中..." : "儲存語句"}</Text>
+              <Text style={styles.primaryBtnText}>{saving ? t.saving : t.savePhrase}</Text>
             </Pressable>
             <Pressable
               style={[styles.secondaryBtn, { flex: 1 }]}
               onPress={() => setNewPhraseText("")}
             >
-              <Text style={styles.secondaryBtnText}>清除</Text>
+              <Text style={styles.secondaryBtnText}>{t.clear}</Text>
             </Pressable>
           </View>
           {phraseMsg ? <Text style={styles.successText}>{phraseMsg}</Text> : null}
@@ -230,8 +240,8 @@ export default function PhraseLibraryScreen({ apiBaseUrl, token, onBack }) {
 
         {/* ── 系統預設語句 ── */}
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>預設照護語句</Text>
-          <Text style={styles.hint}>點擊填入翻譯工具，或直接追蹤</Text>
+          <Text style={styles.sectionTitle}>{t.defaultPhrases}</Text>
+          <Text style={styles.hint}>{t.defaultHint}</Text>
           {SYSTEM_PHRASES.map((p, i) => (
             <Pressable
               key={i}
@@ -245,18 +255,18 @@ export default function PhraseLibraryScreen({ apiBaseUrl, token, onBack }) {
 
         {/* ── 翻譯工具 ── */}
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>翻譯工具</Text>
-          <Text style={styles.hint}>語氣柔化 + 多語翻譯（Gemini AI）</Text>
-          <Text style={styles.label}>語句內容</Text>
+          <Text style={styles.sectionTitle}>{t.translateTool}</Text>
+          <Text style={styles.hint}>{t.translateHint}</Text>
+          <Text style={styles.label}>{t.translateInput}</Text>
           <TextInput
             style={styles.textArea}
             value={translateInput}
             onChangeText={setTranslateInput}
-            placeholder="輸入要翻譯的語句..."
+            placeholder={t.translatePlaceholder}
             multiline
             numberOfLines={3}
           />
-          <Text style={styles.label}>翻譯目標語言</Text>
+          <Text style={styles.label}>{t.translateTarget}</Text>
           <View style={styles.langRow}>
             {LANG_OPTIONS.map(l => (
               <Pressable
@@ -275,7 +285,7 @@ export default function PhraseLibraryScreen({ apiBaseUrl, token, onBack }) {
             onPress={handleTranslate}
             disabled={translating || !translateInput.trim()}
           >
-            <Text style={styles.primaryBtnText}>{translating ? "翻譯中..." : "翻譯語句"}</Text>
+            <Text style={styles.primaryBtnText}>{translating ? t.translating : t.translate}</Text>
           </Pressable>
           {translatedResult ? (
             <View style={styles.resultBox}>
@@ -287,18 +297,18 @@ export default function PhraseLibraryScreen({ apiBaseUrl, token, onBack }) {
         {/* ── 危險語句記錄 ── */}
         <View style={styles.card}>
           <View style={styles.rowBetween}>
-            <Text style={styles.sectionTitle}>危險語句警示</Text>
+            <Text style={styles.sectionTitle}>{t.dangerTitle}</Text>
             <Pressable style={styles.refreshBtn} onPress={loadDangerLogs} disabled={loadingDanger}>
-              <Text style={styles.refreshBtnText}>{loadingDanger ? "載入中" : "重新整理"}</Text>
+              <Text style={styles.refreshBtnText}>{loadingDanger ? t.refreshing : t.refresh}</Text>
             </Pressable>
           </View>
           {dangerLogs.length === 0
-            ? <Text style={styles.emptyText}>近期無危險語句</Text>
+            ? <Text style={styles.emptyText}>{t.noDanger}</Text>
             : dangerLogs.map((log, i) => (
               <View key={i} style={styles.dangerCard}>
                 <View style={styles.rowBetween}>
                   <Text style={styles.dangerText}>{log.phrase}</Text>
-                  <View style={styles.dangerBadge}><Text style={styles.dangerBadgeText}>危險</Text></View>
+                  <View style={styles.dangerBadge}><Text style={styles.dangerBadgeText}>{t.dangerBadge}</Text></View>
                 </View>
                 <Text style={styles.hint}>{log.senderName || log.senderEmail} · {log.time}</Text>
               </View>

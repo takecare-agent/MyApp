@@ -190,6 +190,7 @@ export default function App() {
             user={session.user}
             apiBaseUrl={session.apiBaseUrl}
             token={session.token}
+            uiLang={uiLang}
             onBack={() => setActiveScreen("home")}
           />
         ) : null}
@@ -199,6 +200,7 @@ export default function App() {
             role={session.role}
             apiBaseUrl={session.apiBaseUrl}
             token={session.token}
+            uiLang={uiLang}
             onBack={() => setActiveScreen("home")}
           />
         ) : null}
@@ -208,6 +210,7 @@ export default function App() {
             feature={activeFeature}
             apiBaseUrl={session.apiBaseUrl}
             token={session.token}
+            uiLang={uiLang}
             onBack={() => setActiveScreen("home")}
           />
         ) : null}
@@ -226,6 +229,7 @@ export default function App() {
           <PhraseLibraryScreen
             apiBaseUrl={session.apiBaseUrl}
             token={session.token}
+            uiLang={uiLang}
             onBack={() => setActiveScreen("home")}
           />
         ) : null}
