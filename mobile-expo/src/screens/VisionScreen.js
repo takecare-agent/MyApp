@@ -50,7 +50,7 @@ function severityColor(value) {
 }
 
 export default function VisionScreen({ role, apiBaseUrl, token, uiLang, onBack }) {
-  const t = UI_TEXT[uiLang || "zh"] || UI_TEXT.zh
+  const t = UI_TEXT[role === "caregiver" ? (uiLang || "zh") : "zh"] || UI_TEXT.zh
   const apiPrefix = role === "caregiver" ? "/caregiver" : "/patient"
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(false)

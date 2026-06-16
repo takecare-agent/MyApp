@@ -39,8 +39,8 @@ const SYSTEM_PHRASES = [
   { text: "放輕鬆，我幫你。" }
 ]
 
-export default function PhraseLibraryScreen({ apiBaseUrl, token, uiLang, onBack }) {
-  const t = UI_TEXT[uiLang || "zh"] || UI_TEXT.zh
+export default function PhraseLibraryScreen({ apiBaseUrl, token, uiLang, role, onBack }) {
+  const t = UI_TEXT[role === "caregiver" ? (uiLang || "zh") : "zh"] || UI_TEXT.zh
   const [myLang, setMyLang] = useState("zh")
   const [savingLang, setSavingLang] = useState(false)
   const [langMsg, setLangMsg] = useState("")

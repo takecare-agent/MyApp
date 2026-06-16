@@ -1239,7 +1239,7 @@ export default function BloodPressureScreen({
   uiLang,
   onBack
 }) {
-  const t = UI_TEXT[uiLang || "zh"] || UI_TEXT.zh
+  const t = UI_TEXT[role === "caregiver" ? (uiLang || "zh") : "zh"] || UI_TEXT.zh
   const apiPrefix =
     role === "caregiver" ? "/caregiver" : role === "family" ? "/family" : "/patient"
   const readOnly = role === "family"

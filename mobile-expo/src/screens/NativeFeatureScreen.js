@@ -401,7 +401,7 @@ export default function NativeFeatureScreen({
   uiLang,
   onBack
 }) {
-  const t = UI_TEXT[uiLang || "zh"] || UI_TEXT.zh
+  const t = UI_TEXT[role === "caregiver" ? (uiLang || "zh") : "zh"] || UI_TEXT.zh
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)

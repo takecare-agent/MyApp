@@ -356,6 +356,7 @@ export default function App() {
             apiBaseUrl={session.apiBaseUrl}
             token={session.token}
             uiLang={uiLang}
+            role={session.role}
             onBack={() => setActiveScreen("home")}
           />
         ) : null}
