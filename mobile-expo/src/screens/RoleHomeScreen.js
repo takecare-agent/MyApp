@@ -10,35 +10,35 @@ const FEATURE_GROUPS = {
   patient: [
     {
       id: "blood-pressure",
-      title: "血壓照護",
-      desc: "Health Connect 同步、手動紀錄與趨勢追蹤。",
+      title: "血壓監控",
+      desc: "同步 Health Connect，查看血壓紀錄、趨勢與警戒提醒。",
       special: "blood-pressure"
     },
     {
       id: "vision",
       title: "影像偵測",
-      desc: "查看與新增影像模型事件。",
+      desc: "使用鏡頭偵測跌倒、揮手求救與異常事件。",
       special: "vision"
     },
     {
       id: "sos",
-      title: "SOS 求助",
-      desc: "觸發求助並查看歷史事件。",
+      title: "SOS 求救",
+      desc: "一鍵發出緊急求救，送出位置與手機號碼並撥打 119。",
       historyPath: "/patient/sos/history",
       createPath: "/patient/sos/trigger",
       createType: "sos"
     },
     {
       id: "wearable",
-      title: "穿戴裝置",
-      desc: "查看健康裝置紀錄。",
+      title: "穿戴資料",
+      desc: "查看穿戴裝置同步的健康與活動資料。",
       historyPath: "/patient/wearable/history",
       syncPath: "/patient/wearable/sync"
     },
     {
       id: "profile",
       title: "個人資料",
-      desc: "查看受顧者基本資料。",
+      desc: "查看受顧者基本資料與照護設定。",
       historyPath: "/patient/profile",
       singleRecord: true
     }
@@ -46,41 +46,41 @@ const FEATURE_GROUPS = {
   family: [
     {
       id: "blood-pressure",
-      title: "長輩血壓監控",
-      desc: "查看已綁定長輩的 Health Connect 血壓資料。",
+      title: "血壓監控",
+      desc: "查看受顧者血壓紀錄、近七次趨勢與異常提醒。",
       special: "blood-pressure"
     },
     {
       id: "alerts",
-      title: "異常事件",
-      desc: "查看跌倒、離床與其他異常提醒。",
+      title: "異常警報",
+      desc: "查看系統偵測到的跌倒、久未活動與高風險事件。",
       historyPath: "/family/alerts/history",
       syncPath: "/family/alerts/sync"
     },
     {
       id: "sos",
-      title: "SOS 事件",
-      desc: "查看長輩求助事件。",
+      title: "SOS 警報",
+      desc: "接收受顧者或看護端送出的 SOS 求救通知。",
       historyPath: "/family/sos/history"
     },
     {
       id: "care-records",
       title: "照護紀錄",
-      desc: "查看家屬端照護紀錄。",
+      desc: "查看看護回報的照護紀錄與日常狀態。",
       historyPath: "/family/care-records/history",
       syncPath: "/family/care-records/sync"
     },
     {
       id: "events",
-      title: "事件歷程",
-      desc: "查看危險事件與處理狀態。",
+      title: "事件紀錄",
+      desc: "查看照護與系統事件的完整歷程。",
       historyPath: "/family/events/history",
       syncPath: "/family/events/sync"
     },
     {
       id: "reminders",
-      title: "提醒事項",
-      desc: "新增與查看交辦看護的提醒。",
+      title: "提醒設定",
+      desc: "建立用藥或照護提醒，協助日常追蹤。",
       historyPath: "/family/reminders",
       createPath: "/family/reminders",
       createType: "reminder"
@@ -88,7 +88,7 @@ const FEATURE_GROUPS = {
     {
       id: "profile",
       title: "家屬資料",
-      desc: "查看家屬資料與綁定長輩帳號。",
+      desc: "查看家屬聯絡電話與綁定的受顧者。",
       historyPath: "/family/profile",
       singleRecord: true
     }
@@ -96,60 +96,62 @@ const FEATURE_GROUPS = {
   caregiver: [
     {
       id: "blood-pressure",
-      title: "看護血壓照護",
-      desc: "同步、代輸入與追蹤異常血壓。",
+      title: "血壓監控",
+      desc: "協助受顧者記錄血壓，查看每日任務與趨勢。",
       special: "blood-pressure"
     },
     {
       id: "vision",
       title: "影像偵測",
-      desc: "查看與新增看護端影像事件。",
+      desc: "協助監看跌倒、揮手求救與其他異常事件。",
       special: "vision"
     },
     {
       id: "alerts",
-      title: "異常處理",
-      desc: "新增與追蹤看護端異常事件。",
+      title: "異常警報",
+      desc: "同步並查看看護端收到的異常警報。",
       historyPath: "/caregiver/alerts/history",
       syncPath: "/caregiver/alerts/sync"
     },
     {
       id: "sos",
-      title: "SOS 事件",
-      desc: "查看長輩求助事件。",
-      historyPath: "/caregiver/sos/history"
+      title: "SOS 求救",
+      desc: "看護可代受顧者發出緊急求救，送出位置與聯絡電話。",
+      historyPath: "/caregiver/sos/history",
+      createPath: "/caregiver/sos/trigger",
+      createType: "sos"
     },
     {
       id: "care-logs",
-      title: "照護日誌",
-      desc: "查看每日照護工作紀錄。",
+      title: "照護紀錄",
+      desc: "同步看護照護紀錄，方便家屬追蹤。",
       historyPath: "/caregiver/care-logs/history",
       syncPath: "/caregiver/care-logs/sync"
     },
     {
       id: "language",
-      title: "多語支援",
-      desc: "查看跨語言提醒與常用語。",
+      title: "語言協助",
+      desc: "查看翻譯、常用語與溝通輔助紀錄。",
       historyPath: "/caregiver/language/history",
       syncPath: "/caregiver/language/sync"
     },
     {
       id: "system",
-      title: "系統中心",
-      desc: "查看系統健康與備援紀錄。",
+      title: "系統通知",
+      desc: "查看看護端系統訊息與設備狀態。",
       historyPath: "/caregiver/system/history",
       syncPath: "/caregiver/system/sync"
     },
     {
       id: "reminders",
-      title: "提醒事項",
-      desc: "查看家屬交辦的提醒。",
+      title: "提醒清單",
+      desc: "查看受顧者目前的用藥與照護提醒。",
       historyPath: "/caregiver/reminders"
     },
     {
       id: "profile",
       title: "看護資料",
-      desc: "查看看護基本資料。",
+      desc: "查看看護基本資料與綁定狀態。",
       historyPath: "/caregiver/profile",
       singleRecord: true
     }
@@ -170,8 +172,8 @@ export default function RoleHomeScreen({
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.kicker}>TakeCare 原生 App</Text>
-        <Text style={styles.title}>{ROLE_LABELS[role] || "未選擇身份"}工作台</Text>
+        <Text style={styles.kicker}>TakeCare App</Text>
+        <Text style={styles.title}>{ROLE_LABELS[role] || "使用者"}端首頁</Text>
         <Text style={styles.subtitle}>{user?.email || "-"} · API {apiBaseUrl}</Text>
       </View>
 
@@ -260,7 +262,7 @@ const styles = StyleSheet.create({
     alignItems: "center"
   },
   logoutText: {
-    color: "#1f507f",
+    color: "#b42318",
     fontWeight: "900"
   }
 })

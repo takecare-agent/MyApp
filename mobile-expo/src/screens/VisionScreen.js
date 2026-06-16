@@ -174,17 +174,6 @@ export default function VisionScreen({ role, apiBaseUrl, token, onBack }) {
               <Text style={styles.buttonSecondaryText}>同步</Text>
             )}
           </Pressable>
-          <Pressable
-            style={styles.buttonSecondary}
-            onPress={loadHistory}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#1f74d1" />
-            ) : (
-              <Text style={styles.buttonSecondaryText}>Refresh</Text>
-            )}
-          </Pressable>
         </View>
 
         <Text style={styles.label}>Severity Filter</Text>

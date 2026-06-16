@@ -2628,6 +2628,64 @@ app.get("/caregiver/sos/history", async (req, res) => {
   res.json({ records })
 })
 
+app.post("/caregiver/sos/trigger", async (req, res) => {
+  const decoded = verifyToken(req, res)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "User not found" })
+
+  try {
+    const patientUserId = await resolveTargetPatient(user._id)
+    const patient = await User.findById(patientUserId)
+    if (!patient) return res.status(404).json({ message: "Linked patient not found" })
+
+    const {
+      message,
+      locationLabel,
+      latitude,
+      longitude,
+      patientPhone
+    } = req.body || {}
+
+    const lat = Number(latitude)
+    const lng = Number(longitude)
+    const normalizedPhone = typeof patientPhone === "string" ? patientPhone.trim() : ""
+    if (normalizedPhone) {
+      user.phone = normalizedPhone
+      await user.save()
+    }
+
+    const record = await SosEvent.create({
+      eventId: createSosEventId(),
+      patientUserId: patient._id,
+      patientName: patient.name || "Patient",
+      patientEmail: patient.email,
+      patientPhone: normalizedPhone || user.phone || patient.phone || "",
+      message: typeof message === "string" && message.trim()
+        ? message.trim()
+        : "看護端發出 SOS 求救",
+      locationLabel: typeof locationLabel === "string" && locationLabel.trim()
+        ? locationLabel.trim()
+        : "Unknown location",
+      latitude: Number.isFinite(lat) ? lat : undefined,
+      longitude: Number.isFinite(lng) ? lng : undefined,
+      status: "active",
+      triggeredAt: new Date(),
+      source: "caregiver-manual-sos"
+    })
+
+    res.status(201).json({
+      message: "SOS 已送出",
+      record
+    })
+  } catch (error) {
+    res.status(error.statusCode || 500).json({
+      message: error.message || "Create caregiver SOS failed"
+    })
+  }
+})
+
 app.patch("/caregiver/sos/:id/resolve", async (req, res) => {
   const decoded = verifyToken(req, res)
   if (!decoded) return res.status(401).json({ message: "Invalid token" })

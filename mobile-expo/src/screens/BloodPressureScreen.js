@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   ActivityIndicator,
   Linking,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -162,6 +163,13 @@ function formatDateTime(value) {
 function formatShortDate(dateKey) {
   const [, month, day] = dateKey.split("-")
   return `${Number(month)}/${Number(day)}`
+}
+
+function formatShortDateTime(value) {
+  const date = toDate(value)
+  const dateLabel = date.toLocaleDateString("zh-TW", { month: "numeric", day: "numeric" })
+  const timeLabel = date.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false })
+  return `${dateLabel} ${timeLabel}`
 }
 
 function getBpStatus(sys, dia) {
@@ -330,7 +338,7 @@ function getRecordsWithinMonths(records, months) {
   return records.filter(record => toDate(record.measuredAt).getTime() >= cutoff.getTime())
 }
 
-function getSampledTrendSummaries(daily, maxPoints = 8) {
+function getSampledTrendSummaries(daily, maxPoints = LONG_TREND_MAX_POINTS) {
   if (daily.length <= maxPoints) return daily
   const step = (daily.length - 1) / (maxPoints - 1)
   return Array.from({ length: maxPoints }, (_, index) => daily[Math.round(index * step)])
@@ -491,6 +499,7 @@ const MINI_CHART_HEIGHT = 116
 const MINI_CHART_LABEL_SPACE = 40
 const LONG_CHART_HEIGHT = 148
 const LONG_CHART_LABEL_SPACE = 40
+const LONG_TREND_MAX_POINTS = 14
 
 function toChartHeight(value, chartHeight) {
   const ratio = (value - CHART_MIN) / (CHART_MAX - CHART_MIN)
@@ -499,6 +508,93 @@ function toChartHeight(value, chartHeight) {
 
 function toChartLineBottom(value, chartHeight, labelSpace) {
   return labelSpace + toChartHeight(value, chartHeight)
+}
+
+function getChartPointBottom(value, chartHeight, labelSpace) {
+  return labelSpace + toChartHeight(value, chartHeight)
+}
+
+function getTrendPoints(summaries, key, chartWidth, chartHeight, labelSpace) {
+  if (!summaries.length || !chartWidth) return []
+  const step = summaries.length > 1 ? chartWidth / (summaries.length - 1) : 0
+  return summaries.map((day, index) => ({
+    ...day,
+    key: day.key || day.dateKey,
+    dateKey: day.dateKey,
+    value: day[key],
+    x: summaries.length > 1 ? step * index : chartWidth / 2,
+    y: getChartPointBottom(day[key], chartHeight, labelSpace)
+  }))
+}
+
+function TrendLineOverlay({ summaries, chartWidth, onSelectDay }) {
+  const plotWidth = Math.max(0, chartWidth - 12)
+  const sysPoints = getTrendPoints(summaries, "avgSys", plotWidth, LONG_CHART_HEIGHT, 0)
+  const diaPoints = getTrendPoints(summaries, "avgDia", plotWidth, LONG_CHART_HEIGHT, 0)
+
+  return (
+    <View style={styles.trendOverlay}>
+      <TrendLine points={sysPoints} color="#1f74d1" warningLimit={130} onSelectPoint={onSelectDay} />
+      <TrendLine points={diaPoints} color="#17a36b" warningLimit={80} onSelectPoint={onSelectDay} />
+    </View>
+  )
+}
+
+function TrendLine({ points, color, warningLimit, onSelectPoint }) {
+  if (!points.length) return null
+
+  return (
+    <>
+      {points.slice(0, -1).map((point, index) => {
+        const next = points[index + 1]
+        const dx = next.x - point.x
+        const dy = next.y - point.y
+        const length = Math.sqrt(dx * dx + dy * dy)
+        const angle = Math.atan2(-dy, dx) * (180 / Math.PI)
+
+        return (
+          <View
+            key={`${point.key}-${next.key}`}
+            style={[
+              styles.trendSegment,
+              {
+                left: (point.x + next.x) / 2 - length / 2,
+                bottom: (point.y + next.y) / 2,
+                width: length,
+                backgroundColor: color,
+                transform: [{ rotate: `${angle}deg` }]
+              }
+            ]}
+          />
+        )
+      })}
+      {points.map(point => {
+        const overLimit = point.value > warningLimit
+
+        return (
+          <Pressable
+            key={point.key}
+            hitSlop={8}
+            onPress={() => onSelectPoint(point)}
+            style={[
+              styles.trendPointButton,
+              {
+                left: point.x - 18,
+                bottom: point.y - 16
+              }
+            ]}
+          >
+            {overLimit ? (
+              <View style={styles.trendWarningMarker}>
+                <Text style={styles.trendWarningText}>!</Text>
+              </View>
+            ) : null}
+            <View style={[styles.trendDot, { borderColor: color }]} />
+          </Pressable>
+        )
+      })}
+    </>
+  )
 }
 
 function MiniTrendChart({ summaries }) {
@@ -537,6 +633,9 @@ function MiniTrendChart({ summaries }) {
 }
 
 function LongTrendChart({ summaries }) {
+  const [chartWidth, setChartWidth] = useState(0)
+  const [selectedDay, setSelectedDay] = useState(null)
+
   if (!summaries.length) {
     return <Text style={styles.emptyText}>{"\u5c1a\u7121\u9577\u671f\u8da8\u52e2\u8cc7\u6599"}</Text>
   }
@@ -544,36 +643,87 @@ function LongTrendChart({ summaries }) {
   return (
     <View style={styles.longChartFrame}>
       <Text style={styles.chartAxisTag}>mmHg</Text>
-      <View style={styles.longChart}>
-        <View style={[styles.limitLine, { bottom: toChartLineBottom(130, LONG_CHART_HEIGHT, LONG_CHART_LABEL_SPACE) }]} />
+      <View
+        style={styles.longChart}
+      >
+        <View
+          style={styles.longTrendPlot}
+          onLayout={event => setChartWidth(event.nativeEvent.layout.width)}
+        >
+          <View style={[styles.limitLine, { bottom: toChartHeight(130, LONG_CHART_HEIGHT) }]} />
+          <View
+            style={[
+              styles.limitLine,
+              {
+                bottom: toChartHeight(80, LONG_CHART_HEIGHT),
+                borderColor: "#17a36b"
+              }
+            ]}
+          />
+          <TrendLineOverlay summaries={summaries} chartWidth={chartWidth} onSelectDay={setSelectedDay} />
+        </View>
         <View
           style={[
-            styles.limitLine,
-            {
-              bottom: toChartLineBottom(80, LONG_CHART_HEIGHT, LONG_CHART_LABEL_SPACE),
-              borderColor: "#17a36b"
-            }
+            styles.longChartLabels,
+            summaries.length === 1 && styles.longChartLabelsSingle
           ]}
-        />
-        {summaries.map(day => {
-          const sysHeight = toChartHeight(day.avgSys, LONG_CHART_HEIGHT)
-          const diaHeight = toChartHeight(day.avgDia, LONG_CHART_HEIGHT)
-          return (
-            <View key={day.dateKey} style={styles.longChartDay}>
-              <View style={styles.longChartBars}>
-                <View style={[styles.longSysBar, { height: sysHeight }]} />
-                <View style={[styles.longDiaBar, { height: diaHeight }]} />
+        >
+          {summaries.map((day, index) => {
+            const showValue = summaries.length <= 7 || index % 2 === 0 || index === summaries.length - 1
+            return (
+              <View key={day.key || day.dateKey} style={styles.longChartLabelSlot}>
+                {showValue ? <Text style={styles.longChartValue}>{day.avgSys}/{day.avgDia}</Text> : null}
+                <Text style={styles.chartLabel}>{day.label}</Text>
               </View>
-              <Text style={styles.chartLabel}>{day.label}</Text>
-            </View>
-          )
-        })}
+            )
+          })}
+        </View>
       </View>
       <View style={styles.legendRow}>
         <Text style={styles.legendSys}>{"\u6536\u7e2e\u58d3"}</Text>
         <Text style={styles.legendDia}>{"\u8212\u5f35\u58d3"}</Text>
         <Text style={styles.legendLimit}>{"\u8b66\u793a\u7dda 130/80"}</Text>
       </View>
+      <Modal
+        transparent
+        visible={!!selectedDay}
+        animationType="fade"
+        onRequestClose={() => setSelectedDay(null)}
+      >
+        <Pressable style={styles.trendModalBackdrop} onPress={() => setSelectedDay(null)}>
+          <Pressable style={styles.trendModalCard} onPress={event => event.stopPropagation()}>
+            <Text style={styles.trendModalTitle}>{selectedDay?.title || selectedDay?.dateKey}</Text>
+            <Text style={styles.trendModalMeta}>{selectedDay?.label} 每日平均</Text>
+            <View style={styles.trendDetailGrid}>
+              <View style={styles.trendDetailItem}>
+                <Text style={styles.trendDetailLabel}>收縮壓</Text>
+                <Text style={styles.trendDetailValue}>{selectedDay?.avgSys} mmHg</Text>
+              </View>
+              <View style={styles.trendDetailItem}>
+                <Text style={styles.trendDetailLabel}>舒張壓</Text>
+                <Text style={styles.trendDetailValue}>{selectedDay?.avgDia} mmHg</Text>
+              </View>
+              <View style={styles.trendDetailItem}>
+                <Text style={styles.trendDetailLabel}>平均脈搏</Text>
+                <Text style={styles.trendDetailValue}>{selectedDay?.avgPulse ?? "--"} bpm</Text>
+              </View>
+              <View style={styles.trendDetailItem}>
+                <Text style={styles.trendDetailLabel}>紀錄筆數</Text>
+                <Text style={styles.trendDetailValue}>{selectedDay?.count ?? 0} 筆</Text>
+              </View>
+            </View>
+            <View style={[styles.trendStatusBox, selectedDay && { borderLeftColor: selectedDay.status.color }]}>
+              <Text style={[styles.trendStatusText, selectedDay && { color: selectedDay.status.color }]}>
+                {selectedDay?.status.level}
+              </Text>
+              <Text style={styles.trendStatusAdvice}>{selectedDay?.status.recommendation}</Text>
+            </View>
+            <Pressable style={styles.trendModalButton} onPress={() => setSelectedDay(null)}>
+              <Text style={styles.trendModalButtonText}>關閉</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   )
 }
@@ -657,6 +807,8 @@ export default function BloodPressureScreen({
   const [linkedPatientEmail, setLinkedPatientEmail] = useState(user?.linkedPatientEmail || "")
   const [completedDailyTasks, setCompletedDailyTasks] = useState({})
   const [selectedDate, setSelectedDate] = useState(() => toDateKey(new Date()))
+  const [diaryModalDate, setDiaryModalDate] = useState(null)
+  const [familyAbnormalModalOpen, setFamilyAbnormalModalOpen] = useState(false)
   const [summaryMonths, setSummaryMonths] = useState(1)
   const [form, setForm] = useState({
     sys: "120",
@@ -702,6 +854,12 @@ export default function BloodPressureScreen({
     () => sortRecordsAbnormalFirst(normalizedRecords.filter(record => record.dateKey === selectedDate)),
     [normalizedRecords, selectedDate]
   )
+  const diaryModalRecords = useMemo(
+    () => diaryModalDate
+      ? sortRecordsAbnormalFirst(normalizedRecords.filter(record => record.dateKey === diaryModalDate))
+      : [],
+    [normalizedRecords, diaryModalDate]
+  )
   const calendarDays = useMemo(
     () => getCalendarDays(selectedDate, normalizedRecords),
     [selectedDate, normalizedRecords]
@@ -720,10 +878,37 @@ export default function BloodPressureScreen({
     () => getFamilyStats(recentThreeMonthRecords),
     [recentThreeMonthRecords]
   )
-  const familyAbnormalRecords = useMemo(
-    () => recentThreeMonthRecords.filter(record => record.status.isAbnormal).slice(0, 6),
+  const familyThreeMonthAbnormalRecords = useMemo(
+    () => recentThreeMonthRecords.filter(record => record.status.isAbnormal),
     [recentThreeMonthRecords]
   )
+  const familyAbnormalRecords = useMemo(
+    () => familyThreeMonthAbnormalRecords.slice(0, 6),
+    [familyThreeMonthAbnormalRecords]
+  )
+  const familyRecentSevenTrendSummaries = useMemo(
+    () =>
+      normalizedRecords
+        .slice(0, 7)
+        .reverse()
+        .map((record, index) => ({
+          key: record._id || `${record.measuredAt}-${index}`,
+          dateKey: record.dateKey,
+          title: formatDateTime(record.measuredAt),
+          label: formatShortDateTime(record.measuredAt),
+          avgSys: record.sys,
+          avgDia: record.dia,
+          avgPulse: record.pulse,
+          count: 1,
+          status: record.status
+        })),
+    [normalizedRecords]
+  )
+
+  const handleSelectDiaryDate = dateKey => {
+    setSelectedDate(dateKey)
+    setDiaryModalDate(dateKey)
+  }
   const warningDays = useMemo(
     () => dailySummaries.filter(day => day.status.isAbnormal).slice(-3),
     [dailySummaries]
@@ -1258,9 +1443,6 @@ export default function BloodPressureScreen({
           <View style={styles.historyCard}>
             <View style={styles.cardHead}>
               <Text style={styles.sectionTitle}>優先處理紀錄</Text>
-              <Pressable onPress={loadHistory} disabled={loading}>
-                <Text style={styles.refreshText}>重新整理</Text>
-              </Pressable>
             </View>
             {caregiverPriorityRecords.length ? (
               caregiverPriorityRecords.map(record => (
@@ -1439,10 +1621,13 @@ export default function BloodPressureScreen({
                   {latest?.status.familyLabel || "--"}
                 </Text>
               </View>
-              <View style={styles.summaryBox}>
+              <Pressable
+                style={[styles.summaryBox, styles.summaryBoxPressable]}
+                onPress={() => setFamilyAbnormalModalOpen(true)}
+              >
                 <Text style={styles.summaryLabel}>近 3 個月異常</Text>
                 <Text style={styles.summaryValue}>{familyStats.abnormalCount} 筆</Text>
-              </View>
+              </Pressable>
             </View>
             <View style={styles.adviceBox}>
               <Text style={styles.adviceTitle}>家屬下一步</Text>
@@ -1452,17 +1637,9 @@ export default function BloodPressureScreen({
 
           <View style={styles.analysisCard}>
             <View style={styles.cardHead}>
-              <Text style={styles.sectionTitle}>近 3 個月每日血壓趨勢</Text>
-              <Pressable onPress={loadHistory} disabled={loading}>
-                <Text style={styles.refreshText}>重新整理</Text>
-              </Pressable>
+              <Text style={styles.sectionTitle}>近 7 次血壓趨勢</Text>
             </View>
-            <MiniTrendChart summaries={groupDaily(recentThreeMonthRecords).slice(-7)} />
-            <View style={styles.legendRow}>
-              <Text style={styles.legendSys}>收縮壓</Text>
-              <Text style={styles.legendDia}>舒張壓</Text>
-              <Text style={styles.legendLimit}>警戒線 130/80</Text>
-            </View>
+            <LongTrendChart summaries={familyRecentSevenTrendSummaries} />
           </View>
 
           <View style={styles.analysisCard}>
@@ -1497,6 +1674,49 @@ export default function BloodPressureScreen({
               <Text style={styles.emptyText}>目前沒有異常血壓紀錄。</Text>
             )}
           </View>
+
+          <Modal
+            transparent
+            visible={familyAbnormalModalOpen}
+            animationType="fade"
+            onRequestClose={() => setFamilyAbnormalModalOpen(false)}
+          >
+            <Pressable style={styles.diaryModalBackdrop} onPress={() => setFamilyAbnormalModalOpen(false)}>
+              <Pressable style={styles.diaryModalCard} onPress={event => event.stopPropagation()}>
+                <View style={styles.diaryModalHeader}>
+                  <View>
+                    <Text style={styles.diaryModalTitle}>近 3 個月異常血壓</Text>
+                    <Text style={styles.diaryModalMeta}>{familyThreeMonthAbnormalRecords.length} 筆異常紀錄</Text>
+                  </View>
+                  <Pressable style={styles.diaryModalClose} onPress={() => setFamilyAbnormalModalOpen(false)}>
+                    <Text style={styles.diaryModalCloseText}>×</Text>
+                  </Pressable>
+                </View>
+
+                {familyThreeMonthAbnormalRecords.length === 0 ? (
+                  <Text style={styles.emptyDayText}>目前沒有異常血壓紀錄。</Text>
+                ) : (
+                  <ScrollView style={styles.diaryModalList}>
+                    {familyThreeMonthAbnormalRecords.map(record => (
+                      <View key={record._id || `${record.measuredAt}-${record.sys}-${record.dia}`} style={styles.diaryModalRecord}>
+                        <View style={styles.recordLeft}>
+                          <Text style={styles.recordText}>{formatDateTime(record.measuredAt)}</Text>
+                          <View style={styles.recordValueRow}>
+                            <Text style={styles.recordVal}>{record.sys}/{record.dia} mmHg</Text>
+                          </View>
+                          <Text style={styles.recordPulse}>脈搏 {record.pulse ?? "--"} bpm</Text>
+                          <Text style={styles.diaryModalAdvice}>{record.status.recommendation}</Text>
+                        </View>
+                        <View style={[styles.levelTag, { backgroundColor: record.status.color }]}>
+                          <Text style={styles.levelTagText}>{record.status.familyLabel}</Text>
+                        </View>
+                      </View>
+                    ))}
+                  </ScrollView>
+                )}
+              </Pressable>
+            </Pressable>
+          </Modal>
         </ScrollView>
       </View>
     )
@@ -1797,16 +2017,13 @@ export default function BloodPressureScreen({
           <View style={styles.historyCard}>
             <View style={styles.cardHead}>
               <Text style={styles.sectionTitle}>血壓日記</Text>
-              <Pressable onPress={loadHistory} disabled={loading}>
-                <Text style={styles.refreshText}>重新整理</Text>
-              </Pressable>
             </View>
 
             <CalendarMonth
               dateKey={selectedDate}
               days={calendarDays}
               selectedDate={selectedDate}
-              onSelectDate={setSelectedDate}
+              onSelectDate={handleSelectDiaryDate}
               onShiftMonth={offset => setSelectedDate(current => shiftMonth(current, offset))}
             />
 
@@ -1845,6 +2062,51 @@ export default function BloodPressureScreen({
                 </View>
               ))
             )}
+
+            <Modal
+              transparent
+              visible={!!diaryModalDate}
+              animationType="fade"
+              onRequestClose={() => setDiaryModalDate(null)}
+            >
+              <Pressable style={styles.diaryModalBackdrop} onPress={() => setDiaryModalDate(null)}>
+                <Pressable style={styles.diaryModalCard} onPress={event => event.stopPropagation()}>
+                  <View style={styles.diaryModalHeader}>
+                    <View>
+                      <Text style={styles.diaryModalTitle}>{diaryModalDate} 的紀錄</Text>
+                      <Text style={styles.diaryModalMeta}>{diaryModalRecords.length} 筆血壓資料</Text>
+                    </View>
+                    <Pressable style={styles.diaryModalClose} onPress={() => setDiaryModalDate(null)}>
+                      <Text style={styles.diaryModalCloseText}>×</Text>
+                    </Pressable>
+                  </View>
+
+                  {diaryModalRecords.length === 0 ? (
+                    <Text style={styles.emptyDayText}>這天沒有血壓紀錄</Text>
+                  ) : (
+                    <ScrollView style={styles.diaryModalList}>
+                      {diaryModalRecords.map(record => (
+                        <View key={record._id || `${record.dateKey}-${record.sys}-${record.dia}`} style={styles.diaryModalRecord}>
+                          <View style={styles.recordLeft}>
+                            <Text style={styles.recordText}>{formatDateTime(record.measuredAt)}</Text>
+                            <View style={styles.recordValueRow}>
+                              <Text style={styles.recordVal}>{record.sys}/{record.dia} mmHg</Text>
+                              <Text style={styles.recordMoodIcon}>{getMoodEmoji(record.mood)}</Text>
+                            </View>
+                            <Text style={styles.recordPulse}>脈搏 {record.pulse ?? "--"} bpm</Text>
+                            <Text style={styles.recordMood}>心情：{getMoodEmoji(record.mood)} {record.mood}</Text>
+                            <Text style={styles.diaryModalAdvice}>{record.status.recommendation}</Text>
+                          </View>
+                          <View style={[styles.levelTag, { backgroundColor: record.status.color }]}>
+                            <Text style={styles.levelTagText}>{record.status.level}</Text>
+                          </View>
+                        </View>
+                      ))}
+                    </ScrollView>
+                  )}
+                </Pressable>
+              </Pressable>
+            </Modal>
           </View>
         ) : null}
       </ScrollView>
@@ -2280,6 +2542,10 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 10
   },
+  summaryBoxPressable: {
+    borderColor: "#1f74d1",
+    backgroundColor: "#edf6ff"
+  },
   summaryLabel: {
     color: "#607990",
     fontSize: 11,
@@ -2523,24 +2789,78 @@ const styles = StyleSheet.create({
   },
   longChart: {
     position: "relative",
-    height: 198,
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-    gap: 8,
+    minHeight: 232,
     paddingTop: 10,
-    overflow: "hidden"
+    overflow: "visible"
   },
-  longChartDay: {
+  longTrendPlot: {
+    position: "relative",
+    height: 174,
+    marginHorizontal: 6,
+    overflow: "visible"
+  },
+  longChartLabels: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 9
+  },
+  longChartLabelsSingle: {
+    justifyContent: "center"
+  },
+  longChartLabelSlot: {
     flex: 1,
     minWidth: 0,
     alignItems: "center"
   },
-  longChartBars: {
-    height: 148,
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 4
+  trendOverlay: {
+    position: "absolute",
+    left: 6,
+    right: 6,
+    top: 0,
+    bottom: 0,
+    zIndex: 4
+  },
+  trendSegment: {
+    position: "absolute",
+    height: 3,
+    borderRadius: 3,
+    opacity: 0.9
+  },
+  trendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 2,
+    backgroundColor: "#fff"
+  },
+  trendPointButton: {
+    position: "absolute",
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  trendWarningMarker: {
+    position: "absolute",
+    bottom: 26,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "#cf1322",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  trendWarningText: {
+    color: "#fff",
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "900"
+  },
+  longChartValue: {
+    minHeight: 14,
+    color: "#173e67",
+    fontSize: 10,
+    fontWeight: "900"
   },
   longSysBar: {
     width: 12,
@@ -2558,6 +2878,85 @@ const styles = StyleSheet.create({
   longLimitDia: {
     bottom: 58,
     borderColor: "#17a36b"
+  },
+  trendModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(10, 28, 48, 0.42)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20
+  },
+  trendModalCard: {
+    width: "100%",
+    maxWidth: 360,
+    borderRadius: 12,
+    backgroundColor: "#fff",
+    padding: 16
+  },
+  trendModalTitle: {
+    color: "#173e67",
+    fontSize: 18,
+    fontWeight: "900"
+  },
+  trendModalMeta: {
+    marginTop: 3,
+    color: "#607990",
+    fontSize: 12,
+    fontWeight: "800"
+  },
+  trendDetailGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 14
+  },
+  trendDetailItem: {
+    width: "48%",
+    borderRadius: 8,
+    backgroundColor: "#f7fbff",
+    borderWidth: 1,
+    borderColor: "#d8e6ff",
+    padding: 10
+  },
+  trendDetailLabel: {
+    color: "#607990",
+    fontSize: 11,
+    fontWeight: "900"
+  },
+  trendDetailValue: {
+    marginTop: 4,
+    color: "#173e67",
+    fontSize: 15,
+    fontWeight: "900"
+  },
+  trendStatusBox: {
+    marginTop: 12,
+    borderLeftWidth: 5,
+    borderLeftColor: "#1f74d1",
+    backgroundColor: "#f8fbff",
+    borderRadius: 8,
+    padding: 10
+  },
+  trendStatusText: {
+    fontWeight: "900"
+  },
+  trendStatusAdvice: {
+    marginTop: 4,
+    color: "#4f6682",
+    lineHeight: 20,
+    fontWeight: "700"
+  },
+  trendModalButton: {
+    marginTop: 14,
+    minHeight: 42,
+    borderRadius: 8,
+    backgroundColor: "#1f74d1",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  trendModalButtonText: {
+    color: "#fff",
+    fontWeight: "900"
   },
   adviceText: {
     color: "#1f507f",
@@ -2848,6 +3247,72 @@ const styles = StyleSheet.create({
     color: "#6a7e99",
     textAlign: "center",
     fontWeight: "800"
+  },
+  diaryModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(10, 28, 48, 0.42)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 18
+  },
+  diaryModalCard: {
+    width: "100%",
+    maxWidth: 390,
+    maxHeight: "78%",
+    borderRadius: 12,
+    backgroundColor: "#fff",
+    padding: 14
+  },
+  diaryModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 10
+  },
+  diaryModalTitle: {
+    color: "#173e67",
+    fontSize: 17,
+    fontWeight: "900"
+  },
+  diaryModalMeta: {
+    marginTop: 3,
+    color: "#607990",
+    fontSize: 12,
+    fontWeight: "800"
+  },
+  diaryModalClose: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#edf6ff",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  diaryModalCloseText: {
+    color: "#1f507f",
+    fontSize: 24,
+    lineHeight: 28,
+    fontWeight: "900"
+  },
+  diaryModalList: {
+    maxHeight: 430
+  },
+  diaryModalRecord: {
+    borderTopWidth: 1,
+    borderTopColor: "#edf3fd",
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10
+  },
+  diaryModalAdvice: {
+    marginTop: 6,
+    color: "#4f6682",
+    lineHeight: 18,
+    fontSize: 12,
+    fontWeight: "700"
   },
   diaryRecordItem: {
     backgroundColor: "#fff",
