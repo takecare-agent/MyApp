@@ -1,5 +1,71 @@
 # React Native CLI 手機測試指南
 
+> 分支：`vision-integration`
+>
+> 本分支已包含影像辨識執行包 `vision-runtime/`。
+> 組員只要 clone 這個 repo（不用另外下載 Fall_Detection_Lab），即可測試 App + 跌倒偵測。
+
+## 快速啟動（四個服務）
+
+請開 4 個終端機分頁，依序執行：
+
+```bash
+# 1) 後端 (5000)
+cd backend
+npm install
+npm run dev
+
+# 2) 影像辨識服務 (8000)
+cd vision-runtime
+python -m venv .venv
+# macOS/Linux:
+source .venv/bin/activate
+# Windows PowerShell:
+# .\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python vision_api_server.py
+
+# 3) Metro (8081)
+cd mobile-expo
+npm install
+npm run start
+
+# 4) 安裝/啟動 Android App
+cd mobile-expo
+npm run android
+```
+
+如果 Android 出現連不到 Metro，執行：
+
+```bash
+adb reverse tcp:8081 tcp:8081
+```
+
+## 必要設定（影像辨識）
+
+`backend/.env` 需有：
+
+```env
+VISION_MODEL_ENDPOINT=http://localhost:8000/detect
+```
+
+若未啟動 `vision-runtime`，後端會 fallback 到 mock 影像資料，App 仍可跑，但不是即時真模型。
+
+## App 測試帳號（建議）
+
+- 受顧者：`patient@test.com`
+- 看護：`caregiver@test.com`（長輩 Email 填 `patient@test.com`）
+- 家屬：`family@test.com`（長輩 Email 填 `patient@test.com`）
+- Android 模擬器 API Base URL：`http://10.0.2.2:5000`
+
+## 跨平台說明（Windows 組員）
+
+- Windows 可以跑影像辨識，非 macOS 專屬。
+- 請用 Python 3.10~3.12。
+- 攝影機不通時先跑 `python list_cameras.py`，再指定 `CAM_INDEX` 啟動：
+  - PowerShell：`$env:CAM_INDEX=1; python vision_api_server.py`
+  - macOS/Linux：`CAM_INDEX=1 python vision_api_server.py`
+
 這個版本是給 Android / iOS 原生 React Native CLI 專案使用，不使用 managed workflow。Android 血壓同步會使用 Health Connect 原生套件。
 
 ## 專案結構
