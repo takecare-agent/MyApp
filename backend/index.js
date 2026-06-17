@@ -592,6 +592,21 @@ async function getNextVisionSample(user) {
   return { sample, sampleIndex, nextCursor: user.visionSampleCursor }
 }
 
+function buildConfirmedFallDetection(body = {}) {
+  const prob = toConfidence(body.confidence ?? body.prob, 0.9)
+  const trigger = typeof body.trigger === "string" ? body.trigger.trim() : ""
+  const customDescription = typeof body.description === "string" ? body.description.trim() : ""
+  return {
+    action: "DANGER: FALL",
+    severity: "High",
+    confidence: Math.max(prob, 0.9),
+    location: typeof body.location === "string" && body.location.trim() ? body.location.trim() : "客廳",
+    description: customDescription || `App 健康輪詢確認跌倒${trigger ? `（觸發 ${trigger}）` : ""}`,
+    frameTag: typeof body.frameTag === "string" && body.frameTag.trim() ? body.frameTag.trim() : "health-confirmed",
+    modelName: "Fall-Detection-v8"
+  }
+}
+
 async function requestVisionModelResult(payload = {}) {
   const endpoint = process.env.VISION_MODEL_ENDPOINT
   if (!endpoint || typeof fetch !== "function") return null
@@ -764,12 +779,17 @@ app.post("/patient/vision/detect", async (req, res) => {
   const frameTag = typeof req.body?.frameTag === "string" ? req.body.frameTag.trim() : ""
   const location = typeof req.body?.location === "string" ? req.body.location.trim() : ""
   const description = typeof req.body?.description === "string" ? req.body.description.trim() : ""
-  let detection = await requestVisionModelResult({ reporterRole: "patient", frameTag, location, description })
+  let detection = null
   let usedFallback = false, sampleIndex = null, nextCursor = null
-  if (!detection) {
-    const s = await getNextVisionSample(user)
-    usedFallback = true; sampleIndex = s.sampleIndex; nextCursor = s.nextCursor
-    detection = { action: normalizeVisionAction(s.sample.action), severity: normalizeSeverity(s.sample.severity), confidence: toConfidence(s.sample.confidence, 0.9), location: s.sample.location || "", description: s.sample.description || "", frameTag: s.sample.frameTag || "", modelName: "CareAI-MediaPipe" }
+  if (req.body?.confirmedByHealth === true) {
+    detection = buildConfirmedFallDetection(req.body)
+  } else {
+    detection = await requestVisionModelResult({ reporterRole: "patient", frameTag, location, description })
+    if (!detection) {
+      const s = await getNextVisionSample(user)
+      usedFallback = true; sampleIndex = s.sampleIndex; nextCursor = s.nextCursor
+      detection = { action: normalizeVisionAction(s.sample.action), severity: normalizeSeverity(s.sample.severity), confidence: toConfidence(s.sample.confidence, 0.9), location: s.sample.location || "", description: s.sample.description || "", frameTag: s.sample.frameTag || "", modelName: "CareAI-MediaPipe" }
+    }
   }
   const record = await VisionDetectionRecord.create({ patientUserId: user._id, reporterUserId: user._id, reporterRole: "patient", action: detection.action, severity: normalizeSeverity(detection.severity || getVisionSeverityByAction(detection.action)), confidence: toConfidence(detection.confidence, 0.9), location: detection.location || location, description: detection.description || description || `event: ${detection.action}`, modelName: detection.modelName || "CareAI-MediaPipe", frameTag: detection.frameTag || frameTag, detectedAt: new Date(), source: usedFallback ? "vision-mock" : "vision-model" })
   const linkedAlert = await createVisionAlertIfNeeded({ patientUserId: user._id, reporterUserId: user._id, reporterRole: "patient", detectionRecord: record })
@@ -1131,12 +1151,17 @@ app.post("/caregiver/vision/detect", async (req, res) => {
   const frameTag = typeof req.body?.frameTag === "string" ? req.body.frameTag.trim() : ""
   const location = typeof req.body?.location === "string" ? req.body.location.trim() : ""
   const description = typeof req.body?.description === "string" ? req.body.description.trim() : ""
-  let detection = await requestVisionModelResult({ reporterRole: "caregiver", frameTag, location, description })
+  let detection = null
   let usedFallback = false, sampleIndex = null, nextCursor = null
-  if (!detection) {
-    const s = await getNextVisionSample(user)
-    usedFallback = true; sampleIndex = s.sampleIndex; nextCursor = s.nextCursor
-    detection = { action: normalizeVisionAction(s.sample.action), severity: normalizeSeverity(s.sample.severity), confidence: toConfidence(s.sample.confidence, 0.9), location: s.sample.location || "", description: s.sample.description || "", frameTag: s.sample.frameTag || "", modelName: "CareAI-MediaPipe" }
+  if (req.body?.confirmedByHealth === true) {
+    detection = buildConfirmedFallDetection(req.body)
+  } else {
+    detection = await requestVisionModelResult({ reporterRole: "caregiver", frameTag, location, description })
+    if (!detection) {
+      const s = await getNextVisionSample(user)
+      usedFallback = true; sampleIndex = s.sampleIndex; nextCursor = s.nextCursor
+      detection = { action: normalizeVisionAction(s.sample.action), severity: normalizeSeverity(s.sample.severity), confidence: toConfidence(s.sample.confidence, 0.9), location: s.sample.location || "", description: s.sample.description || "", frameTag: s.sample.frameTag || "", modelName: "CareAI-MediaPipe" }
+    }
   }
   const record = await VisionDetectionRecord.create({ patientUserId, reporterUserId: user._id, reporterRole: "caregiver", action: detection.action, severity: normalizeSeverity(detection.severity || getVisionSeverityByAction(detection.action)), confidence: toConfidence(detection.confidence, 0.9), location: detection.location || location, description: detection.description || description || `event: ${detection.action}`, modelName: detection.modelName || "CareAI-MediaPipe", frameTag: detection.frameTag || frameTag, detectedAt: new Date(), source: usedFallback ? "vision-mock" : "vision-model" })
   const linkedAlert = await createVisionAlertIfNeeded({ patientUserId, reporterUserId: user._id, reporterRole: "caregiver", detectionRecord: record })

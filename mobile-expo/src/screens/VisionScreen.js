@@ -102,7 +102,7 @@ export default function VisionScreen({ role, apiBaseUrl, token, uiLang, onBack }
   }, [apiBaseUrl, apiPrefix, token])
 
   // 偵測到跌倒時自動寫入一筆紀錄（透過後端，會一併建立家屬警報）
-  const autoLogFall = useCallback(async () => {
+  const autoLogFall = useCallback(async (healthPayload = {}) => {
     if (loggingRef.current) return
     loggingRef.current = true
     try {
@@ -111,7 +111,14 @@ export default function VisionScreen({ role, apiBaseUrl, token, uiLang, onBack }
         path: `${apiPrefix}/vision/detect`,
         method: "POST",
         token,
-        body: { frameTag: "", location: "", description: "" }
+        body: {
+          frameTag: "",
+          location: "",
+          description: "",
+          confirmedByHealth: true,
+          confidence: Number(healthPayload.prob) || 0,
+          trigger: healthPayload.trigger || ""
+        }
       })
       await loadHistory()
     } catch (logError) {
@@ -134,7 +141,7 @@ export default function VisionScreen({ role, apiBaseUrl, token, uiLang, onBack }
         setLive({ online: true, state: st, prob: Number(data.prob) || 0 })
         if (st === "CONFIRMED" && !confirmedLatch.current) {
           confirmedLatch.current = true
-          autoLogFall()
+          autoLogFall({ prob: Number(data.prob) || 0, trigger: data.trigger || "" })
         } else if (st === "IDLE" || st === "DISMISSED") {
           confirmedLatch.current = false
         }
