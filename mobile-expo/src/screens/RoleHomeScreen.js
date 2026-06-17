@@ -13,15 +13,6 @@ const LANG_OPTIONS = [
 
 const LANG_SHORT = { zh: "中文", en: "EN", id: "ID", vi: "VI", tl: "TL", th: "TH" }
 
-const LANG_OPTIONS = [
-  { code: "zh", label: "中文" },
-  { code: "en", label: "English" },
-  { code: "id", label: "Bahasa" },
-  { code: "vi", label: "Tiếng Việt" },
-  { code: "tl", label: "Filipino" },
-  { code: "th", label: "ภาษาไทย" }
-]
-
 const CAREGIVER_TEXT = {
   zh: {
     kicker: "TakeCare 原生 App",
@@ -170,7 +161,6 @@ export default function RoleHomeScreen({
   onOpenBloodPressure,
   onOpenVision,
   onOpenFeature,
-  onUiLangChange,
   onLogout
 }) {
   const [langModalVisible, setLangModalVisible] = useState(false)
@@ -255,25 +245,6 @@ export default function RoleHomeScreen({
       </View>
 
       <View style={styles.bottomSection}>
-        {role === "caregiver" && onUiLangChange ? (
-          <View style={styles.langCard}>
-            <Text style={styles.langLabel}>{caregiverT.langSetting || "語言設定"}</Text>
-            <View style={styles.chipRow}>
-              {LANG_OPTIONS.map(l => (
-                <Pressable
-                  key={l.code}
-                  style={[styles.chip, lang === l.code && styles.chipActive]}
-                  onPress={() => onUiLangChange(l.code)}
-                >
-                  <Text style={[styles.chipText, lang === l.code && styles.chipTextActive]}>
-                    {l.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        ) : null}
-
         <Pressable style={styles.logoutBtn} onPress={onLogout}>
           <Text style={styles.logoutText}>{logoutLabel}</Text>
         </Pressable>
@@ -334,19 +305,6 @@ const styles = StyleSheet.create({
   cardTitle: { color: "#173e67", fontSize: 18, fontWeight: "900" },
   cardDesc: { marginTop: 6, color: "#4f6682", lineHeight: 20 },
   bottomSection: { gap: 10 },
-  langCard: {
-    backgroundColor: "#fff", borderWidth: 1,
-    borderColor: "#d8e6ff", borderRadius: 12, padding: 14, gap: 10
-  },
-  langLabel: { color: "#526b88", fontWeight: "800", fontSize: 13 },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: {
-    paddingHorizontal: 12, paddingVertical: 6,
-    borderRadius: 20, borderWidth: 1, borderColor: "#c7d8ed", backgroundColor: "#f2f7ff"
-  },
-  chipActive: { backgroundColor: "#1f74d1", borderColor: "#1f74d1" },
-  chipText: { color: "#526b88", fontWeight: "700", fontSize: 13 },
-  chipTextActive: { color: "#fff" },
   logoutBtn: {
     borderRadius: 10, borderWidth: 1,
     borderColor: "#c7d8ed", backgroundColor: "#fff",
