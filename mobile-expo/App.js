@@ -311,7 +311,6 @@ export default function App() {
             onOpenBloodPressure={() => setActiveScreen("blood-pressure")}
             onOpenVision={() => setActiveScreen("vision")}
             onOpenFeature={handleOpenFeature}
-            onUiLangChange={handleUiLangChange}
             onLogout={handleLogout}
           />
         ) : null}
