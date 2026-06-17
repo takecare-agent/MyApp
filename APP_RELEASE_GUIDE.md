@@ -7,35 +7,52 @@
 
 ## 快速啟動（四個服務）
 
-請開 4 個終端機分頁，依序執行：
+請開 4 個終端機分頁。路徑請確認在 repo 根目錄（裡面要有 `backend/`、`mobile-expo/`、`vision-runtime/` 三個資料夾）。
+
+### 1) 後端 (5000) — 所有平台相同
 
 ```bash
-# 1) 後端 (5000)
 cd backend
 npm install
 npm run dev
+```
 
-# 2) 影像辨識服務 (8000)
+### 2) 影像辨識 (8000) — 請依作業系統選擇
+
+#### Windows（PowerShell）⚠️ 不要用 `source`
+
+```powershell
 cd vision-runtime
-python -m venv .venv
-# macOS/Linux:
-source .venv/bin/activate
-# Windows PowerShell:
-# .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-python vision_api_server.py
+Set-ExecutionPolicy -Scope Process Bypass
+.\setup-windows.ps1
+.\start-windows.ps1
+```
 
-# 3) Metro (8081)
+#### macOS / Linux
+
+```bash
+cd vision-runtime
+bash setup-mac.sh
+source .venv/bin/activate
+python vision_api_server.py
+```
+
+### 3) Metro (8081)
+
+```bash
 cd mobile-expo
 npm install
 npm run start
+```
 
-# 4) 安裝/啟動 Android App
+### 4) Android App
+
+```bash
 cd mobile-expo
 npm run android
 ```
 
-如果 Android 出現連不到 Metro，執行：
+如果 Android 出現連不到 Metro：
 
 ```bash
 adb reverse tcp:8081 tcp:8081
@@ -58,13 +75,29 @@ VISION_MODEL_ENDPOINT=http://localhost:8000/detect
 - 家屬：`family@test.com`（長輩 Email 填 `patient@test.com`）
 - Android 模擬器 API Base URL：`http://10.0.2.2:5000`
 
-## 跨平台說明（Windows 組員）
+## Windows 影像辨識常見錯誤（必讀）
 
-- Windows 可以跑影像辨識，非 macOS 專屬。
-- 請用 Python 3.10~3.12。
-- 攝影機不通時先跑 `python list_cameras.py`，再指定 `CAM_INDEX` 啟動：
-  - PowerShell：`$env:CAM_INDEX=1; python vision_api_server.py`
-  - macOS/Linux：`CAM_INDEX=1 python vision_api_server.py`
+| 錯誤訊息 | 原因 | 解法 |
+|---|---|---|
+| `source .venv/bin/activate` 無效 | 這是 macOS/Linux 指令 | 改用 `.\setup-windows.ps1` |
+| `No matching distribution found for tensorflow==2.16.2` | Python 版本不對（常見 3.13）或 32-bit | 安裝 **Python 3.12 64-bit**，再跑 `setup-windows.ps1` |
+| `Defaulting to user installation...` | 虛擬環境沒啟動成功 | 先 `.\.venv\Scripts\Activate.ps1` 再 pip |
+| `ModuleNotFoundError: No module named 'cv2'` | 上一步 pip 安裝失敗 | 修好 Python 版本後重跑 `setup-windows.ps1` |
+
+檢查 Python 版本（在 vision-runtime 內）：
+
+```powershell
+python -c "import sys; print(sys.version)"
+```
+
+必須是 **3.10 / 3.11 / 3.12**，且 64-bit。
+
+攝影機不通時：
+
+```powershell
+python list_cameras.py
+$env:CAM_INDEX=1; python vision_api_server.py
+```
 
 這個版本是給 Android / iOS 原生 React Native CLI 專案使用，不使用 managed workflow。Android 血壓同步會使用 Health Connect 原生套件。
 

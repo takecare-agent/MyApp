@@ -20,14 +20,37 @@ TakeCare App 的即時跌倒偵測服務。攝影機畫面經 MediaPipe Pose + T
 
 ## 安裝
 
-### Windows (PowerShell)
+### Windows（推薦：一鍵腳本）
+
+```powershell
+cd vision-runtime
+Set-ExecutionPolicy -Scope Process Bypass
+.\setup-windows.ps1
+.\start-windows.ps1
+```
+
+> ⚠️ **不要用** `source .venv/bin/activate`（那是 macOS/Linux 指令）。
+
+### macOS / Linux
+
+```bash
+cd vision-runtime
+bash setup-mac.sh
+source .venv/bin/activate
+python vision_api_server.py
+```
+
+### 手動安裝（進階）
+
+#### Windows (PowerShell)
 ```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### macOS / Linux
+#### macOS / Linux
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
@@ -87,5 +110,7 @@ VISION_MODEL_ENDPOINT=http://localhost:8000/detect
 - `GET /stream` → MJPEG 即時影像（App WebView 顯示）
 
 ## Windows 小提醒
-- 第一次跑 TensorFlow 較慢屬正常；若 `pip install tensorflow` 失敗，確認 Python 是 64 位元且版本在 3.10~3.12。
+- **Python 必須 3.10~3.12（64-bit）**。3.13 會出現 `No matching distribution found for tensorflow`。
+- 第一次跑 TensorFlow 較慢屬正常。
 - 攝影機被其他程式（Teams/Zoom）佔用時會開不起來，先關掉再跑。
+- 若 `pip install` 顯示 `Defaulting to user installation`，代表 venv 沒啟動，請先 `.\.venv\Scripts\Activate.ps1`。
