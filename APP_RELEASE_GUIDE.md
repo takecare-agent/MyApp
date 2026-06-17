@@ -81,6 +81,16 @@ git pull
 
 若路徑變成 `.../MyApp/MyApp/...`（雙層資料夾），請退回正確根目錄再操作。
 
+### ⚠️ 常見踩雷：跑錯資料夾
+
+| 資料夾 | 能不能用 | 說明 |
+|---|---|---|
+| `~/Desktop/MyApp-main` | ✅ **要用這個** | clone 下來的完整 App repo |
+| `~/Desktop/TakeCare-Vision` | ❌ 不要用 | 早期單獨影像 zip，**沒有 backend、沒有 `npm run dev`** |
+
+文件裡的 `~/Desktop/MyApp-main` 請改成**你自己 clone 下來的實際路徑**。  
+**不要照打** `~/path/to/MyApp` 或 `<你的路徑>` 這種佔位符。
+
 ---
 
 # Windows 完整流程
@@ -131,7 +141,7 @@ VISION_MODEL_ENDPOINT=http://localhost:8000/detect
 ### 分頁 1：後端（5000）
 
 ```powershell
-cd <你的路徑>\MyApp\backend
+cd %USERPROFILE%\Desktop\MyApp-main\backend
 npm install
 npm run dev
 ```
@@ -145,7 +155,7 @@ npm run dev
 ### 分頁 2：影像辨識（8000）
 
 ```powershell
-cd <你的路徑>\MyApp\vision-runtime
+cd %USERPROFILE%\Desktop\MyApp-main\vision-runtime
 Set-ExecutionPolicy -Scope Process Bypass
 .\setup-windows.ps1
 .\start-windows.ps1
@@ -160,7 +170,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 #### 鏡頭不是 0 號時（常見）
 
 ```powershell
-cd <你的路徑>\MyApp\vision-runtime
+cd %USERPROFILE%\Desktop\MyApp-main\vision-runtime
 .\.venv\Scripts\Activate.ps1
 python list_cameras.py
 $env:CAM_INDEX=1
@@ -172,7 +182,7 @@ python vision_api_server.py
 ### 分頁 3：Metro（8081）
 
 ```powershell
-cd <你的路徑>\MyApp\mobile-expo
+cd %USERPROFILE%\Desktop\MyApp-main\mobile-expo
 npm install
 npm run start
 ```
@@ -186,7 +196,7 @@ npm run start
 先開好 Android 模擬器，再執行：
 
 ```powershell
-cd <你的路徑>\MyApp\mobile-expo
+cd %USERPROFILE%\Desktop\MyApp-main\mobile-expo
 npm run android
 ```
 
@@ -272,7 +282,7 @@ VISION_MODEL_ENDPOINT=http://localhost:8000/detect
 ### 分頁 1：後端（5000）
 
 ```bash
-cd ~/path/to/MyApp/backend
+cd ~/Desktop/MyApp-main/backend
 source ~/.nvm/nvm.sh && nvm use 20.20.2
 npm install
 npm run dev
@@ -283,7 +293,7 @@ npm run dev
 ### 分頁 2：影像辨識（8000）
 
 ```bash
-cd ~/path/to/MyApp/vision-runtime
+cd ~/Desktop/MyApp-main/vision-runtime
 bash setup-mac.sh
 source .venv/bin/activate
 python vision_api_server.py
@@ -302,7 +312,7 @@ CAM_INDEX=1 python vision_api_server.py
 ### 分頁 3：Metro（8081）
 
 ```bash
-cd ~/path/to/MyApp/mobile-expo
+cd ~/Desktop/MyApp-main/mobile-expo
 source ~/.nvm/nvm.sh && nvm use 20.20.2
 npm install
 npm run start
@@ -313,7 +323,7 @@ npm run start
 ### 分頁 4：Android App
 
 ```bash
-cd ~/path/to/MyApp/mobile-expo
+cd ~/Desktop/MyApp-main/mobile-expo
 source ~/.nvm/nvm.sh && nvm use 20.20.2
 npm run android
 ```
