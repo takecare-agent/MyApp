@@ -300,10 +300,12 @@ export default function App() {
             role={session.role}
             user={session.user}
             apiBaseUrl={session.apiBaseUrl}
+            token={session.token}
             uiLang={uiLang}
             onOpenBloodPressure={() => setActiveScreen("blood-pressure")}
             onOpenVision={() => setActiveScreen("vision")}
             onOpenFeature={handleOpenFeature}
+            onUiLangChange={handleUiLangChange}
             onLogout={handleLogout}
           />
         ) : null}

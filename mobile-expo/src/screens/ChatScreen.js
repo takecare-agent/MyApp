@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react"
+import { loadChatPartner, saveChatPartner } from "../lib/storage"
 import {
   ActivityIndicator,
   FlatList,
@@ -78,6 +79,16 @@ export default function ChatScreen({ apiBaseUrl, token, myEmail, role, uiLang, o
   const socketRef = useRef(null)
   const flatListRef = useRef(null)
 
+  // 載入上次的對話對象，自動帶入並開始聊天
+  useEffect(() => {
+    loadChatPartner(myEmail).then(saved => {
+      if (saved) {
+        setPartnerInput(saved)
+        setPartnerEmail(saved)
+      }
+    })
+  }, [myEmail])
+
   // 建立 Socket.io 連線
   useEffect(() => {
     if (!partnerEmail) return
@@ -152,6 +163,7 @@ export default function ChatScreen({ apiBaseUrl, token, myEmail, role, uiLang, o
     if (!email) return
     setMessages([])
     setPartnerEmail(email)
+    saveChatPartner(myEmail, email)
   }
 
   const handleSend = () => {

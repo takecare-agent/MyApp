@@ -1,4 +1,17 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
+import { useState } from "react"
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
+import { apiRequest } from "../lib/api"
+
+const LANG_OPTIONS = [
+  { code: "zh", label: "中文" },
+  { code: "en", label: "English" },
+  { code: "id", label: "Bahasa" },
+  { code: "vi", label: "Tiếng Việt" },
+  { code: "tl", label: "Filipino" },
+  { code: "th", label: "ภาษาไทย" },
+]
+
+const LANG_SHORT = { zh: "中文", en: "EN", id: "ID", vi: "VI", tl: "TL", th: "TH" }
 
 const CAREGIVER_TEXT = {
   zh: {
@@ -136,12 +149,16 @@ export default function RoleHomeScreen({
   role,
   user,
   apiBaseUrl,
+  token,
   uiLang,
   onOpenBloodPressure,
   onOpenVision,
   onOpenFeature,
+  onUiLangChange,
   onLogout
 }) {
+  const [langModalVisible, setLangModalVisible] = useState(false)
+
   const lang = (role === "caregiver" && uiLang) ? uiLang : "zh"
   const caregiverT = CAREGIVER_TEXT[lang] || CAREGIVER_TEXT.zh
 
@@ -156,13 +173,53 @@ export default function RoleHomeScreen({
   const logoutLabel = role === "caregiver" ? caregiverT.logout : "登出"
   const kicker = role === "caregiver" ? caregiverT.kicker : "TakeCare 原生 App"
 
+  const handleLangChange = async (code) => {
+    setLangModalVisible(false)
+    if (onUiLangChange) onUiLangChange(code)
+    try {
+      await apiRequest({ apiBaseUrl, path: "/update-lang", method: "PATCH", token, body: { lang: code } })
+    } catch { /* silent */ }
+  }
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.kicker}>{kicker}</Text>
-        <Text style={styles.title}>{dashboardLabel}工作台</Text>
+        <View style={styles.headerRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.kicker}>{kicker}</Text>
+            <Text style={styles.title}>{dashboardLabel}工作台</Text>
+          </View>
+          <Pressable style={styles.langBtn} onPress={() => setLangModalVisible(true)}>
+            <Text style={styles.langBtnText}>{LANG_SHORT[uiLang] || "中文"}</Text>
+          </Pressable>
+        </View>
         <Text style={styles.subtitle}>{user?.email || "-"} · API {apiBaseUrl}</Text>
       </View>
+
+      <Modal
+        visible={langModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLangModalVisible(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setLangModalVisible(false)}>
+          <View style={styles.langPicker}>
+            <Text style={styles.langPickerTitle}>語言 / Language</Text>
+            {LANG_OPTIONS.map(l => (
+              <Pressable
+                key={l.code}
+                style={[styles.langOption, uiLang === l.code && styles.langOptionActive]}
+                onPress={() => handleLangChange(l.code)}
+              >
+                <Text style={[styles.langOptionText, uiLang === l.code && styles.langOptionTextActive]}>
+                  {l.label}
+                </Text>
+                {uiLang === l.code ? <Text style={styles.langOptionCheck}>✓</Text> : null}
+              </Pressable>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
 
       <View style={styles.grid}>
         {features.map(feature => (
@@ -194,6 +251,41 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff", borderWidth: 1,
     borderColor: "#d8e6ff", borderRadius: 12, padding: 16
   },
+  headerRow: {
+    flexDirection: "row", alignItems: "flex-start"
+  },
+  langBtn: {
+    backgroundColor: "#e8f2ff", borderRadius: 16,
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderWidth: 1, borderColor: "#c0d8f5", marginTop: 2
+  },
+  langBtnText: { color: "#1f74d1", fontWeight: "900", fontSize: 12 },
+  modalBackdrop: {
+    flex: 1, backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "flex-start", alignItems: "flex-end",
+    paddingTop: 80, paddingRight: 16
+  },
+  langPicker: {
+    backgroundColor: "#fff", borderRadius: 14,
+    borderWidth: 1, borderColor: "#d8e6ff",
+    minWidth: 160, overflow: "hidden",
+    shadowColor: "#000", shadowOpacity: 0.12,
+    shadowRadius: 8, elevation: 6
+  },
+  langPickerTitle: {
+    color: "#526b88", fontSize: 11, fontWeight: "800",
+    paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6
+  },
+  langOption: {
+    flexDirection: "row", alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16, paddingVertical: 12,
+    borderTopWidth: 1, borderTopColor: "#f0f5ff"
+  },
+  langOptionActive: { backgroundColor: "#e8f2ff" },
+  langOptionText: { color: "#173e67", fontSize: 14, fontWeight: "700" },
+  langOptionTextActive: { color: "#1f74d1", fontWeight: "900" },
+  langOptionCheck: { color: "#1f74d1", fontWeight: "900", fontSize: 14 },
   kicker: { color: "#1f74d1", fontWeight: "800" },
   title: { marginTop: 6, fontSize: 24, fontWeight: "900", color: "#11355c" },
   subtitle: { marginTop: 6, color: "#526b88", lineHeight: 20 },

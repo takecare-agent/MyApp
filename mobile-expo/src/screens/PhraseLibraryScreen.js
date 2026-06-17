@@ -41,10 +41,6 @@ const SYSTEM_PHRASES = [
 
 export default function PhraseLibraryScreen({ apiBaseUrl, token, uiLang, role, onBack }) {
   const t = UI_TEXT[role === "caregiver" ? (uiLang || "zh") : "zh"] || UI_TEXT.zh
-  const [myLang, setMyLang] = useState("zh")
-  const [savingLang, setSavingLang] = useState(false)
-  const [langMsg, setLangMsg] = useState("")
-
   const [phrases, setPhrases] = useState([])
   const [loadingPhrases, setLoadingPhrases] = useState(false)
   const [newPhraseText, setNewPhraseText] = useState("")
@@ -83,18 +79,6 @@ export default function PhraseLibraryScreen({ apiBaseUrl, token, uiLang, role, o
     loadPhrases()
     loadDangerLogs()
   }, [loadPhrases, loadDangerLogs])
-
-  // ── 儲存語言設定 ──
-  const handleSaveLang = async () => {
-    setSavingLang(true); setLangMsg("")
-    try {
-      const data = await apiRequest({
-        apiBaseUrl, path: "/update-lang", method: "PATCH", token, body: { lang: myLang }
-      })
-      setLangMsg(data.success ? "語言設定已儲存 ✓" : "儲存失敗")
-    } catch { setLangMsg("儲存失敗") }
-    finally { setSavingLang(false) }
-  }
 
   // ── 新增語句 ──
   const handleAddPhrase = async () => {
@@ -159,28 +143,6 @@ export default function PhraseLibraryScreen({ apiBaseUrl, token, uiLang, role, o
       </View>
 
       <ScrollView contentContainerStyle={styles.container}>
-
-        {/* ── 語言設定 ── */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>{t.myLang}</Text>
-          <View style={styles.langRow}>
-            {LANG_OPTIONS.map(l => (
-              <Pressable
-                key={l.code}
-                style={[styles.langChip, myLang === l.code && styles.langChipActive]}
-                onPress={() => setMyLang(l.code)}
-              >
-                <Text style={[styles.langChipText, myLang === l.code && styles.langChipTextActive]}>
-                  {l.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-          <Pressable style={styles.primaryBtn} onPress={handleSaveLang} disabled={savingLang}>
-            <Text style={styles.primaryBtnText}>{savingLang ? t.savingLang : t.saveLang}</Text>
-          </Pressable>
-          {langMsg ? <Text style={styles.successText}>{langMsg}</Text> : null}
-        </View>
 
         {/* ── 自訂語句庫 ── */}
         <View style={styles.card}>
