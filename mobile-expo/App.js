@@ -104,6 +104,11 @@ export default function App() {
   const handleUiLangChange = async (lang) => {
     setUiLang(lang)
     await saveSettings({ ...settings, uiLang: lang })
+    if (session?.token && session?.apiBaseUrl) {
+      try {
+        await apiRequest({ apiBaseUrl: session.apiBaseUrl, path: "/update-lang", method: "PATCH", token: session.token, body: { lang } })
+      } catch { /* 靜默失敗，不影響 UI 切換 */ }
+    }
   }
 
   useEffect(() => {
@@ -300,10 +305,13 @@ export default function App() {
             role={session.role}
             user={session.user}
             apiBaseUrl={session.apiBaseUrl}
+            token={session.token}
             uiLang={uiLang}
+            onUiLangChange={handleUiLangChange}
             onOpenBloodPressure={() => setActiveScreen("blood-pressure")}
             onOpenVision={() => setActiveScreen("vision")}
             onOpenFeature={handleOpenFeature}
+            onUiLangChange={handleUiLangChange}
             onLogout={handleLogout}
           />
         ) : null}

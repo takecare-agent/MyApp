@@ -1480,15 +1480,15 @@ app.get("/custom-phrases", async (req, res) => {
   if (!decoded) return res.status(401).json({ message: "Invalid token" })
   try {
     const user = await User.findOne({ email: decoded.email })
-    let ownerEmail = user.email
+    let ownerEmails = [user.email]
     if (user.role === "caregiver" && user.linkedPatientEmail) {
       const patient = await User.findOne({ email: user.linkedPatientEmail, role: "patient" })
       if (patient) {
-        const familyUser = await User.findOne({ linkedPatientEmail: patient.email, role: "family" })
-        if (familyUser) ownerEmail = familyUser.email
+        const familyUsers = await User.find({ linkedPatientEmail: patient.email, role: "family" })
+        if (familyUsers.length > 0) ownerEmails = familyUsers.map(f => f.email)
       }
     }
-    const phrases = await CustomPhrase.find({ ownerEmail })
+    const phrases = await CustomPhrase.find({ ownerEmail: { $in: ownerEmails } })
     res.json(phrases.map(p => ({ id: p._id, text: p.text })))
   } catch (e) {
     res.json([])

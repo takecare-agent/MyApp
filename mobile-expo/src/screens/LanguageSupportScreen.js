@@ -282,10 +282,6 @@ export default function LanguageSupportScreen({ apiBaseUrl, token, onBack, uiLan
   const uiLang = propUiLang || "zh"
   const t = UI_TEXT[uiLang] || UI_TEXT.zh
 
-  const [myLang, setMyLang] = useState("zh")
-  const [savingLang, setSavingLang] = useState(false)
-  const [langMsg, setLangMsg] = useState("")
-
   const [isListening, setIsListening] = useState(false)
   const [voiceStatus, setVoiceStatus] = useState("")
 
@@ -392,18 +388,6 @@ export default function LanguageSupportScreen({ apiBaseUrl, token, onBack, uiLan
     loadHistory()
   }, [loadCustomPhrases, loadDangerLogs, loadHistory])
 
-  // ── 儲存語言設定（chat 自動翻譯用）──
-  const handleSaveLang = async () => {
-    setSavingLang(true); setLangMsg("")
-    try {
-      const data = await apiRequest({
-        apiBaseUrl, path: "/update-lang", method: "PATCH", token, body: { lang: myLang }
-      })
-      setLangMsg(data.success ? t.saved : t.saveFail)
-    } catch { setLangMsg(t.saveFail) }
-    finally { setSavingLang(false) }
-  }
-
   // ── 語音輸入開關 ──
   const handleVoiceToggle = async () => {
     if (isListening) {
@@ -478,46 +462,6 @@ export default function LanguageSupportScreen({ apiBaseUrl, token, onBack, uiLan
       </View>
 
       <ScrollView contentContainerStyle={styles.container}>
-
-        {/* ── 介面語言 ── */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>{t.interfaceLang}</Text>
-          <View style={styles.chipRow}>
-            {LANG_OPTIONS.map(l => (
-              <Pressable
-                key={l.code}
-                style={[styles.chip, uiLang === l.code && styles.chipActiveBlue]}
-                onPress={() => onUiLangChange && onUiLangChange(l.code)}
-              >
-                <Text style={[styles.chipText, uiLang === l.code && styles.chipTextWhite]}>
-                  {l.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-
-        {/* ── 我的語言設定（chat 自動翻譯）──  */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>{t.myLang}</Text>
-          <View style={styles.chipRow}>
-            {LANG_OPTIONS.map(l => (
-              <Pressable
-                key={l.code}
-                style={[styles.chip, myLang === l.code && styles.chipActiveGreen]}
-                onPress={() => setMyLang(l.code)}
-              >
-                <Text style={[styles.chipText, myLang === l.code && styles.chipTextWhite]}>
-                  {l.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-          <Pressable style={styles.primaryBtn} onPress={handleSaveLang} disabled={savingLang}>
-            <Text style={styles.primaryBtnText}>{savingLang ? "..." : t.saveLang}</Text>
-          </Pressable>
-          {langMsg ? <Text style={styles.successText}>{langMsg}</Text> : null}
-        </View>
 
         {/* ── 語音輸入 ── */}
         <View style={styles.card}>

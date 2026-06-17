@@ -1,10 +1,24 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
+import { useState } from "react"
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
+import { apiRequest } from "../lib/api"
+
+const LANG_OPTIONS = [
+  { code: "zh", label: "中文" },
+  { code: "en", label: "English" },
+  { code: "id", label: "Bahasa" },
+  { code: "vi", label: "Tiếng Việt" },
+  { code: "tl", label: "Filipino" },
+  { code: "th", label: "ภาษาไทย" },
+]
+
+const LANG_SHORT = { zh: "中文", en: "EN", id: "ID", vi: "VI", tl: "TL", th: "TH" }
 
 const CAREGIVER_TEXT = {
   zh: {
     kicker: "TakeCare 原生 App",
     dashboardLabel: "看護",
     logout: "登出",
+    langSetting: "語言設定",
     features: [
       { id: "blood-pressure", title: "看護血壓照護", desc: "同步、代輸入與追蹤異常血壓。", special: "blood-pressure" },
       { id: "vision", title: "影像偵測", desc: "查看與新增看護端影像事件。", special: "vision" },
@@ -22,6 +36,7 @@ const CAREGIVER_TEXT = {
     kicker: "TakeCare Native App",
     dashboardLabel: "Caregiver",
     logout: "Logout",
+    langSetting: "Language",
     features: [
       { id: "blood-pressure", title: "Blood Pressure Care", desc: "Sync, input & track abnormal blood pressure.", special: "blood-pressure" },
       { id: "vision", title: "Vision Detection", desc: "View & add caregiver vision events.", special: "vision" },
@@ -39,6 +54,7 @@ const CAREGIVER_TEXT = {
     kicker: "TakeCare Native App",
     dashboardLabel: "Perawat",
     logout: "Keluar",
+    langSetting: "Bahasa",
     features: [
       { id: "blood-pressure", title: "Perawatan Tekanan Darah", desc: "Sinkronkan, input & lacak tekanan darah abnormal.", special: "blood-pressure" },
       { id: "vision", title: "Deteksi Visual", desc: "Lihat & tambah acara visual perawat.", special: "vision" },
@@ -56,6 +72,7 @@ const CAREGIVER_TEXT = {
     kicker: "TakeCare Native App",
     dashboardLabel: "Y Tá",
     logout: "Đăng Xuất",
+    langSetting: "Ngôn Ngữ",
     features: [
       { id: "blood-pressure", title: "Chăm Sóc Huyết Áp", desc: "Đồng bộ, nhập & theo dõi huyết áp bất thường.", special: "blood-pressure" },
       { id: "vision", title: "Phát Hiện Hình Ảnh", desc: "Xem & thêm sự kiện hình ảnh y tá.", special: "vision" },
@@ -73,6 +90,7 @@ const CAREGIVER_TEXT = {
     kicker: "TakeCare Native App",
     dashboardLabel: "Tagapag-alaga",
     logout: "Mag-logout",
+    langSetting: "Wika",
     features: [
       { id: "blood-pressure", title: "Pag-aalaga ng Presyon ng Dugo", desc: "I-sync, mag-input & subaybayan ang abnormal na presyon.", special: "blood-pressure" },
       { id: "vision", title: "Pagtuklas ng Larawan", desc: "Tingnan & magdagdag ng mga visual event ng tagapag-alaga.", special: "vision" },
@@ -90,6 +108,7 @@ const CAREGIVER_TEXT = {
     kicker: "TakeCare Native App",
     dashboardLabel: "ผู้ดูแล",
     logout: "ออกจากระบบ",
+    langSetting: "ภาษา",
     features: [
       { id: "blood-pressure", title: "การดูแลความดันโลหิต", desc: "ซิงค์ ป้อนข้อมูล & ติดตามความดันผิดปกติ", special: "blood-pressure" },
       { id: "vision", title: "การตรวจจับภาพ", desc: "ดู & เพิ่มเหตุการณ์ภาพของผู้ดูแล", special: "vision" },
@@ -136,12 +155,16 @@ export default function RoleHomeScreen({
   role,
   user,
   apiBaseUrl,
+  token,
   uiLang,
+  onUiLangChange,
   onOpenBloodPressure,
   onOpenVision,
   onOpenFeature,
   onLogout
 }) {
+  const [langModalVisible, setLangModalVisible] = useState(false)
+
   const lang = (role === "caregiver" && uiLang) ? uiLang : "zh"
   const caregiverT = CAREGIVER_TEXT[lang] || CAREGIVER_TEXT.zh
 
@@ -156,13 +179,53 @@ export default function RoleHomeScreen({
   const logoutLabel = role === "caregiver" ? caregiverT.logout : "登出"
   const kicker = role === "caregiver" ? caregiverT.kicker : "TakeCare 原生 App"
 
+  const handleLangChange = async (code) => {
+    setLangModalVisible(false)
+    if (onUiLangChange) onUiLangChange(code)
+    try {
+      await apiRequest({ apiBaseUrl, path: "/update-lang", method: "PATCH", token, body: { lang: code } })
+    } catch { /* silent */ }
+  }
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.kicker}>{kicker}</Text>
-        <Text style={styles.title}>{dashboardLabel}工作台</Text>
+        <View style={styles.headerRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.kicker}>{kicker}</Text>
+            <Text style={styles.title}>{dashboardLabel}工作台</Text>
+          </View>
+          <Pressable style={styles.langBtn} onPress={() => setLangModalVisible(true)}>
+            <Text style={styles.langBtnText}>{LANG_SHORT[uiLang] || "中文"}</Text>
+          </Pressable>
+        </View>
         <Text style={styles.subtitle}>{user?.email || "-"} · API {apiBaseUrl}</Text>
       </View>
+
+      <Modal
+        visible={langModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLangModalVisible(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setLangModalVisible(false)}>
+          <View style={styles.langPicker}>
+            <Text style={styles.langPickerTitle}>語言 / Language</Text>
+            {LANG_OPTIONS.map(l => (
+              <Pressable
+                key={l.code}
+                style={[styles.langOption, uiLang === l.code && styles.langOptionActive]}
+                onPress={() => handleLangChange(l.code)}
+              >
+                <Text style={[styles.langOptionText, uiLang === l.code && styles.langOptionTextActive]}>
+                  {l.label}
+                </Text>
+                {uiLang === l.code ? <Text style={styles.langOptionCheck}>✓</Text> : null}
+              </Pressable>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
 
       <View style={styles.grid}>
         {features.map(feature => (
@@ -181,9 +244,11 @@ export default function RoleHomeScreen({
         ))}
       </View>
 
-      <Pressable style={styles.logoutBtn} onPress={onLogout}>
-        <Text style={styles.logoutText}>{logoutLabel}</Text>
-      </Pressable>
+      <View style={styles.bottomSection}>
+        <Pressable style={styles.logoutBtn} onPress={onLogout}>
+          <Text style={styles.logoutText}>{logoutLabel}</Text>
+        </Pressable>
+      </View>
     </ScrollView>
   )
 }
@@ -194,6 +259,41 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff", borderWidth: 1,
     borderColor: "#d8e6ff", borderRadius: 12, padding: 16
   },
+  headerRow: {
+    flexDirection: "row", alignItems: "flex-start"
+  },
+  langBtn: {
+    backgroundColor: "#e8f2ff", borderRadius: 16,
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderWidth: 1, borderColor: "#c0d8f5", marginTop: 2
+  },
+  langBtnText: { color: "#1f74d1", fontWeight: "900", fontSize: 12 },
+  modalBackdrop: {
+    flex: 1, backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "flex-start", alignItems: "flex-end",
+    paddingTop: 80, paddingRight: 16
+  },
+  langPicker: {
+    backgroundColor: "#fff", borderRadius: 14,
+    borderWidth: 1, borderColor: "#d8e6ff",
+    minWidth: 160, overflow: "hidden",
+    shadowColor: "#000", shadowOpacity: 0.12,
+    shadowRadius: 8, elevation: 6
+  },
+  langPickerTitle: {
+    color: "#526b88", fontSize: 11, fontWeight: "800",
+    paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6
+  },
+  langOption: {
+    flexDirection: "row", alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16, paddingVertical: 12,
+    borderTopWidth: 1, borderTopColor: "#f0f5ff"
+  },
+  langOptionActive: { backgroundColor: "#e8f2ff" },
+  langOptionText: { color: "#173e67", fontSize: 14, fontWeight: "700" },
+  langOptionTextActive: { color: "#1f74d1", fontWeight: "900" },
+  langOptionCheck: { color: "#1f74d1", fontWeight: "900", fontSize: 14 },
   kicker: { color: "#1f74d1", fontWeight: "800" },
   title: { marginTop: 6, fontSize: 24, fontWeight: "900", color: "#11355c" },
   subtitle: { marginTop: 6, color: "#526b88", lineHeight: 20 },
@@ -204,8 +304,9 @@ const styles = StyleSheet.create({
   },
   cardTitle: { color: "#173e67", fontSize: 18, fontWeight: "900" },
   cardDesc: { marginTop: 6, color: "#4f6682", lineHeight: 20 },
+  bottomSection: { gap: 10 },
   logoutBtn: {
-    marginTop: 8, borderRadius: 10, borderWidth: 1,
+    borderRadius: 10, borderWidth: 1,
     borderColor: "#c7d8ed", backgroundColor: "#fff",
     paddingVertical: 12, alignItems: "center"
   },

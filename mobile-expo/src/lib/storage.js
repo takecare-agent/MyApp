@@ -4,6 +4,7 @@ const SESSION_KEY = "TAKECARE_EXPO_SESSION_V1"
 const SETTINGS_KEY = "TAKECARE_EXPO_SETTINGS_V1"
 const SOS_PHONE_KEY = "TAKECARE_EXPO_SOS_PHONE_V1"
 const LAST_SOS_EVENT_KEY = "TAKECARE_EXPO_LAST_SOS_EVENT_V1"
+const CHAT_PARTNER_KEY = "TAKECARE_EXPO_CHAT_PARTNER_V1"
 
 function scopedKey(prefix, scope) {
   return `${prefix}:${String(scope || "default").trim() || "default"}`
@@ -55,4 +56,12 @@ export async function saveLastSeenSosEvent(scope, eventId) {
 
 export async function loadLastSeenSosEvent(scope) {
   return (await AsyncStorage.getItem(scopedKey(LAST_SOS_EVENT_KEY, scope))) || ""
+}
+
+export async function saveChatPartner(myEmail, partnerEmail) {
+  await AsyncStorage.setItem(scopedKey(CHAT_PARTNER_KEY, myEmail), String(partnerEmail || "").trim())
+}
+
+export async function loadChatPartner(myEmail) {
+  return (await AsyncStorage.getItem(scopedKey(CHAT_PARTNER_KEY, myEmail))) || ""
 }
