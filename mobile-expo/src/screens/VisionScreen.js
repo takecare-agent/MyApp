@@ -11,7 +11,7 @@ import { WebView } from "react-native-webview"
 import { apiRequest } from "../lib/api"
 
 const HEALTH_POLL_MS = 2000   // 每 2 秒問一次影像服務目前狀態
-const HISTORY_POLL_MS = 8000  // 每 8 秒自動刷新歷史紀錄
+const HISTORY_POLL_MS = 3000  // 每 3 秒自動刷新歷史紀錄（跌倒後較快看到新資料）
 
 // 由 apiBaseUrl 推導影像服務網址（把後端 port 換成影像服務的 8000）
 function toServiceUrl(apiBaseUrl, path) {
@@ -80,9 +80,11 @@ export default function VisionScreen({ role, apiBaseUrl, token, uiLang, onBack }
     { label: t.sevLow, value: "Low" }
   ]
 
-  const loadHistory = useCallback(async () => {
-    setLoading(true)
-    setError("")
+  const loadHistory = useCallback(async (silent = false) => {
+    if (!silent) {
+      setLoading(true)
+      setError("")
+    }
     try {
       const params = new URLSearchParams({ limit: "30" })
       if (severityRef.current !== "all") params.set("severity", severityRef.current)
@@ -93,9 +95,9 @@ export default function VisionScreen({ role, apiBaseUrl, token, uiLang, onBack }
       })
       setRecords(Array.isArray(data.records) ? data.records : [])
     } catch (loadError) {
-      setError(loadError.message)
+      if (!silent) setError(loadError.message)
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [apiBaseUrl, apiPrefix, token])
 
@@ -112,8 +114,8 @@ export default function VisionScreen({ role, apiBaseUrl, token, uiLang, onBack }
         body: { frameTag: "", location: "", description: "" }
       })
       await loadHistory()
-    } catch {
-      // 後端暫時不可用就忽略，下一輪輪詢會再試
+    } catch (logError) {
+      setError(logError.message || "跌倒記錄寫入失敗，請確認後端與影像服務已啟動")
     } finally {
       loggingRef.current = false
     }
@@ -154,7 +156,7 @@ export default function VisionScreen({ role, apiBaseUrl, token, uiLang, onBack }
   }, [loadHistory, severity])
 
   useEffect(() => {
-    const id = setInterval(() => loadHistory(), HISTORY_POLL_MS)
+    const id = setInterval(() => loadHistory(true), HISTORY_POLL_MS)
     return () => clearInterval(id)
   }, [loadHistory])
 

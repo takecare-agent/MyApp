@@ -455,6 +455,14 @@ export default function NativeFeatureScreen({
     loadHistory()
   }, [loadHistory])
 
+  // 異常事件列表：每 5 秒靜默刷新（影像跌倒後需即時顯示）
+  const isAlertsFeature = Boolean(feature?.historyPath?.includes("/alerts/"))
+  useEffect(() => {
+    if (!isAlertsFeature) return undefined
+    const id = setInterval(() => loadHistory(true), 5000)
+    return () => clearInterval(id)
+  }, [isAlertsFeature, loadHistory])
+
   useEffect(() => {
     let mounted = true
     if (!isSosFeature) return undefined
