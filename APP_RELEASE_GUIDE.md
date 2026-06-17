@@ -253,7 +253,9 @@ Set-ExecutionPolicy -Scope Process Bypass
 1. **Xcode Command Line Tools**：`xcode-select --install`
 2. **nvm + Node 20.20.2**
 3. **Android Studio**（含 SDK、Emulator）
-4. **Python 3.10~3.12**（可用系統 python3 或 pyenv）
+4. **Python 3.10~3.12**（不要用 macOS 內建 `python3.9`）
+   - 建議：`brew install python@3.11`
+   - 檢查：`python3.11 --version`
 5. **JDK 17**（建議 Azul Zulu 17）
 
 安裝後檢查：
@@ -341,6 +343,25 @@ adb reverse tcp:8081 tcp:8081
 ## M-3. App 登入與測試
 
 同 Windows 的 W-3（帳號、API URL、影像頁、SOS 測試）。
+
+## M-4. macOS 常見錯誤
+
+| 錯誤 | 原因 | 解法 |
+|---|---|---|
+| `SyntaxError: match self.layout`（裝 jax 時） | `.venv` 用了 **Python 3.9** | 刪 `.venv`，用 `python3.11` 重建（見下方） |
+| `No module named 'mediapipe'` | 上一步 pip 裝到一半失敗 | 刪 `.venv` 後重跑 `bash setup-mac.sh` |
+
+macOS 一鍵重裝（建議）：
+
+```bash
+cd ~/Desktop/MyApp-main/vision-runtime
+rm -rf .venv
+bash setup-mac.sh
+source .venv/bin/activate
+python vision_api_server.py
+```
+
+若 `setup-mac.sh` 說找不到 Python，先執行：`brew install python@3.11`
 
 ---
 
