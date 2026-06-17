@@ -1,25 +1,64 @@
-# React Native CLI 手機測試指南
+# TakeCare App 測試指南（vision-integration）
 
-> 分支：`vision-integration`
+> **請抓分支 `vision-integration`，不要抓 `main`。**
 >
-> 本分支已包含影像辨識執行包 `vision-runtime/`。
-> 組員只要 clone 這個 repo（不用另外下載 Fall_Detection_Lab），即可測試 App + 跌倒偵測。
+> 本分支已包含影像辨識執行包 `vision-runtime/`。  
+> clone 這個 repo 後，依作業系統照下方 **Windows** 或 **macOS** 指引操作，即可測試 App + 跌倒偵測。
 
-## 快速啟動（四個服務）
+---
 
-請開 4 個終端機分頁。路徑請確認在 repo 根目錄（裡面要有 `backend/`、`mobile-expo/`、`vision-runtime/` 三個資料夾）。
-
-### 1) 後端 (5000) — 所有平台相同
+## 0. 共同前置
 
 ```bash
+git clone https://github.com/takecare-agent/MyApp.git
+cd MyApp
+git checkout vision-integration
+```
+
+確認 repo 根目錄有這三個資料夾：`backend/`、`mobile-expo/`、`vision-runtime/`。
+
+### 環境需求
+
+| 項目 | Windows | macOS |
+|---|---|---|
+| Node.js | **20.20.2**（建議用 nvm） | **20.20.2**（建議用 nvm） |
+| Android | Android Studio + SDK + 模擬器 | Android Studio + SDK + 模擬器 |
+| Python（影像辨識） | **3.10 ~ 3.12，64-bit** | **3.10 ~ 3.12** |
+| 終端機 | **PowerShell** | Terminal（zsh/bash） |
+
+### 後端設定（兩平台相同）
+
+`backend/.env` 需有：
+
+```env
+VISION_MODEL_ENDPOINT=http://localhost:8000/detect
+```
+
+### App 測試帳號
+
+| 角色 | Email | 長輩 Email |
+|---|---|---|
+| 受顧者 | `patient@test.com` | 留空 |
+| 看護 | `caregiver@test.com` | `patient@test.com` |
+| 家屬 | `family@test.com` | `patient@test.com` |
+
+Android 模擬器 API Base URL：`http://10.0.2.2:5000`
+
+---
+
+## A. Windows 完整啟動（4 個 PowerShell 分頁）
+
+### 分頁 1 — 後端 (5000)
+
+```powershell
 cd backend
 npm install
 npm run dev
 ```
 
-### 2) 影像辨識 (8000) — 請依作業系統選擇
+看到 `Backend running on http://localhost:5000` 即成功。
 
-#### Windows（PowerShell）⚠️ 不要用 `source`
+### 分頁 2 — 影像辨識 (8000)
 
 ```powershell
 cd vision-runtime
@@ -28,7 +67,47 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\start-windows.ps1
 ```
 
-#### macOS / Linux
+看到 `http://localhost:8000/detect` 即成功。
+
+> ⚠️ **不要用** `source .venv/bin/activate`（那是 macOS/Linux 指令）。
+
+### 分頁 3 — Metro (8081)
+
+```powershell
+cd mobile-expo
+npm install
+npm run start
+```
+
+### 分頁 4 — Android App
+
+```powershell
+cd mobile-expo
+npm run android
+```
+
+若出現紅色 `Unable to load script`：
+
+```powershell
+adb reverse tcp:8081 tcp:8081
+```
+
+然後在模擬器按 **R 兩下** 重載。
+
+---
+
+## B. macOS 完整啟動（4 個 Terminal 分頁）
+
+### 分頁 1 — 後端 (5000)
+
+```bash
+cd backend
+source ~/.nvm/nvm.sh && nvm use 20.20.2
+npm install
+npm run dev
+```
+
+### 分頁 2 — 影像辨識 (8000)
 
 ```bash
 cd vision-runtime
@@ -37,157 +116,140 @@ source .venv/bin/activate
 python vision_api_server.py
 ```
 
-### 3) Metro (8081)
+### 分頁 3 — Metro (8081)
 
 ```bash
 cd mobile-expo
+source ~/.nvm/nvm.sh && nvm use 20.20.2
 npm install
 npm run start
 ```
 
-### 4) Android App
+### 分頁 4 — Android App
 
 ```bash
 cd mobile-expo
+source ~/.nvm/nvm.sh && nvm use 20.20.2
 npm run android
 ```
 
-如果 Android 出現連不到 Metro：
+若出現紅色 `Unable to load script`：
 
 ```bash
 adb reverse tcp:8081 tcp:8081
 ```
 
-## 必要設定（影像辨識）
+然後在模擬器按 **R 兩下** 重載。
 
-`backend/.env` 需有：
+攝影機不是外接鏡頭時：
 
-```env
-VISION_MODEL_ENDPOINT=http://localhost:8000/detect
+```bash
+CAM_INDEX=1 python vision_api_server.py
 ```
 
-若未啟動 `vision-runtime`，後端會 fallback 到 mock 影像資料，App 仍可跑，但不是即時真模型。
+---
 
-## App 測試帳號（建議）
+## C. Windows 組員錯誤排解（照截圖情境）
 
-- 受顧者：`patient@test.com`
-- 看護：`caregiver@test.com`（長輩 Email 填 `patient@test.com`）
-- 家屬：`family@test.com`（長輩 Email 填 `patient@test.com`）
-- Android 模擬器 API Base URL：`http://10.0.2.2:5000`
+若出現以下錯誤，請依序處理：
 
-## Windows 影像辨識常見錯誤（必讀）
+### 錯誤 1：`source .venv/bin/activate` 無效
 
-| 錯誤訊息 | 原因 | 解法 |
-|---|---|---|
-| `source .venv/bin/activate` 無效 | 這是 macOS/Linux 指令 | 改用 `.\setup-windows.ps1` |
-| `No matching distribution found for tensorflow==2.16.2` | Python 版本不對（常見 3.13）或 32-bit | 安裝 **Python 3.12 64-bit**，再跑 `setup-windows.ps1` |
-| `Defaulting to user installation...` | 虛擬環境沒啟動成功 | 先 `.\.venv\Scripts\Activate.ps1` 再 pip |
-| `ModuleNotFoundError: No module named 'cv2'` | 上一步 pip 安裝失敗 | 修好 Python 版本後重跑 `setup-windows.ps1` |
-
-檢查 Python 版本（在 vision-runtime 內）：
+**原因**：用了 macOS/Linux 指令。  
+**解法**：刪掉舊 venv，改用 Windows 腳本：
 
 ```powershell
-python -c "import sys; print(sys.version)"
+cd vision-runtime
+Remove-Item -Recurse -Force .venv -ErrorAction SilentlyContinue
+Set-ExecutionPolicy -Scope Process Bypass
+.\setup-windows.ps1
 ```
 
-必須是 **3.10 / 3.11 / 3.12**，且 64-bit。
+### 錯誤 2：`No matching distribution found for tensorflow==2.16.2`
 
-攝影機不通時：
+**原因**：Python 版本不支援（常見 **3.13**）或 **32-bit Python**。  
+**解法**：
+
+1. 安裝 Python 3.12（64-bit）：https://www.python.org/downloads/
+2. 安裝時勾選 **Add python.exe to PATH**
+3. 確認版本：
 
 ```powershell
+py -3.12 -c "import sys; print(sys.version)"
+```
+
+3.10 / 3.11 / 3.12 都可以，**不要用 3.13**。
+
+4. 重新安裝：
+
+```powershell
+cd vision-runtime
+Remove-Item -Recurse -Force .venv -ErrorAction SilentlyContinue
+Set-ExecutionPolicy -Scope Process Bypass
+.\setup-windows.ps1
+```
+
+### 錯誤 3：`Defaulting to user installation because normal site-packages is not writeable`
+
+**原因**：虛擬環境沒啟動，pip 裝到全域。  
+**解法**：
+
+```powershell
+cd vision-runtime
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### 錯誤 4：`ModuleNotFoundError: No module named 'cv2'`
+
+**原因**：上一步 `pip install` 失敗，opencv 沒裝到。  
+**解法**：先修好 Python 版本與 venv（錯誤 2、3），再重跑 `setup-windows.ps1`，最後：
+
+```powershell
+.\start-windows.ps1
+```
+
+### Windows 攝影機找不到
+
+```powershell
+cd vision-runtime
+.\.venv\Scripts\Activate.ps1
 python list_cameras.py
 $env:CAM_INDEX=1; python vision_api_server.py
 ```
 
-這個版本是給 Android / iOS 原生 React Native CLI 專案使用，不使用 managed workflow。Android 血壓同步會使用 Health Connect 原生套件。
+---
 
-## 專案結構
+## D. 功能確認清單
 
-1. 後端：`backend`
-2. 手機前端：`mobile-expo`
-3. Web 前端：`frontend`
+- [ ] 後端 5000 正常（`npm run dev`）
+- [ ] 影像 8000 正常（`/health` 有回應）
+- [ ] Metro 8081 正常（App 不紅屏）
+- [ ] App 登入成功（三角色）
+- [ ] 影像頁有串流畫面 + 狀態橫幅
+- [ ] 受顧者 SOS → 看護/家屬 SOS 列表可看到
 
-## 主要套件
+> 若沒跑 `vision-runtime`，App 仍可用，但影像會走 mock 假資料，不是真模型。
 
-1. `react`: `19.1.0`
-2. `react-native`: `0.81.5`
-3. `@react-native-async-storage/async-storage`: `2.2.0`
-4. `react-native-vector-icons`: `^10.3.0`
-5. `react-native-health-connect`: `^3.5.3`
+---
 
-## 1. 安裝手機原生依賴
+## 附錄：專案結構與其他功能
 
-在 `mobile-expo` 執行：
+| 路徑 | 用途 |
+|---|---|
+| `backend/` | Node.js API（5000） |
+| `mobile-expo/` | React Native App |
+| `vision-runtime/` | 跌倒偵測影像服務（8000） |
+| `frontend/` | Web 前端（可選） |
 
-```bash
-npm install react-native-vector-icons
-npm install react-native-health-connect
-npm install --save-dev @react-native/metro-config@0.81.5 @react-native/babel-preset@0.81.5 @react-native-community/cli@20.0.0 @react-native-community/cli-platform-android@20.0.0 @react-native-community/cli-platform-ios@20.0.0
-```
+### Android Health Connect 血壓同步（實機）
 
-如果已經套用本次修改，也可以直接執行：
+1. 手機需 Android + Health Connect。
+2. 先讓血壓計 App 同步資料到 Health Connect。
+3. App 登入 `patient` 或 `caregiver`，進血壓照護按「從 Health Connect 同步」。
+4. `family` 角色只能監看，不能直接同步。
 
-```bash
-npm install
-```
+### 測試登入 API
 
-## 2. 啟動後端
-
-在 `backend` 執行：
-
-```bash
-npm install
-npm run dev
-```
-
-## 3. 啟動手機 App
-
-在 `mobile-expo` 執行 Metro：
-
-```bash
-npm run start
-```
-
-另開一個終端機執行 Android：
-
-```bash
-npm run android
-```
-
-iOS 需要在 macOS 與 CocoaPods 環境下執行：
-
-```bash
-npm run ios
-```
-
-## 4. 手機登入設定
-
-App 會要求輸入：
-
-1. `API Base URL`：例如 `http://192.168.1.25:5000`
-2. `Email`
-3. `Role`：`patient` / `family` / `caregiver`
-
-實體手機不要使用 `localhost`，請改用電腦的 LAN IP。
-
-## 5. 測試登入 API
-
-手機測試登入會呼叫：
-
-`POST /mobile/dev-login`
-
-後端會建立或更新測試使用者，並回傳 JWT token 給手機 App 使用。
-
-## 6. Android Health Connect 血壓同步
-
-實機同步流程：
-
-1. 手機需為 Android，且已安裝/啟用 Health Connect。
-2. 先讓 OMRON 或血壓計 App 將血壓資料同步到 Health Connect。
-3. 開啟本 App，登入並選擇 `patient` 或 `caregiver`。
-4. 進入血壓照護功能，按「從 Health Connect 同步」。
-5. 第一次會跳出 Health Connect 權限頁，請允許血壓與心率讀取。
-6. App 會讀取近 30 天血壓資料，並用 HeartRate 資料補脈搏。
-7. 後端會用 `syncKey` 去重，只匯入缺少的紀錄；重複紀錄不會反覆新增。
-
-注意：`family` 角色是監看模式，不能直接同步或新增血壓資料。家屬端會查看已綁定長輩的同步結果。
+`POST /mobile/dev-login` — 後端建立/更新測試使用者並回傳 JWT。
