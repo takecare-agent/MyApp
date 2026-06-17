@@ -1,10 +1,20 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 
+const LANG_OPTIONS = [
+  { code: "zh", label: "中文" },
+  { code: "en", label: "English" },
+  { code: "id", label: "Bahasa" },
+  { code: "vi", label: "Tiếng Việt" },
+  { code: "tl", label: "Filipino" },
+  { code: "th", label: "ภาษาไทย" }
+]
+
 const CAREGIVER_TEXT = {
   zh: {
     kicker: "TakeCare 原生 App",
     dashboardLabel: "看護",
     logout: "登出",
+    langSetting: "語言設定",
     features: [
       { id: "blood-pressure", title: "看護血壓照護", desc: "同步、代輸入與追蹤異常血壓。", special: "blood-pressure" },
       { id: "vision", title: "影像偵測", desc: "查看與新增看護端影像事件。", special: "vision" },
@@ -22,6 +32,7 @@ const CAREGIVER_TEXT = {
     kicker: "TakeCare Native App",
     dashboardLabel: "Caregiver",
     logout: "Logout",
+    langSetting: "Language",
     features: [
       { id: "blood-pressure", title: "Blood Pressure Care", desc: "Sync, input & track abnormal blood pressure.", special: "blood-pressure" },
       { id: "vision", title: "Vision Detection", desc: "View & add caregiver vision events.", special: "vision" },
@@ -39,6 +50,7 @@ const CAREGIVER_TEXT = {
     kicker: "TakeCare Native App",
     dashboardLabel: "Perawat",
     logout: "Keluar",
+    langSetting: "Bahasa",
     features: [
       { id: "blood-pressure", title: "Perawatan Tekanan Darah", desc: "Sinkronkan, input & lacak tekanan darah abnormal.", special: "blood-pressure" },
       { id: "vision", title: "Deteksi Visual", desc: "Lihat & tambah acara visual perawat.", special: "vision" },
@@ -56,6 +68,7 @@ const CAREGIVER_TEXT = {
     kicker: "TakeCare Native App",
     dashboardLabel: "Y Tá",
     logout: "Đăng Xuất",
+    langSetting: "Ngôn Ngữ",
     features: [
       { id: "blood-pressure", title: "Chăm Sóc Huyết Áp", desc: "Đồng bộ, nhập & theo dõi huyết áp bất thường.", special: "blood-pressure" },
       { id: "vision", title: "Phát Hiện Hình Ảnh", desc: "Xem & thêm sự kiện hình ảnh y tá.", special: "vision" },
@@ -73,6 +86,7 @@ const CAREGIVER_TEXT = {
     kicker: "TakeCare Native App",
     dashboardLabel: "Tagapag-alaga",
     logout: "Mag-logout",
+    langSetting: "Wika",
     features: [
       { id: "blood-pressure", title: "Pag-aalaga ng Presyon ng Dugo", desc: "I-sync, mag-input & subaybayan ang abnormal na presyon.", special: "blood-pressure" },
       { id: "vision", title: "Pagtuklas ng Larawan", desc: "Tingnan & magdagdag ng mga visual event ng tagapag-alaga.", special: "vision" },
@@ -90,6 +104,7 @@ const CAREGIVER_TEXT = {
     kicker: "TakeCare Native App",
     dashboardLabel: "ผู้ดูแล",
     logout: "ออกจากระบบ",
+    langSetting: "ภาษา",
     features: [
       { id: "blood-pressure", title: "การดูแลความดันโลหิต", desc: "ซิงค์ ป้อนข้อมูล & ติดตามความดันผิดปกติ", special: "blood-pressure" },
       { id: "vision", title: "การตรวจจับภาพ", desc: "ดู & เพิ่มเหตุการณ์ภาพของผู้ดูแล", special: "vision" },
@@ -137,6 +152,7 @@ export default function RoleHomeScreen({
   user,
   apiBaseUrl,
   uiLang,
+  onUiLangChange,
   onOpenBloodPressure,
   onOpenVision,
   onOpenFeature,
@@ -181,9 +197,30 @@ export default function RoleHomeScreen({
         ))}
       </View>
 
-      <Pressable style={styles.logoutBtn} onPress={onLogout}>
-        <Text style={styles.logoutText}>{logoutLabel}</Text>
-      </Pressable>
+      <View style={styles.bottomSection}>
+        {role === "caregiver" && onUiLangChange ? (
+          <View style={styles.langCard}>
+            <Text style={styles.langLabel}>{caregiverT.langSetting || "語言設定"}</Text>
+            <View style={styles.chipRow}>
+              {LANG_OPTIONS.map(l => (
+                <Pressable
+                  key={l.code}
+                  style={[styles.chip, lang === l.code && styles.chipActive]}
+                  onPress={() => onUiLangChange(l.code)}
+                >
+                  <Text style={[styles.chipText, lang === l.code && styles.chipTextActive]}>
+                    {l.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        ) : null}
+
+        <Pressable style={styles.logoutBtn} onPress={onLogout}>
+          <Text style={styles.logoutText}>{logoutLabel}</Text>
+        </Pressable>
+      </View>
     </ScrollView>
   )
 }
@@ -204,8 +241,22 @@ const styles = StyleSheet.create({
   },
   cardTitle: { color: "#173e67", fontSize: 18, fontWeight: "900" },
   cardDesc: { marginTop: 6, color: "#4f6682", lineHeight: 20 },
+  bottomSection: { gap: 10 },
+  langCard: {
+    backgroundColor: "#fff", borderWidth: 1,
+    borderColor: "#d8e6ff", borderRadius: 12, padding: 14, gap: 10
+  },
+  langLabel: { color: "#526b88", fontWeight: "800", fontSize: 13 },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chip: {
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 20, borderWidth: 1, borderColor: "#c7d8ed", backgroundColor: "#f2f7ff"
+  },
+  chipActive: { backgroundColor: "#1f74d1", borderColor: "#1f74d1" },
+  chipText: { color: "#526b88", fontWeight: "700", fontSize: 13 },
+  chipTextActive: { color: "#fff" },
   logoutBtn: {
-    marginTop: 8, borderRadius: 10, borderWidth: 1,
+    borderRadius: 10, borderWidth: 1,
     borderColor: "#c7d8ed", backgroundColor: "#fff",
     paddingVertical: 12, alignItems: "center"
   },
