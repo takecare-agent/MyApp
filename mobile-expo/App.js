@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Linking,
   Modal,
+  NativeModules,
   Pressable,
   SafeAreaView,
   StatusBar,
@@ -30,8 +31,17 @@ import {
   saveSettings
 } from "./src/lib/storage"
 import { apiRequest } from "./src/lib/api"
+import {
+  onFamilyPushTokenRefresh,
+  registerFamilyPushToken
+} from "./src/lib/pushNotifications"
 
-const DEFAULT_API_BASE_URL = "http://192.168.1.100:5000"
+const LEGACY_API_BASE_URLS = [
+  "http://192.168.1.100:5000",
+  "http://localhost:5000",
+  "http://127.0.0.1:5000"
+]
+const DEFAULT_API_BASE_URL = "http://192.168.0.10:5000"
 const FAMILY_SOS_SCOPE = "family"
 const EMERGENCY_VIBRATION = [0, 900, 250, 900, 250, 1400]
 
@@ -68,6 +78,11 @@ function startEmergencyVibration() {
   } catch {
     // Missing Android VIBRATE permission should not crash the app.
   }
+  try {
+    NativeModules.EmergencySound?.start?.()
+  } catch {
+    // Emergency sound is Android-only and optional in development builds.
+  }
 }
 
 function stopEmergencyVibration() {
@@ -76,6 +91,11 @@ function stopEmergencyVibration() {
   } catch {
     // Some Android versions throw if the installed APK lacks VIBRATE.
   }
+  try {
+    NativeModules.EmergencySound?.stop?.()
+  } catch {
+    // Ignore missing native sound module.
+  }
 }
 
 function trimTrailingSlash(value) {
@@ -83,7 +103,10 @@ function trimTrailingSlash(value) {
 }
 
 function normalizeSettings(rawSettings) {
-  const apiBaseUrl = trimTrailingSlash(rawSettings?.apiBaseUrl || DEFAULT_API_BASE_URL)
+  const requestedApiBaseUrl = trimTrailingSlash(rawSettings?.apiBaseUrl || DEFAULT_API_BASE_URL)
+  const apiBaseUrl = LEGACY_API_BASE_URLS.includes(requestedApiBaseUrl)
+    ? DEFAULT_API_BASE_URL
+    : requestedApiBaseUrl
   const uiLang = rawSettings?.uiLang || "zh"
   return { apiBaseUrl, uiLang }
 }
@@ -127,10 +150,12 @@ export default function App() {
         setUiLang(mergedSettings.uiLang)
 
         if (savedSession?.token) {
+          const sessionApiBaseUrl = trimTrailingSlash(savedSession.apiBaseUrl || "")
           setSession({
             ...savedSession,
-            apiBaseUrl:
-              savedSession.apiBaseUrl || mergedSettings.apiBaseUrl
+            apiBaseUrl: LEGACY_API_BASE_URLS.includes(sessionApiBaseUrl)
+              ? mergedSettings.apiBaseUrl
+              : sessionApiBaseUrl || mergedSettings.apiBaseUrl
           })
           setActiveScreen("home")
         } else {
@@ -241,6 +266,20 @@ export default function App() {
       stopEmergencyVibration()
     }
   }, [familySosReady, lastFamilySosId, session?.apiBaseUrl, session?.role, session?.token])
+
+  useEffect(() => {
+    if (session?.role !== "family" || !session?.token || !session?.apiBaseUrl) return undefined
+
+    registerFamilyPushToken({
+      apiBaseUrl: session.apiBaseUrl,
+      token: session.token
+    })
+
+    return onFamilyPushTokenRefresh({
+      apiBaseUrl: session.apiBaseUrl,
+      token: session.token
+    })
+  }, [session?.apiBaseUrl, session?.role, session?.token])
 
   const handleOpenFeature = feature => {
     setActiveFeature(feature)
