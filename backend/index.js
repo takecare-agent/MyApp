@@ -520,6 +520,7 @@ function normalizeLimit(value, fallback = 10, max = 50) {
 function createSosEventId() { return `SOS-${Date.now()}-${Math.floor(100 + Math.random() * 900)}` }
 function createAbnormalEventId() { return `AB-${Date.now()}-${Math.floor(100 + Math.random() * 900)}` }
 function createReminderId() { return `RM-${Date.now()}-${Math.floor(100 + Math.random() * 900)}` }
+const SOS_NOTIFICATION_CHANNEL_ID = "sos_emergency"
 
 async function notifyFamilySos(record) {
   if (!getApps().length || !record) return
@@ -539,11 +540,12 @@ async function notifyFamilySos(record) {
   if (!tokens.length) return
 
   const location = String(record.locationLabel || "").trim()
+  const patientName = record.patientName || "受顧者"
   const response = await getMessaging().sendEachForMulticast({
     tokens,
     notification: {
       title: "緊急 SOS 求救",
-      body: `${record.patientName || "受顧者"} 發出緊急求救${location ? `，位置：${location}` : ""}`
+      body: `${patientName} 發出緊急求救${location ? `，位置：${location}` : ""}`
     },
     data: {
       type: "sos",
@@ -556,7 +558,9 @@ async function notifyFamilySos(record) {
     },
     android: {
       priority: "high",
+      ttl: 60 * 1000,
       notification: {
+        channelId: SOS_NOTIFICATION_CHANNEL_ID,
         sound: "default",
         priority: "max",
         visibility: "public",

@@ -3,19 +3,18 @@ apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 apply from: file("../../node_modules/react-native-vector-icons/fonts.gradle")
 def googleServicesFile = file("google-services.json")
-def googleServicesPackage = ""
+def googleServicesPackages = []
 if (googleServicesFile.exists()) {
-    googleServicesPackage = new groovy.json.JsonSlurper()
+    googleServicesPackages = new groovy.json.JsonSlurper()
         .parse(googleServicesFile)
-        ?.client?.getAt(0)
-        ?.client_info
-        ?.android_client_info
-        ?.package_name ?: ""
+        ?.client
+        ?.collect { it?.client_info?.android_client_info?.package_name }
+        ?.findAll { it } ?: []
 }
-if (googleServicesPackage == "com.takecaremobile") {
+if (googleServicesPackages.contains("com.takecaremobile")) {
     apply plugin: "com.google.gms.google-services"
 } else if (googleServicesFile.exists()) {
-    println("Skipping Google Services plugin: google-services.json package ${googleServicesPackage} does not match com.takecaremobile")
+    println("Skipping Google Services plugin: google-services.json packages ${googleServicesPackages} do not include com.takecaremobile")
 }
 
 /**
