@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   ActivityIndicator,
   Linking,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -20,7 +21,7 @@ const PULSE_MATCH_WINDOW_MS = 15 * 60 * 1000
 const UNMARKED_MOOD = "未標記"
 const MOOD_OPTIONS = [
   { value: "平靜", emoji: "🙂" },
-  { value: "疲倦", emoji: "😌" },
+  { value: "開心", emoji: "😄" },
   { value: "焦慮", emoji: "😟" },
   { value: "頭暈", emoji: "😵" }
 ]
@@ -38,7 +39,7 @@ const UI_TEXT = {
     currentBP: "目前照護血壓", nextStepLabel: "看護下一步",
     nextCritical: "立即確認長輩症狀，必要時聯絡家屬並協助就醫。",
     nextDanger: "請安排長輩休息 5 分鐘後複測，並在照護紀錄中註記。",
-    nextWarning: "持續追蹤今日血壓，留意頭暈、疲倦或焦慮狀態。",
+    nextWarning: "持續追蹤今日血壓，留意頭暈或焦慮狀態。",
     nextStable: "目前狀態穩定，維持例行量測與同步。",
     nextNoData: "尚無血壓資料，請先同步或手動新增第一筆紀錄。",
     dailyTasksTitle: "今日照護任務", completed: "已完成",
@@ -830,6 +831,10 @@ function getMoodEmoji(mood) {
   return MOOD_OPTIONS.find(item => item.value === mood)?.emoji || "🙂"
 }
 
+function normalizeDisplayMood(mood) {
+  return mood === "疲倦" ? "開心" : mood
+}
+
 function isMarkedMood(mood) {
   return Boolean(mood && mood !== UNMARKED_MOOD)
 }
@@ -852,7 +857,7 @@ function normalizeRecord(record) {
     pulse,
     measuredAt,
     dateKey: toDateKey(measuredAt),
-    mood: record?.mood || UNMARKED_MOOD,
+    mood: normalizeDisplayMood(record?.mood || UNMARKED_MOOD),
     computedLevel: status.level,
     status
   }
@@ -1081,7 +1086,7 @@ function sortRecordsAbnormalFirst(records) {
 const CHART_MIN = 40
 const CHART_MAX = 200
 const MINI_CHART_HEIGHT = 116
-const MINI_CHART_LABEL_SPACE = 40
+const MINI_CHART_LABEL_SPACE = 34
 const LONG_CHART_HEIGHT = 148
 const LONG_CHART_LABEL_SPACE = 40
 
@@ -1094,6 +1099,10 @@ function toChartLineBottom(value, chartHeight, labelSpace) {
   return labelSpace + toChartHeight(value, chartHeight)
 }
 
+function toChartLimitBottom(value, chartHeight) {
+  return toChartHeight(value, chartHeight)
+}
+
 function MiniTrendChart({ summaries, t }) {
   if (!summaries.length) {
     return <Text style={styles.emptyText}>{t ? t.noMiniTrendData : "\u5c1a\u7121\u8840\u58d3\u8da8\u52e2\u8cc7\u6599"}</Text>
@@ -1101,26 +1110,75 @@ function MiniTrendChart({ summaries, t }) {
 
   return (
     <View style={styles.miniChart}>
-      <View style={[styles.limitLine, { bottom: toChartLineBottom(130, MINI_CHART_HEIGHT, MINI_CHART_LABEL_SPACE) }]} />
-      <View
-        style={[
-          styles.limitLine,
-          {
-            bottom: toChartLineBottom(80, MINI_CHART_HEIGHT, MINI_CHART_LABEL_SPACE),
-            borderColor: "#17a36b"
-          }
-        ]}
-      />
-      {summaries.map(day => {
-        const sysHeight = toChartHeight(day.avgSys, MINI_CHART_HEIGHT)
-        const diaHeight = toChartHeight(day.avgDia, MINI_CHART_HEIGHT)
+      <View pointerEvents="none" style={styles.miniChartPlot}>
+        <View style={[styles.limitLine, { bottom: toChartLineBottom(130, MINI_CHART_HEIGHT, MINI_CHART_LABEL_SPACE) }]} />
+        <View
+          style={[
+            styles.limitLine,
+            {
+              bottom: toChartLineBottom(80, MINI_CHART_HEIGHT, MINI_CHART_LABEL_SPACE),
+              borderColor: "#17a36b"
+            }
+          ]}
+        />
+      </View>
+      {summaries.map((day, index) => {
+        const next = summaries[index + 1]
+        const sysBottom = toChartLineBottom(day.avgSys, MINI_CHART_HEIGHT, MINI_CHART_LABEL_SPACE)
+        const diaBottom = toChartLineBottom(day.avgDia, MINI_CHART_HEIGHT, MINI_CHART_LABEL_SPACE)
+        const nextSysBottom = next ? toChartLineBottom(next.avgSys, MINI_CHART_HEIGHT, MINI_CHART_LABEL_SPACE) : sysBottom
+        const nextDiaBottom = next ? toChartLineBottom(next.avgDia, MINI_CHART_HEIGHT, MINI_CHART_LABEL_SPACE) : diaBottom
+        const sysAngle = next ? Math.atan2(sysBottom - nextSysBottom, 34) : 0
+        const diaAngle = next ? Math.atan2(diaBottom - nextDiaBottom, 34) : 0
         return (
           <View key={day.dateKey} style={styles.chartDay}>
-            <View style={styles.chartBars}>
-              <View style={[styles.sysBar, { height: sysHeight }]} />
-              <View style={[styles.diaBar, { height: diaHeight }]} />
-            </View>
-            <Text style={styles.chartValue}>{day.avgSys}/{day.avgDia}</Text>
+            {next ? (
+              <>
+                <View
+                  style={[
+                    styles.miniLineSegment,
+                    styles.miniLineSegmentSys,
+                    { bottom: sysBottom, transform: [{ rotate: `${sysAngle}rad` }] }
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.miniLineSegment,
+                    styles.miniLineSegmentDia,
+                    { bottom: diaBottom, transform: [{ rotate: `${diaAngle}rad` }] }
+                  ]}
+                />
+              </>
+            ) : null}
+            <Text
+              style={[
+                styles.chartValue,
+                { bottom: Math.min(sysBottom + 8, MINI_CHART_LABEL_SPACE + MINI_CHART_HEIGHT + 8) }
+              ]}
+            >
+              <Text style={[styles.chartValueSys, day.status.isAbnormal && { color: day.status.color }]}>
+                {day.avgSys}
+              </Text>
+              <Text style={styles.chartValueSlash}>/</Text>
+              <Text style={[styles.chartValueDia, day.status.isAbnormal && { color: day.status.color }]}>
+                {day.avgDia}
+              </Text>
+            </Text>
+            <View
+              style={[
+                styles.miniLinePoint,
+                styles.miniLinePointSys,
+                day.status.isAbnormal && { backgroundColor: day.status.color },
+                { bottom: sysBottom }
+              ]}
+            />
+            <View
+              style={[
+                styles.miniLinePoint,
+                styles.miniLinePointDia,
+                { bottom: diaBottom }
+              ]}
+            />
             <Text style={styles.chartLabel}>{day.label}</Text>
           </View>
         )
@@ -1129,7 +1187,7 @@ function MiniTrendChart({ summaries, t }) {
   )
 }
 
-function LongTrendChart({ summaries, t }) {
+function LongTrendChart({ summaries, t, onSelectPoint }) {
   if (!summaries.length) {
     return <Text style={styles.emptyText}>{t ? t.noLongTrendData : "\u5c1a\u7121\u9577\u671f\u8da8\u52e2\u8cc7\u6599"}</Text>
   }
@@ -1137,7 +1195,7 @@ function LongTrendChart({ summaries, t }) {
   return (
     <View style={styles.longChartFrame}>
       <Text style={styles.chartAxisTag}>mmHg</Text>
-      <View style={styles.longChart}>
+      <View style={styles.lineChart}>
         <View style={[styles.limitLine, { bottom: toChartLineBottom(130, LONG_CHART_HEIGHT, LONG_CHART_LABEL_SPACE) }]} />
         <View
           style={[
@@ -1148,16 +1206,54 @@ function LongTrendChart({ summaries, t }) {
             }
           ]}
         />
-        {summaries.map(day => {
-          const sysHeight = toChartHeight(day.avgSys, LONG_CHART_HEIGHT)
-          const diaHeight = toChartHeight(day.avgDia, LONG_CHART_HEIGHT)
+        {summaries.map((day, index) => {
+          const next = summaries[index + 1]
+          const sysBottom = toChartLineBottom(day.avgSys, LONG_CHART_HEIGHT, LONG_CHART_LABEL_SPACE)
+          const diaBottom = toChartLineBottom(day.avgDia, LONG_CHART_HEIGHT, LONG_CHART_LABEL_SPACE)
+          const nextSysBottom = next ? toChartLineBottom(next.avgSys, LONG_CHART_HEIGHT, LONG_CHART_LABEL_SPACE) : sysBottom
+          const nextDiaBottom = next ? toChartLineBottom(next.avgDia, LONG_CHART_HEIGHT, LONG_CHART_LABEL_SPACE) : diaBottom
+          const sysAngle = next ? Math.atan2(sysBottom - nextSysBottom, 34) : 0
+          const diaAngle = next ? Math.atan2(diaBottom - nextDiaBottom, 34) : 0
+          const fireBottom = Math.min(sysBottom + 46, LONG_CHART_LABEL_SPACE + LONG_CHART_HEIGHT + 18)
           return (
-            <View key={day.dateKey} style={styles.longChartDay}>
-              <View style={styles.longChartBars}>
-                <View style={[styles.longSysBar, { height: sysHeight }]} />
-                <View style={[styles.longDiaBar, { height: diaHeight }]} />
-              </View>
-              <Text style={styles.chartLabel}>{day.label}</Text>
+            <View key={day.dateKey} style={styles.lineChartDay}>
+              {next ? (
+                <>
+                  <View
+                    style={[
+                      styles.lineSegment,
+                      styles.lineSegmentSys,
+                      { bottom: sysBottom, transform: [{ rotate: `${sysAngle}rad` }] }
+                    ]}
+                  />
+                  <View
+                    style={[
+                      styles.lineSegment,
+                      styles.lineSegmentDia,
+                      { bottom: diaBottom, transform: [{ rotate: `${diaAngle}rad` }] }
+                    ]}
+                  />
+                </>
+              ) : null}
+              {day.status.isAbnormal ? (
+                <Pressable
+                  style={[styles.fireMarker, { bottom: fireBottom }]}
+                  onPress={() => onSelectPoint?.(day)}
+                >
+                  <Text style={styles.fireMarkerText}>🔥</Text>
+                </Pressable>
+              ) : null}
+              <Pressable
+                style={[styles.linePoint, styles.linePointSys, { bottom: sysBottom }]}
+                onPress={() => onSelectPoint?.(day)}
+              >
+                <Text style={styles.linePointValue}>{day.avgSys}</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.linePoint, styles.linePointDia, { bottom: diaBottom }]}
+                onPress={() => onSelectPoint?.(day)}
+              />
+              <Text style={[styles.chartLabel, styles.lineChartLabel]}>{day.label}</Text>
             </View>
           )
         })}
@@ -1167,6 +1263,34 @@ function LongTrendChart({ summaries, t }) {
         <Text style={styles.legendDia}>{t ? t.legendDia : "\u8212\u5f35\u58d3"}</Text>
         <Text style={styles.legendLimit}>{t ? t.legendLimit : "\u8b66\u6212\u7dda 130/80"}</Text>
       </View>
+    </View>
+  )
+}
+
+function BloodPressureAlertPanel({ record, title, t }) {
+  if (!record?.status?.isAbnormal) return null
+
+  const level = t?.[record.status.levelKey] || record.status.level
+  const recommendation = t?.[record.status.recommendationKey] || record.status.recommendation
+
+  return (
+    <View
+      style={[
+        styles.alertBanner,
+        record.status.isCritical && styles.alertBannerCritical,
+        { borderLeftColor: record.status.color }
+      ]}
+    >
+      <View style={styles.alertHeaderRow}>
+        <View style={[styles.alertIcon, { backgroundColor: record.status.color }]}>
+          <Text style={styles.alertIconText}>!</Text>
+        </View>
+        <View style={styles.alertHeaderText}>
+          <Text style={styles.alertTitle}>{title}</Text>
+          <Text style={[styles.alertLevelText, { color: record.status.color }]}>{level}</Text>
+        </View>
+      </View>
+      <Text style={styles.alertBodyText}>{recommendation}</Text>
     </View>
   )
 }
@@ -1253,6 +1377,8 @@ export default function BloodPressureScreen({
   const [linkedPatientEmail, setLinkedPatientEmail] = useState(user?.linkedPatientEmail || "")
   const [completedDailyTasks, setCompletedDailyTasks] = useState({})
   const [selectedDate, setSelectedDate] = useState(() => toDateKey(new Date()))
+  const [selectedTrendDay, setSelectedTrendDay] = useState(null)
+  const [selectedFamilyRecord, setSelectedFamilyRecord] = useState(null)
   const [summaryMonths, setSummaryMonths] = useState(1)
   const [form, setForm] = useState({
     sys: "120",
@@ -1566,21 +1692,29 @@ export default function BloodPressureScreen({
           {message ? <Text style={styles.message}>{message}</Text> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
-          {latest?.status.isAbnormal ? (
-            <View style={[styles.alertBanner, { borderLeftColor: latest.status.color }]}>
-              <Text style={styles.alertTitle}>{t.alertNeedsConfirm}</Text>
-              <Text style={styles.bodyText}>{t[latest.status.recommendationKey] || latest.status.recommendation}</Text>
-            </View>
-          ) : null}
+          <BloodPressureAlertPanel record={latest} title={t.alertNeedsConfirm} t={t} />
 
-          <View style={[styles.latestCard, latest && { borderLeftColor: latest.status.color, borderLeftWidth: 5 }]}>
+          <View
+            style={[
+              styles.latestCard,
+              latest && { borderLeftColor: latest.status.color, borderLeftWidth: 5 },
+              latest?.status.isAbnormal && styles.latestCardAbnormal,
+              latest?.status.isCritical && styles.latestCardCritical
+            ]}
+          >
             <View style={styles.cardHead}>
               <View>
                 <Text style={styles.sectionTitle}>{t.currentBP}</Text>
                 <Text style={styles.rowSub}>{latest ? formatDateTime(latest.measuredAt) : t.noRecord}</Text>
               </View>
               {latest ? (
-                <Text style={[styles.statusBadge, { color: latest.status.color, backgroundColor: latest.status.softColor }]}>
+                <Text
+                  style={[
+                    styles.statusBadge,
+                    latest.status.isAbnormal && styles.statusBadgeAbnormal,
+                    { color: latest.status.color, backgroundColor: latest.status.softColor }
+                  ]}
+                >
                   {t[latest.status.levelKey] || latest.status.level}
                 </Text>
               ) : null}
@@ -1726,6 +1860,7 @@ export default function BloodPressureScreen({
             </Pressable>
           </View>
         </ScrollView>
+
       </View>
     )
   }
@@ -1757,37 +1892,45 @@ export default function BloodPressureScreen({
           {message ? <Text style={styles.message}>{message}</Text> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
-          {latest?.status.isAbnormal ? (
-            <View style={[styles.alertBanner, { borderLeftColor: latest.status.color }]}>
-              <Text style={styles.alertTitle}>{t.bpAlert}</Text>
-              <Text style={styles.bodyText}>{t[latest.status.recommendationKey] || latest.status.recommendation}</Text>
-            </View>
-          ) : null}
+          <BloodPressureAlertPanel record={latest} title={t.bpAlert} t={t} />
 
-          <View style={[styles.latestCard, latest && { borderLeftColor: latest.status.color, borderLeftWidth: 5 }]}>
+          <View
+            style={[
+              styles.latestCard,
+              latest && { borderLeftColor: latest.status.color, borderLeftWidth: 5 },
+              latest?.status.isAbnormal && styles.latestCardAbnormal,
+              latest?.status.isCritical && styles.latestCardCritical
+            ]}
+          >
             <View style={styles.cardHead}>
               <View>
                 <Text style={styles.sectionTitle}>{t.latestSync}</Text>
                 <Text style={styles.rowSub}>{latest ? formatDateTime(latest.measuredAt) : t.noRecord}</Text>
               </View>
               {latest ? (
-                <Text style={[styles.statusBadge, { color: latest.status.color, backgroundColor: latest.status.softColor }]}>
+                <Text
+                  style={[
+                    styles.statusBadge,
+                    latest.status.isAbnormal && styles.statusBadgeAbnormal,
+                    { color: latest.status.color, backgroundColor: latest.status.softColor }
+                  ]}
+                >
                   {t[latest.status.familyLabelKey] || latest.status.familyLabel}
                 </Text>
               ) : null}
             </View>
 
             <View style={styles.valueGrid}>
-              <View style={styles.valueBox}>
-                <Text style={styles.valueLabel}>{t.sysBP}</Text>
-                <Text style={styles.bigValue}>{latest?.sys ?? "--"}</Text>
-                <Text style={styles.unitText}>mmHg</Text>
-              </View>
-              <View style={styles.valueBox}>
-                <Text style={styles.valueLabel}>{t.diaBP}</Text>
-                <Text style={styles.bigValue}>{latest?.dia ?? "--"}</Text>
-                <Text style={styles.unitText}>mmHg</Text>
-              </View>
+                <View style={[styles.valueBox, latest?.status.isAbnormal && styles.valueBoxAbnormal]}>
+                  <Text style={styles.valueLabel}>{t.sysBP}</Text>
+                  <Text style={[styles.bigValue, latest?.status.isAbnormal && { color: latest.status.color }]}>{latest?.sys ?? "--"}</Text>
+                  <Text style={styles.unitText}>mmHg</Text>
+                </View>
+                <View style={[styles.valueBox, latest?.status.isAbnormal && styles.valueBoxAbnormal]}>
+                  <Text style={styles.valueLabel}>{t.diaBP}</Text>
+                  <Text style={[styles.bigValue, latest?.status.isAbnormal && { color: latest.status.color }]}>{latest?.dia ?? "--"}</Text>
+                  <Text style={styles.unitText}>mmHg</Text>
+                </View>
               <View style={styles.valueBox}>
                 <Text style={styles.valueLabel}>{t.pulse}</Text>
                 <Text style={styles.bigValue}>{latest?.pulse ?? "--"}</Text>
@@ -1815,10 +1958,21 @@ export default function BloodPressureScreen({
                   {latest ? (t[latest.status.familyLabelKey] || latest.status.familyLabel) : "--"}
                 </Text>
               </View>
-              <View style={styles.summaryBox}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.summaryBox,
+                  familyAbnormalRecords.length && styles.summaryBoxPressable,
+                  pressed && familyAbnormalRecords.length && styles.summaryBoxPressed
+                ]}
+                disabled={!familyAbnormalRecords.length}
+                onPress={() => {
+                  const record = familyAbnormalRecords[0]
+                  if (record) setSelectedFamilyRecord(record)
+                }}
+              >
                 <Text style={styles.summaryLabel}>{t.threeMonthAbnormal}</Text>
                 <Text style={styles.summaryValue}>{familyStats.abnormalCount}{t.recordUnit}</Text>
-              </View>
+              </Pressable>
             </View>
             <View style={styles.adviceBox}>
               <Text style={styles.adviceTitle}>{t.familyNextStepLabel}</Text>
@@ -1864,16 +2018,95 @@ export default function BloodPressureScreen({
             <Text style={styles.bodyText}>{t.totalPrefix}{familyStats.total}{t.recordUnit}，{t.abnormalSuffix}</Text>
             {familyAbnormalRecords.length ? (
               familyAbnormalRecords.map(record => (
-                <View key={record._id || `${record.dateKey}-${record.sys}-${record.dia}`} style={styles.alertRecord}>
+                <Pressable
+                  key={record._id || `${record.dateKey}-${record.sys}-${record.dia}`}
+                  style={({ pressed }) => [
+                    styles.alertRecord,
+                    { borderLeftColor: record.status.color },
+                    pressed && styles.alertRecordPressed
+                  ]}
+                  onPress={() => setSelectedFamilyRecord(record)}
+                >
                   <Text style={styles.rowMain}>{record.sys}/{record.dia} mmHg</Text>
                   <Text style={styles.rowSub}>{formatDateTime(record.measuredAt)}・{t[record.status.familyLabelKey] || record.status.familyLabel}</Text>
-                </View>
+                  <Text style={[styles.alertRecordStatus, { color: record.status.color }]}>
+                    {t[record.status.familyLabelKey] || record.status.familyLabel}
+                  </Text>
+                </Pressable>
               ))
             ) : (
               <Text style={styles.emptyText}>{t.noAbnormal}</Text>
             )}
           </View>
         </ScrollView>
+
+        <Modal
+          animationType="fade"
+          transparent
+          visible={Boolean(selectedFamilyRecord)}
+          onRequestClose={() => setSelectedFamilyRecord(null)}
+        >
+          <View style={styles.detailModalBackdrop}>
+            <View style={styles.detailModalPanel}>
+              <View style={styles.detailModalHead}>
+                <View>
+                  <Text style={styles.detailModalTitle}>
+                    {selectedFamilyRecord ? `${selectedFamilyRecord.sys}/${selectedFamilyRecord.dia} mmHg` : ""}
+                  </Text>
+                  <Text style={styles.detailModalSub}>
+                    {selectedFamilyRecord ? formatDateTime(selectedFamilyRecord.measuredAt) : ""}
+                  </Text>
+                </View>
+                <Pressable style={styles.detailModalClose} onPress={() => setSelectedFamilyRecord(null)}>
+                  <Text style={styles.detailModalCloseText}>X</Text>
+                </Pressable>
+              </View>
+
+              {selectedFamilyRecord ? (
+                <>
+                  <View style={[styles.detailAlertPill, { borderColor: selectedFamilyRecord.status.color }]}>
+                    <Text style={styles.detailAlertIcon}>!</Text>
+                    <Text style={[styles.detailAlertText, { color: selectedFamilyRecord.status.color }]}>
+                      {t[selectedFamilyRecord.status.familyLabelKey] || selectedFamilyRecord.status.familyLabel}
+                    </Text>
+                  </View>
+
+                  <View style={styles.detailGrid}>
+                    <View style={styles.detailCell}>
+                      <Text style={styles.detailLabel}>{t.sysBP}</Text>
+                      <Text style={[styles.detailValue, { color: selectedFamilyRecord.status.color }]}>
+                        {selectedFamilyRecord.sys}
+                      </Text>
+                      <Text style={styles.detailUnit}>mmHg</Text>
+                    </View>
+                    <View style={styles.detailCell}>
+                      <Text style={styles.detailLabel}>{t.diaBP}</Text>
+                      <Text style={[styles.detailValue, { color: selectedFamilyRecord.status.color }]}>
+                        {selectedFamilyRecord.dia}
+                      </Text>
+                      <Text style={styles.detailUnit}>mmHg</Text>
+                    </View>
+                    <View style={styles.detailCell}>
+                      <Text style={styles.detailLabel}>{t.pulse}</Text>
+                      <Text style={styles.detailValue}>{selectedFamilyRecord.pulse ?? "--"}</Text>
+                      <Text style={styles.detailUnit}>bpm</Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.detailModalMeta}>
+                    {t.moodPrefix}{getMoodEmoji(selectedFamilyRecord.mood)} {selectedFamilyRecord.mood}
+                  </Text>
+                  <Text style={styles.detailModalMeta}>
+                    {t.sourcePrefix}{getSourceLabel(selectedFamilyRecord.source, t)}
+                  </Text>
+                  <Text style={styles.detailAdvice}>
+                    {t[selectedFamilyRecord.status.recommendationKey] || selectedFamilyRecord.status.recommendation}
+                  </Text>
+                </>
+              ) : null}
+            </View>
+          </View>
+        </Modal>
       </View>
     )
   }
@@ -1911,28 +2144,43 @@ export default function BloodPressureScreen({
 
         {activeTab === "measure" ? (
           <>
-            <View style={styles.latestCard}>
+            <View
+              style={[
+                styles.latestCard,
+                latest && { borderLeftColor: latest.status.color, borderLeftWidth: 5 },
+                latest?.status.isAbnormal && styles.latestCardAbnormal,
+                latest?.status.isCritical && styles.latestCardCritical
+              ]}
+            >
               <View style={styles.cardHead}>
                 <View>
                   <Text style={styles.sectionTitle}>{t.bpLabel}</Text>
                   <Text style={styles.rowSub}>{latest ? formatDateTime(latest.measuredAt) : t.noRecord}</Text>
                 </View>
                 {latest ? (
-                  <Text style={[styles.statusBadge, { color: latest.status.color, backgroundColor: latest.status.softColor }]}>
+                  <Text
+                    style={[
+                      styles.statusBadge,
+                      latest.status.isAbnormal && styles.statusBadgeAbnormal,
+                      { color: latest.status.color, backgroundColor: latest.status.softColor }
+                    ]}
+                  >
                     {t[latest.status.levelKey] || latest.status.level}
                   </Text>
                 ) : null}
               </View>
 
+              <BloodPressureAlertPanel record={latest} title={t.bpAlert} t={t} />
+
               <View style={styles.valueGrid}>
-                <View style={styles.valueBox}>
+                <View style={[styles.valueBox, latest?.status.isAbnormal && styles.valueBoxAbnormal]}>
                   <Text style={styles.valueLabel}>{t.sysBP}</Text>
-                  <Text style={styles.bigValue}>{latest?.sys ?? "--"}</Text>
+                  <Text style={[styles.bigValue, latest?.status.isAbnormal && { color: latest.status.color }]}>{latest?.sys ?? "--"}</Text>
                   <Text style={styles.unitText}>mmHg</Text>
                 </View>
-                <View style={styles.valueBox}>
+                <View style={[styles.valueBox, latest?.status.isAbnormal && styles.valueBoxAbnormal]}>
                   <Text style={styles.valueLabel}>{t.diaBP}</Text>
-                  <Text style={styles.bigValue}>{latest?.dia ?? "--"}</Text>
+                  <Text style={[styles.bigValue, latest?.status.isAbnormal && { color: latest.status.color }]}>{latest?.dia ?? "--"}</Text>
                   <Text style={styles.unitText}>mmHg</Text>
                 </View>
                 <View style={styles.valueBox}>
@@ -2073,7 +2321,7 @@ export default function BloodPressureScreen({
               })}
             </View>
 
-            <LongTrendChart summaries={trendChartSummaries} t={t} />
+            <LongTrendChart summaries={trendChartSummaries} t={t} onSelectPoint={setSelectedTrendDay} />
 
             <View style={styles.chartSummaryRow}>
               <View style={styles.chartSummaryPill}>
@@ -2212,6 +2460,65 @@ export default function BloodPressureScreen({
           </View>
         ) : null}
       </ScrollView>
+
+      <Modal
+        animationType="fade"
+        transparent
+        visible={Boolean(selectedTrendDay)}
+        onRequestClose={() => setSelectedTrendDay(null)}
+      >
+        <View style={styles.detailModalBackdrop}>
+          <View style={styles.detailModalPanel}>
+            <View style={styles.detailModalHead}>
+              <View>
+                <Text style={styles.detailModalTitle}>{selectedTrendDay?.label || ""}</Text>
+                <Text style={styles.detailModalSub}>{t.trend3m}</Text>
+              </View>
+              <Pressable style={styles.detailModalClose} onPress={() => setSelectedTrendDay(null)}>
+                <Text style={styles.detailModalCloseText}>×</Text>
+              </Pressable>
+            </View>
+
+            {selectedTrendDay?.status?.isAbnormal ? (
+              <View style={[styles.detailAlertPill, { borderColor: selectedTrendDay.status.color }]}>
+                <Text style={styles.detailAlertIcon}>🔥</Text>
+                <Text style={[styles.detailAlertText, { color: selectedTrendDay.status.color }]}>
+                  {t[selectedTrendDay.status.levelKey] || selectedTrendDay.status.level}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.detailStablePill}>
+                <Text style={styles.detailStableText}>{t.levelNormal}</Text>
+              </View>
+            )}
+
+            <View style={styles.detailGrid}>
+              <View style={styles.detailCell}>
+                <Text style={styles.detailLabel}>{t.legendSys}</Text>
+                <Text style={styles.detailValue}>{selectedTrendDay?.avgSys ?? "--"}</Text>
+                <Text style={styles.detailUnit}>mmHg</Text>
+              </View>
+              <View style={styles.detailCell}>
+                <Text style={styles.detailLabel}>{t.legendDia}</Text>
+                <Text style={styles.detailValue}>{selectedTrendDay?.avgDia ?? "--"}</Text>
+                <Text style={styles.detailUnit}>mmHg</Text>
+              </View>
+              <View style={styles.detailCell}>
+                <Text style={styles.detailLabel}>{t.avgPulse}</Text>
+                <Text style={styles.detailValue}>{selectedTrendDay?.avgPulse ?? "--"}</Text>
+                <Text style={styles.detailUnit}>bpm</Text>
+              </View>
+            </View>
+
+            <Text style={styles.detailModalMeta}>{t.recordDays}: {selectedTrendDay?.count ?? 0}</Text>
+            <Text style={styles.detailAdvice}>
+              {selectedTrendDay?.status
+                ? t[selectedTrendDay.status.recommendationKey] || selectedTrendDay.status.recommendation
+                : ""}
+            </Text>
+          </View>
+        </View>
+      </Modal>
     </View>
   )
 }
@@ -2285,6 +2592,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#d8e6ff",
     padding: 14
+  },
+  latestCardAbnormal: {
+    borderColor: "#ffb4a8",
+    backgroundColor: "#fffafa",
+    shadowColor: "#cf1322",
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3
+  },
+  latestCardCritical: {
+    borderColor: "#cf1322",
+    backgroundColor: "#fff5f5"
   },
   formCard: {
     backgroundColor: "#fff",
@@ -2408,6 +2728,10 @@ const styles = StyleSheet.create({
     padding: 10,
     alignItems: "center"
   },
+  valueBoxAbnormal: {
+    backgroundColor: "#fff5f5",
+    borderColor: "#ffccc7"
+  },
   valueLabel: {
     color: "#59728e",
     fontSize: 12,
@@ -2431,6 +2755,13 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     fontSize: 12,
     overflow: "hidden"
+  },
+  statusBadgeAbnormal: {
+    borderWidth: 1,
+    borderColor: "#ff9c8f",
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    fontSize: 13
   },
   moodStrip: {
     marginTop: 10,
@@ -2470,12 +2801,19 @@ const styles = StyleSheet.create({
   miniChart: {
     height: 166,
     flexDirection: "row",
-    alignItems: "flex-end",
+    alignItems: "stretch",
     justifyContent: "space-between",
     gap: 8,
     paddingTop: 10,
     position: "relative",
-    overflow: "hidden"
+    overflow: "visible"
+  },
+  miniChartPlot: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0
   },
   limitLine: {
     position: "absolute",
@@ -2495,7 +2833,8 @@ const styles = StyleSheet.create({
   chartDay: {
     flex: 1,
     minWidth: 0,
-    alignItems: "center"
+    alignItems: "center",
+    position: "relative"
   },
   chartBars: {
     height: 116,
@@ -2514,15 +2853,64 @@ const styles = StyleSheet.create({
     backgroundColor: "#17a36b"
   },
   chartValue: {
-    marginTop: 5,
+    position: "absolute",
     color: "#173e67",
     fontSize: 11,
-    fontWeight: "800"
+    fontWeight: "800",
+    zIndex: 4
+  },
+  chartValueSys: {
+    color: "#173e67",
+    fontWeight: "900"
+  },
+  chartValueSlash: {
+    color: "#7890a6",
+    fontWeight: "900"
+  },
+  chartValueDia: {
+    color: "#173e67",
+    fontWeight: "900"
   },
   chartLabel: {
-    marginTop: 2,
+    position: "absolute",
+    bottom: 2,
     color: "#6b8198",
     fontSize: 11
+  },
+  miniLineSegment: {
+    position: "absolute",
+    left: "50%",
+    width: 42,
+    height: 3,
+    borderRadius: 3,
+    transformOrigin: "left center",
+    zIndex: 1
+  },
+  miniLineSegmentSys: {
+    backgroundColor: "#1f74d1"
+  },
+  miniLineSegmentDia: {
+    backgroundColor: "#17a36b"
+  },
+  miniLinePoint: {
+    position: "absolute",
+    width: 12,
+    height: 12,
+    marginBottom: -6,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: "#fff",
+    zIndex: 3
+  },
+  miniLinePointSys: {
+    backgroundColor: "#1f74d1"
+  },
+  miniLinePointDia: {
+    width: 10,
+    height: 10,
+    marginBottom: -5,
+    borderRadius: 5,
+    backgroundColor: "#17a36b"
   },
   legendRow: {
     flexDirection: "row",
@@ -2644,6 +3032,13 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 10
   },
+  summaryBoxPressable: {
+    borderColor: "#f5b8b8",
+    backgroundColor: "#fff8f8"
+  },
+  summaryBoxPressed: {
+    backgroundColor: "#fff0f0"
+  },
   summaryLabel: {
     color: "#607990",
     fontSize: 11,
@@ -2706,11 +3101,48 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#ffd8d2",
     backgroundColor: "#fff7f6",
-    padding: 12
+    padding: 12,
+    marginTop: 12
+  },
+  alertBannerCritical: {
+    backgroundColor: "#fff1f0",
+    borderColor: "#ff9c8f"
+  },
+  alertHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10
+  },
+  alertIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  alertIconText: {
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: "900"
+  },
+  alertHeaderText: {
+    flex: 1
   },
   alertTitle: {
     color: "#b42318",
+    fontWeight: "900",
+    fontSize: 16
+  },
+  alertLevelText: {
+    marginTop: 2,
+    fontSize: 20,
     fontWeight: "900"
+  },
+  alertBodyText: {
+    marginTop: 8,
+    color: "#7a271a",
+    lineHeight: 21,
+    fontWeight: "800"
   },
   warningBox: {
     marginTop: 12,
@@ -2770,7 +3202,19 @@ const styles = StyleSheet.create({
     marginTop: 10,
     borderTopWidth: 1,
     borderTopColor: "#edf3fd",
-    paddingTop: 10
+    borderLeftWidth: 4,
+    borderRadius: 10,
+    backgroundColor: "#fff",
+    paddingVertical: 10,
+    paddingHorizontal: 12
+  },
+  alertRecordPressed: {
+    backgroundColor: "#f3f8ff"
+  },
+  alertRecordStatus: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: "900"
   },
   dateRow: {
     gap: 8,
@@ -2875,7 +3319,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingTop: 20,
     paddingBottom: 10,
-    overflow: "hidden"
+    overflow: "visible"
   },
   chartAxisTag: {
     position: "absolute",
@@ -2894,6 +3338,85 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingTop: 10,
     overflow: "hidden"
+  },
+  lineChart: {
+    position: "relative",
+    height: 222,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingTop: 32,
+    paddingHorizontal: 8,
+    overflow: "visible"
+  },
+  lineChartDay: {
+    flex: 1,
+    minWidth: 24,
+    alignItems: "center",
+    position: "relative",
+    zIndex: 1
+  },
+  lineSegment: {
+    position: "absolute",
+    left: "50%",
+    width: 42,
+    height: 3,
+    borderRadius: 3,
+    transformOrigin: "left center"
+  },
+  lineSegmentSys: {
+    backgroundColor: "#1f74d1"
+  },
+  lineSegmentDia: {
+    backgroundColor: "#17a36b"
+  },
+  linePoint: {
+    position: "absolute",
+    width: 12,
+    height: 12,
+    marginBottom: -6,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: "#fff",
+    zIndex: 2
+  },
+  linePointSys: {
+    backgroundColor: "#1f74d1"
+  },
+  linePointDia: {
+    backgroundColor: "#17a36b",
+    width: 10,
+    height: 10,
+    borderRadius: 5
+  },
+  linePointValue: {
+    position: "absolute",
+    top: -20,
+    left: -10,
+    minWidth: 30,
+    textAlign: "center",
+    color: "#173e67",
+    fontSize: 10,
+    fontWeight: "900"
+  },
+  lineChartLabel: {
+    position: "absolute",
+    bottom: 4
+  },
+  fireMarker: {
+    position: "absolute",
+    zIndex: 4,
+    width: 28,
+    height: 28,
+    marginBottom: -14,
+    borderRadius: 14,
+    backgroundColor: "#fff1f0",
+    borderWidth: 1,
+    borderColor: "#ffb4a8",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  fireMarkerText: {
+    fontSize: 17
   },
   longChartDay: {
     flex: 1,
@@ -3282,5 +3805,119 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 11,
     fontWeight: "900"
+  },
+  detailModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(11, 31, 51, 0.42)",
+    justifyContent: "center",
+    padding: 20
+  },
+  detailModalPanel: {
+    borderRadius: 14,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#d8e6ff",
+    padding: 16
+  },
+  detailModalHead: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12
+  },
+  detailModalTitle: {
+    color: "#11355c",
+    fontSize: 20,
+    fontWeight: "900"
+  },
+  detailModalSub: {
+    marginTop: 3,
+    color: "#607990",
+    fontWeight: "800"
+  },
+  detailModalClose: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#edf6ff",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  detailModalCloseText: {
+    color: "#174a7c",
+    fontSize: 24,
+    fontWeight: "900",
+    lineHeight: 28
+  },
+  detailAlertPill: {
+    marginTop: 14,
+    borderWidth: 1,
+    borderRadius: 12,
+    backgroundColor: "#fff7f6",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  detailAlertIcon: {
+    fontSize: 20
+  },
+  detailAlertText: {
+    fontSize: 16,
+    fontWeight: "900"
+  },
+  detailStablePill: {
+    marginTop: 14,
+    borderRadius: 12,
+    backgroundColor: "#f0f9f5",
+    borderWidth: 1,
+    borderColor: "#b7ebd0",
+    paddingHorizontal: 12,
+    paddingVertical: 10
+  },
+  detailStableText: {
+    color: "#067647",
+    fontWeight: "900"
+  },
+  detailGrid: {
+    marginTop: 12,
+    flexDirection: "row",
+    gap: 8
+  },
+  detailCell: {
+    flex: 1,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#d8e6ff",
+    backgroundColor: "#f8fbff",
+    padding: 10,
+    alignItems: "center"
+  },
+  detailLabel: {
+    color: "#607990",
+    fontSize: 11,
+    fontWeight: "900"
+  },
+  detailValue: {
+    marginTop: 4,
+    color: "#11355c",
+    fontSize: 22,
+    fontWeight: "900"
+  },
+  detailUnit: {
+    color: "#7890a6",
+    fontSize: 11
+  },
+  detailModalMeta: {
+    marginTop: 12,
+    color: "#4f6682",
+    fontWeight: "800"
+  },
+  detailAdvice: {
+    marginTop: 8,
+    color: "#244569",
+    lineHeight: 21,
+    fontWeight: "800"
   }
 })

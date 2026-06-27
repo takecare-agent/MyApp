@@ -111,6 +111,11 @@ function startEmergencyVibration() {
   } catch {
     // Missing Android VIBRATE permission should not crash the app.
   }
+  try {
+    NativeModules.EmergencySound?.start?.()
+  } catch {
+    // Emergency sound is Android-only and optional in development builds.
+  }
 }
 
 function stopEmergencyVibration() {
@@ -118,6 +123,11 @@ function stopEmergencyVibration() {
     Vibration.cancel()
   } catch {
     // Some Android versions throw if the installed APK lacks VIBRATE.
+  }
+  try {
+    NativeModules.EmergencySound?.stop?.()
+  } catch {
+    // Ignore missing native sound module.
   }
 }
 
@@ -137,17 +147,30 @@ function openRecordMap(record) {
   Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`)
 }
 
+function getSosLocationPath(createPath, record) {
+  const recordId = record?._id || record?.eventId
+  if (!recordId || typeof createPath !== "string") return ""
+  if (createPath.startsWith("/patient/")) return `/patient/sos/${encodeURIComponent(recordId)}/location`
+  if (createPath.startsWith("/caregiver/")) return `/caregiver/sos/${encodeURIComponent(recordId)}/location`
+  return ""
+}
+
 function getGeolocationModule() {
-  if (!NativeModules.RNCGeolocation) return null
   try {
     return require("@react-native-community/geolocation").default
   } catch {
+    if (!NativeModules.RNCGeolocation) return null
     return null
   }
 }
 
 async function requestLocationPermission() {
   if (Platform.OS !== "android") return true
+  const alreadyGranted = await PermissionsAndroid.check(
+    PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+  )
+  if (alreadyGranted) return true
+
   const result = await PermissionsAndroid.request(
     PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
     {
@@ -160,29 +183,52 @@ async function requestLocationPermission() {
   return result === PermissionsAndroid.RESULTS.GRANTED
 }
 
-async function getCurrentPosition() {
-  const granted = await requestLocationPermission()
+async function getCurrentPosition(permissionGranted = false) {
+  const granted = permissionGranted || await requestLocationPermission()
   if (!granted) return null
   const geolocation = getGeolocationModule()
   if (!geolocation) return null
 
-  return new Promise(resolve => {
+  const readPosition = (options) => new Promise(resolve => {
     geolocation.getCurrentPosition(
       position => {
-        const { latitude, longitude } = position.coords || {}
+        const { latitude, longitude, accuracy } = position.coords || {}
         if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
           resolve(null)
           return
         }
+        const accuracyLabel = Number.isFinite(accuracy) ? `，精度約 ${Math.round(accuracy)} 公尺` : ""
+        const measuredAt = position.timestamp ? new Date(position.timestamp) : new Date()
+        const timeLabel = measuredAt.toLocaleString("zh-TW", { hour12: false })
         resolve({
           latitude,
           longitude,
-          locationLabel: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
+          accuracy: Number.isFinite(accuracy) ? Math.round(accuracy) : undefined,
+          locationLabel: `${latitude.toFixed(7)}, ${longitude.toFixed(7)}${accuracyLabel}，定位時間 ${timeLabel}`
         })
       },
       () => resolve(null),
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
+      options
     )
+  })
+
+  const precise = await readPosition({
+    enableHighAccuracy: true,
+    timeout: 12000,
+    maximumAge: 0,
+    distanceFilter: 0,
+    forceRequestLocation: true,
+    showLocationDialog: true
+  })
+  if (precise) return precise
+
+  return readPosition({
+    enableHighAccuracy: false,
+    timeout: 8000,
+    maximumAge: 60000,
+    distanceFilter: 0,
+    forceRequestLocation: true,
+    showLocationDialog: true
   })
 }
 
@@ -474,6 +520,9 @@ export default function NativeFeatureScreen({
         setDraft(prev => ({ ...prev, patientPhone: savedPhone }))
       } else {
         setPhoneDraft("")
+        if (canCreate && (role === "patient" || role === "caregiver")) {
+          setPhoneModalVisible(true)
+        }
       }
     })
 
@@ -483,7 +532,7 @@ export default function NativeFeatureScreen({
     })
 
     return () => { mounted = false }
-  }, [featureScope, isSosFeature])
+  }, [canCreate, featureScope, isSosFeature, role])
 
   useEffect(() => {
     if (!isFamilySosReceiver || !records.length) return
@@ -570,18 +619,22 @@ export default function NativeFeatureScreen({
     setMessage("")
     setError("")
     try {
+      let pendingLocation = Promise.resolve(null)
+      if (isSosFeature) {
+        const hasLocationPermission = await requestLocationPermission()
+        pendingLocation = hasLocationPermission ? getCurrentPosition(true) : Promise.resolve(null)
+        openPhone("119")
+      }
+
       if (isSosFeature) {
         await saveSosPhone(featureScope, draft.patientPhone.trim())
       }
 
-      const location = isSosFeature ? await getCurrentPosition() : null
       const body =
         isSosFeature
           ? {
               message: draft.message,
-              locationLabel: location?.locationLabel || draft.locationLabel,
-              latitude: location?.latitude,
-              longitude: location?.longitude,
+              locationLabel: draft.locationLabel,
               patientPhone: draft.patientPhone
             }
           : feature.createType === "reminder"
@@ -601,11 +654,31 @@ export default function NativeFeatureScreen({
         body
       })
       setMessage(data.message || t.createDone)
-      if (isSosFeature && location?.locationLabel) {
-        updateDraft("locationLabel", location.locationLabel)
-      }
       await loadHistory()
-      if (isSosFeature) openPhone("119")
+
+      if (isSosFeature) {
+        const locationPath = getSosLocationPath(feature.createPath, data.record)
+        pendingLocation
+          .then(async location => {
+            if (!location?.locationLabel) return
+            updateDraft("locationLabel", location.locationLabel)
+            if (locationPath) {
+              await apiRequest({
+                apiBaseUrl,
+                path: locationPath,
+                method: "PATCH",
+                token,
+                body: {
+                  locationLabel: location.locationLabel,
+                  latitude: location.latitude,
+                  longitude: location.longitude
+                }
+              })
+            }
+            await loadHistory()
+          })
+          .catch(() => {})
+      }
     } catch (createError) {
       setError(createError.message)
     } finally {

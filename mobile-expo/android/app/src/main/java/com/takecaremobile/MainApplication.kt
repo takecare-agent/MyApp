@@ -1,6 +1,10 @@
 package com.takecaremobile
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.Application
+import android.content.Context
+import android.os.Build
 import com.facebook.react.PackageList
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
@@ -18,6 +22,7 @@ class MainApplication : Application(), ReactApplication {
             PackageList(this).packages.apply {
               // Packages that cannot be autolinked yet can be added manually here, for example:
               // add(MyReactNativePackage())
+              add(EmergencySoundPackage())
             }
 
         override fun getJSMainModuleName(): String = "index"
@@ -33,6 +38,25 @@ class MainApplication : Application(), ReactApplication {
 
   override fun onCreate() {
     super.onCreate()
+    createSosNotificationChannel()
     loadReactNative(this)
+  }
+
+  private fun createSosNotificationChannel() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+
+    val channel = NotificationChannel(
+      "sos_emergency",
+      "SOS emergency alerts",
+      NotificationManager.IMPORTANCE_HIGH
+    ).apply {
+      description = "Urgent SOS alerts from family care events"
+      enableVibration(true)
+      vibrationPattern = longArrayOf(0, 900, 250, 900, 250, 1400)
+      lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+    }
+
+    val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    manager.createNotificationChannel(channel)
   }
 }

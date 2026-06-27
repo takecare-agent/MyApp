@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.health.READ_BLOOD_PRESSURE" />
     <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -42,6 +43,10 @@
       android:appComponentFactory="androidx.core.app.CoreComponentFactory">
       <meta-data android:name="androidx.health.PRIVACY_POLICY_URL" android:value="https://example.com/privacy" />
       <meta-data android:name="health_permissions" android:resource="@array/health_permissions" />
+      <meta-data
+        android:name="com.google.firebase.messaging.default_notification_channel_id"
+        android:value="@string/default_notification_channel_id"
+        tools:replace="android:value" />
       <property
         android:name="android.health.READ_BLOOD_PRESSURE_ATTRIBUTION_TAG"
         android:value="BloodPressureSync" />

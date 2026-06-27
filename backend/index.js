@@ -6,8 +6,11 @@ const passport = require("passport")
 const jwt = require("jsonwebtoken")
 const mongoose = require("mongoose")
 const http = require("http")
+const fs = require("fs")
 const { Server } = require("socket.io")
 const axios = require("axios")
+const { cert, getApps, initializeApp } = require("firebase-admin/app")
+const { getMessaging } = require("firebase-admin/messaging")
 const { translate } = require("google-translate-api-x")
 const { GoogleGenerativeAI } = require("@google/generative-ai")
 
@@ -16,6 +19,37 @@ require("./googleAuth")
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "")
 const geminiModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" })
 const GOOGLE_STT_API_KEY = process.env.GOOGLE_API_KEY || ""
+
+function getFirebaseCredential() {
+  const rawJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON
+  if (rawJson) {
+    try {
+      return cert(JSON.parse(rawJson))
+    } catch (error) {
+      console.log("Firebase service account JSON is invalid:", error.message)
+      return null
+    }
+  }
+
+  const filePath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH
+  if (filePath && fs.existsSync(filePath)) {
+    try {
+      return cert(JSON.parse(fs.readFileSync(filePath, "utf8")))
+    } catch (error) {
+      console.log("Firebase service account file is invalid:", error.message)
+    }
+  }
+
+  return null
+}
+
+const firebaseCredential = getFirebaseCredential()
+if (firebaseCredential) {
+  initializeApp({ credential: firebaseCredential })
+  console.log("Firebase Admin initialized")
+} else {
+  console.log("Firebase Admin not configured; SOS push notifications are disabled")
+}
 
 const DANGER_KEYWORDS = [
   "救護車", "流血", "痛", "跌倒", "昏倒", "緊急", "受傷", "呼吸困難", "心跳", "不舒服", "想吐", "頭暈", "危險", "求救",
@@ -109,6 +143,11 @@ const userSchema = new mongoose.Schema({
   idNumber: String,
   gender: String,
   phone: String,
+  pushTokens: [{
+    token: String,
+    platform: String,
+    updatedAt: Date
+  }],
   linkedPatientEmail: String,
   experience: String,
   lang: { type: String, default: "zh" },
@@ -241,7 +280,7 @@ const bloodPressureRecordSchema = new mongoose.Schema({
   sys: { type: Number, required: true },
   dia: { type: Number, required: true },
   pulse: Number,
-  mood: { type: String, enum: ["平靜", "疲倦", "焦慮", "頭暈", "未標記"], default: "未標記" },
+  mood: { type: String, enum: ["平靜", "開心", "焦慮", "頭暈", "未標記"], default: "未標記" },
   level: { type: String, enum: ["正常", "偏高", "低血壓", "偏低", "血壓前期", "高血壓", "超高血壓"], required: true },
   measuredAt: { type: Date, default: Date.now, index: true },
   source: { type: String, default: "manual-entry" },
@@ -481,6 +520,71 @@ function normalizeLimit(value, fallback = 10, max = 50) {
 function createSosEventId() { return `SOS-${Date.now()}-${Math.floor(100 + Math.random() * 900)}` }
 function createAbnormalEventId() { return `AB-${Date.now()}-${Math.floor(100 + Math.random() * 900)}` }
 function createReminderId() { return `RM-${Date.now()}-${Math.floor(100 + Math.random() * 900)}` }
+const SOS_NOTIFICATION_CHANNEL_ID = "sos_emergency"
+
+async function notifyFamilySos(record) {
+  if (!getApps().length || !record) return
+
+  const patientEmail = String(record.patientEmail || "").trim().toLowerCase()
+  const linkedFamilies = patientEmail
+    ? await User.find({ role: "family", linkedPatientEmail: patientEmail })
+    : []
+  const familyUsers = linkedFamilies.length
+    ? linkedFamilies
+    : await User.find({ role: "family" })
+  const tokens = familyUsers
+    .flatMap(user => Array.isArray(user.pushTokens) ? user.pushTokens : [])
+    .map(entry => entry?.token)
+    .filter(Boolean)
+
+  if (!tokens.length) return
+
+  const location = String(record.locationLabel || "").trim()
+  const patientName = record.patientName || "受顧者"
+  const response = await getMessaging().sendEachForMulticast({
+    tokens,
+    notification: {
+      title: "緊急 SOS 求救",
+      body: `${patientName} 發出緊急求救${location ? `，位置：${location}` : ""}`
+    },
+    data: {
+      type: "sos",
+      eventId: String(record.eventId || ""),
+      recordId: String(record._id || ""),
+      patientName: String(record.patientName || ""),
+      patientPhone: String(record.patientPhone || ""),
+      locationLabel: String(record.locationLabel || ""),
+      triggeredAt: record.triggeredAt ? new Date(record.triggeredAt).toISOString() : ""
+    },
+    android: {
+      priority: "high",
+      ttl: 60 * 1000,
+      notification: {
+        channelId: SOS_NOTIFICATION_CHANNEL_ID,
+        sound: "default",
+        priority: "max",
+        visibility: "public",
+        defaultVibrateTimings: true
+      }
+    }
+  })
+
+  const invalidTokens = response.responses
+    .map((result, index) => ({ result, token: tokens[index] }))
+    .filter(({ result }) => {
+      const code = result.error?.code
+      return code === "messaging/registration-token-not-registered" ||
+        code === "messaging/invalid-registration-token"
+    })
+    .map(entry => entry.token)
+
+  if (invalidTokens.length) {
+    await User.updateMany(
+      { "pushTokens.token": { $in: invalidTokens } },
+      { $pull: { pushTokens: { token: { $in: invalidTokens } } } }
+    )
+  }
+}
 
 function normalizeSeverity(value) {
   if (value === "High" || value === "Medium" || value === "Low") return value
@@ -494,7 +598,8 @@ function normalizeAlertStatus(value) {
 
 function normalizeBpMood(value) {
   const mood = typeof value === "string" ? value.trim() : ""
-  return ["平靜", "疲倦", "焦慮", "頭暈", "未標記"].includes(mood) ? mood : "未標記"
+  if (mood === "疲倦") return "開心"
+  return ["平靜", "開心", "焦慮", "頭暈", "未標記"].includes(mood) ? mood : "未標記"
 }
 
 function judgeBloodPressureLevel(sys, dia) {
@@ -686,6 +791,22 @@ app.post("/mobile/dev-login", async (req, res) => {
   }
 })
 
+app.post("/notifications/register", async (req, res) => {
+  const decoded = verifyToken(req)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "User not found" })
+  if (user.role !== "family") return res.status(403).json({ message: "Only family devices receive SOS push notifications" })
+
+  const pushToken = typeof req.body?.token === "string" ? req.body.token.trim() : ""
+  if (!pushToken) return res.status(400).json({ message: "Push token is required" })
+  const platform = typeof req.body?.platform === "string" ? req.body.platform.trim() : ""
+  user.pushTokens = (user.pushTokens || []).filter(entry => entry?.token !== pushToken)
+  user.pushTokens.push({ token: pushToken, platform, updatedAt: new Date() })
+  await user.save()
+  res.json({ message: "Push token registered" })
+})
+
 // ================= PATIENT =================
 app.get("/patient/check-profile", async (req, res) => {
   const decoded = verifyToken(req)
@@ -730,6 +851,7 @@ app.post("/patient/blood-pressure/record", async (req, res) => {
   const pulseRaw = req.body?.pulse
   const pulse = pulseRaw === "" || pulseRaw === null || pulseRaw === undefined ? undefined : Number(pulseRaw)
   if (!Number.isFinite(sys) || !Number.isFinite(dia)) return res.status(400).json({ message: "血壓數值無效" })
+  if (pulseRaw !== "" && pulseRaw !== null && pulseRaw !== undefined && !Number.isFinite(pulse)) return res.status(400).json({ message: "Pulse 數值無效" })
   const record = await BloodPressureRecord.create({ userId: user._id, sys, dia, pulse, mood: normalizeBpMood(req.body?.mood), level: judgeBloodPressureLevel(sys, dia), measuredAt: new Date(), source: "manual-entry" })
   res.status(201).json({ message: "血壓記錄已儲存", record })
 })
@@ -862,7 +984,30 @@ app.post("/patient/sos/trigger", async (req, res) => {
     latitude: Number.isFinite(lat) ? lat : undefined, longitude: Number.isFinite(lng) ? lng : undefined,
     status: "active", triggeredAt: new Date(), source: "patient-manual-sos"
   })
+  notifyFamilySos(record).catch(error => console.log("SOS push failed:", error.message))
   res.status(201).json({ message: "SOS 已發送", record })
+})
+
+app.patch("/patient/sos/:id/location", async (req, res) => {
+  const decoded = verifyToken(req)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "User not found" })
+
+  const { locationLabel, latitude, longitude } = req.body || {}
+  const lat = Number(latitude)
+  const lng = Number(longitude)
+  const record = await SosEvent.findOne({
+    $or: [{ _id: req.params.id }, { eventId: req.params.id }],
+    patientUserId: user._id
+  })
+  if (!record) return res.status(404).json({ message: "SOS event not found" })
+
+  if (typeof locationLabel === "string" && locationLabel.trim()) record.locationLabel = locationLabel.trim()
+  if (Number.isFinite(lat)) record.latitude = lat
+  if (Number.isFinite(lng)) record.longitude = lng
+  await record.save()
+  res.json({ message: "SOS location updated", record })
 })
 
 // ================= FAMILY =================
@@ -1092,9 +1237,12 @@ app.post("/caregiver/blood-pressure/record", async (req, res) => {
   const user = await User.findOne({ email: decoded.email })
   if (!user) return res.status(404).json({ message: "User not found" })
   const sys = Number(req.body?.sys), dia = Number(req.body?.dia)
+  const pulseRaw = req.body?.pulse
+  const pulse = pulseRaw === "" || pulseRaw === null || pulseRaw === undefined ? undefined : Number(pulseRaw)
   if (!Number.isFinite(sys) || !Number.isFinite(dia)) return res.status(400).json({ message: "血壓數值無效" })
+  if (pulseRaw !== "" && pulseRaw !== null && pulseRaw !== undefined && !Number.isFinite(pulse)) return res.status(400).json({ message: "Pulse 數值無效" })
   const patientUserId = await resolveTargetPatient(user._id)
-  const record = await BloodPressureRecord.create({ userId: patientUserId, sys, dia, pulse: req.body?.pulse ? Number(req.body.pulse) : undefined, mood: normalizeBpMood(req.body?.mood), level: judgeBloodPressureLevel(sys, dia), measuredAt: new Date(), source: "caregiver-entry" })
+  const record = await BloodPressureRecord.create({ userId: patientUserId, sys, dia, pulse, mood: normalizeBpMood(req.body?.mood), level: judgeBloodPressureLevel(sys, dia), measuredAt: new Date(), source: "caregiver-entry" })
   res.status(201).json({ message: "OK", record })
 })
 
@@ -1346,6 +1494,75 @@ app.get("/caregiver/sos/history", async (req, res) => {
   const limit = normalizeLimit(req.query.limit, 20, 100)
   const records = await SosEvent.find(filter).sort({ triggeredAt: -1, _id: -1 }).limit(limit)
   res.json({ records })
+})
+
+app.post("/caregiver/sos/trigger", async (req, res) => {
+  const decoded = verifyToken(req)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "User not found" })
+
+  try {
+    const patientUserId = await resolveTargetPatient(user._id)
+    const patient = await User.findById(patientUserId)
+    if (!patient) return res.status(404).json({ message: "Linked patient not found" })
+
+    const { message, locationLabel, latitude, longitude, patientPhone } = req.body || {}
+    const lat = Number(latitude)
+    const lng = Number(longitude)
+    const normalizedPhone = typeof patientPhone === "string" ? patientPhone.trim() : ""
+    if (normalizedPhone) {
+      user.phone = normalizedPhone
+      await user.save()
+    }
+
+    const record = await SosEvent.create({
+      eventId: createSosEventId(),
+      patientUserId: patient._id,
+      patientName: patient.name || "Patient",
+      patientEmail: patient.email,
+      patientPhone: normalizedPhone || user.phone || patient.phone || "",
+      message: typeof message === "string" && message.trim() ? message.trim() : "看護端發出 SOS 求救",
+      locationLabel: typeof locationLabel === "string" && locationLabel.trim() ? locationLabel.trim() : "Unknown location",
+      latitude: Number.isFinite(lat) ? lat : undefined,
+      longitude: Number.isFinite(lng) ? lng : undefined,
+      status: "active",
+      triggeredAt: new Date(),
+      source: "caregiver-manual-sos"
+    })
+
+    notifyFamilySos(record).catch(error => console.log("SOS push failed:", error.message))
+    res.status(201).json({ message: "SOS 已送出", record })
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ message: error.message || "Create caregiver SOS failed" })
+  }
+})
+
+app.patch("/caregiver/sos/:id/location", async (req, res) => {
+  const decoded = verifyToken(req)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) return res.status(404).json({ message: "User not found" })
+
+  try {
+    const patientUserId = await resolveTargetPatient(user._id)
+    const { locationLabel, latitude, longitude } = req.body || {}
+    const lat = Number(latitude)
+    const lng = Number(longitude)
+    const record = await SosEvent.findOne({
+      $or: [{ _id: req.params.id }, { eventId: req.params.id }],
+      patientUserId
+    })
+    if (!record) return res.status(404).json({ message: "SOS event not found" })
+
+    if (typeof locationLabel === "string" && locationLabel.trim()) record.locationLabel = locationLabel.trim()
+    if (Number.isFinite(lat)) record.latitude = lat
+    if (Number.isFinite(lng)) record.longitude = lng
+    await record.save()
+    res.json({ message: "SOS location updated", record })
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ message: error.message || "Update caregiver SOS location failed" })
+  }
 })
 
 app.patch("/caregiver/sos/:id/resolve", async (req, res) => {

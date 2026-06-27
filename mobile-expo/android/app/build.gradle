@@ -2,6 +2,20 @@ apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 apply from: file("../../node_modules/react-native-vector-icons/fonts.gradle")
+def googleServicesFile = file("google-services.json")
+def googleServicesPackages = []
+if (googleServicesFile.exists()) {
+    googleServicesPackages = new groovy.json.JsonSlurper()
+        .parse(googleServicesFile)
+        ?.client
+        ?.collect { it?.client_info?.android_client_info?.package_name }
+        ?.findAll { it } ?: []
+}
+if (googleServicesPackages.contains("com.takecaremobile")) {
+    apply plugin: "com.google.gms.google-services"
+} else if (googleServicesFile.exists()) {
+    println("Skipping Google Services plugin: google-services.json packages ${googleServicesPackages} do not include com.takecaremobile")
+}
 
 /**
  * This is the configuration block to customize your React Native Android app.
