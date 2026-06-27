@@ -392,6 +392,15 @@ try:
                 state = "DISMISSED"
                 state_enter_time = now
 
+        elif state == "CONFIRMED":
+            # 警報後持續觀察：站起來 → 解除警報 → 回到正常監測（不需手動按 r）
+            if entering_hip_y is not None and last_hip_y is not None:
+                if entering_hip_y - last_hip_y > DISMISS_HIP_RISE:
+                    state = "DISMISSED"
+                    state_enter_time = now
+                    trigger_label = ""
+                    print(f"[{now:.1f}s] CONFIRMED → DISMISSED  (已站起，hip 上升 {entering_hip_y - last_hip_y:.3f})")
+
         elif state == "DISMISSED":
             if now - state_enter_time >= DISMISSED_HOLD:
                 state = "IDLE"
