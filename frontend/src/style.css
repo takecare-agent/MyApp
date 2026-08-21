@@ -1,0 +1,65 @@
+body {
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #f5f6fa;
+}
+
+.page {
+  min-height: 100vh;          /* 撐滿整個畫面高度 */
+  width: 100vw; 
+  display: flex;              /* 啟用 Flex */
+  justify-content: center;    /* 水平置中 */
+  align-items: center;        /* 垂直置中 */
+  background: #f5f6fa;        /* 淺灰背景（可留） */
+}
+
+.card {
+  background: white;
+  padding: 32px;
+  width: 320px;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+
+  color: #333;
+}
+
+h2 {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+input {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 12px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+}
+
+button {
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 6px;
+  background: #4a6cf7;
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #3a56d4;
+}
+
+.link {
+  text-align: center;
+  margin-top: 12px;
+  color: #4a6cf7;
+  cursor: pointer;
+}
+
+.button-group {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;   /* ⭐ 控制按鈕之間的距離 */
+}

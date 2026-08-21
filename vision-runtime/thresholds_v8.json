@@ -1,0 +1,11 @@
+{
+  "threshold_safe": 0.3,
+  "threshold_balanced": 0.45,
+  "auc": 0.8894454123112661,
+  "fall_f1_at_balanced": 0.5833333333333334,
+  "test_extra_fp050": 0.0332409972299169,
+  "test_extra_fp030": 0.09418282548476455,
+  "blind_test_acc_055": 0.7804878048780488,
+  "blind_test_fp_055": 4,
+  "blind_test_fn_055": 5
+}

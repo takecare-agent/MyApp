@@ -1,0 +1,4 @@
+backend/.env
+backend/.env.bak-*
+backend/firebase-service-account.json
+node_modules/
