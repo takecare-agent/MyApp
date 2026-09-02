@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import {
   ActivityIndicator,
-  PermissionsAndroid,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,9 +8,19 @@ import {
   TextInput,
   View
 } from "react-native"
-import Voice from "@react-native-voice/voice"
-import Tts from "react-native-tts"
 import { apiRequest } from "../lib/api"
+import { LANG_OPTIONS as APP_LANGS } from "../i18n/languages"
+import {
+  bindUtteranceHandlers,
+  destroyVoice,
+  isVoiceAvailable,
+  requestMicPermission as requestCareMic,
+  speakText,
+  startListening,
+  stopListening,
+  stopSpeaking
+} from "../lib/speechCare"
+import { colors } from "./new_ui/tokens"
 
 const UI_TEXT = {
   zh: {
@@ -22,7 +30,7 @@ const UI_TEXT = {
     myLang: "我的語言（訊息自動翻譯成此語言）",
     saveLang: "儲存語言設定",
     voiceSection: "語音輸入",
-    voiceHint: "點擊麥克風說話，停止後自動翻譯成繁體中文並播放",
+    voiceHint: "講完整句後再按停止，才翻譯成中文並朗讀一次",
     startRec: "🎤 開始說話",
     stopRec: "⏹ 停止（自動翻譯）",
     listening: "聆聽中...",
@@ -46,7 +54,9 @@ const UI_TEXT = {
     saveFail: "儲存失敗",
     permDenied: "未取得麥克風權限",
     voiceError: "語音辨識失敗",
+    voiceUnavailable: "這支手機沒有語音引擎，請改打字",
     back: "返回",
+    resultLang: "繁體中文", translateFail: "翻譯失敗", micTitle: "麥克風權限", micMsg: "語音辨識需要麥克風權限", micAllow: "允許",
   },
   en: {
     title: "Language Support",
@@ -80,6 +90,7 @@ const UI_TEXT = {
     permDenied: "Microphone permission denied",
     voiceError: "Voice recognition failed",
     back: "Back",
+    resultLang: "Chinese", translateFail: "Translation failed", micTitle: "Microphone", micMsg: "Speech recognition needs the microphone", micAllow: "Allow",
   },
   id: {
     title: "Dukungan Bahasa",
@@ -113,6 +124,7 @@ const UI_TEXT = {
     permDenied: "Izin mikrofon ditolak",
     voiceError: "Pengenalan suara gagal",
     back: "Kembali",
+    resultLang: "Mandarin", translateFail: "Terjemahan gagal", micTitle: "Mikrofon", micMsg: "Pengenalan suara butuh mikrofon", micAllow: "Izinkan",
   },
   vi: {
     title: "Hỗ Trợ Ngôn Ngữ",
@@ -146,6 +158,7 @@ const UI_TEXT = {
     permDenied: "Quyền micrô bị từ chối",
     voiceError: "Nhận dạng giọng nói thất bại",
     back: "Quay Lại",
+    resultLang: "Tiếng Trung", translateFail: "Dịch thất bại", micTitle: "Micro", micMsg: "Nhận dạng giọng nói cần micro", micAllow: "Cho phép",
   },
   tl: {
     title: "Suporta sa Wika",
@@ -179,6 +192,7 @@ const UI_TEXT = {
     permDenied: "Tinanggihan ang pahintulot sa mikropono",
     voiceError: "Nabigo ang pagkilala ng boses",
     back: "Bumalik",
+    resultLang: "Chinese", translateFail: "Hindi naisalin", micTitle: "Mikropono", micMsg: "Kailangan ang mikropono para sa speech", micAllow: "Payagan",
   },
   th: {
     title: "การสนับสนุนภาษา",
@@ -212,20 +226,45 @@ const UI_TEXT = {
     permDenied: "ถูกปฏิเสธสิทธิ์ไมค์",
     voiceError: "การรู้จำเสียงล้มเหลว",
     back: "กลับ",
+    resultLang: "ภาษาจีน", translateFail: "แปลไม่สำเร็จ", micTitle: "ไมโครโฟน", micMsg: "การรู้จำเสียงต้องใช้ไมโครโฟน", micAllow: "อนุญาต",
   }
 }
 
-const LANG_OPTIONS = [
-  { code: "zh", label: "中文" },
-  { code: "en", label: "English" },
-  { code: "id", label: "Bahasa" },
-  { code: "vi", label: "Tiếng Việt" },
-  { code: "tl", label: "Filipino" },
-  { code: "th", label: "ภาษาไทย" }
-]
+const LANG_OPTIONS = APP_LANGS
 
 const STT_LANG_MAP = {
-  zh: "zh-TW", en: "en-US", id: "id-ID", vi: "vi-VN", tl: "fil-PH", th: "th-TH"
+  zh: "zh", en: "en", id: "id", vi: "vi", tl: "tl", th: "th"
+}
+
+async function requestMicPermission(t) {
+  return requestCareMic({
+    title: t.micTitle,
+    message: t.micMsg,
+    allow: t.micAllow
+  })
+}
+
+// 翻譯並播放繁體中文 TTS（共用邏輯）
+async function translateAndPlay({ text, apiBaseUrl, token, targetLang, setTranslateInput, setTranslatedResult, setTranslating, setIsPlaying, failText }) {
+  if (!text?.trim()) return
+  const lang = targetLang || "zh"
+  setTranslateInput(text)
+  setTranslatedResult("")
+  setTranslating(true)
+  try {
+    const data = await apiRequest({
+      apiBaseUrl, path: "/translate", method: "POST", token,
+      body: { text: text.trim(), targetLang: lang }
+    })
+    const result = data.translatedText || ""
+    setTranslatedResult(result)
+    if (result) {
+      setIsPlaying(true)
+      await speakText(result, lang)
+      setIsPlaying(false)
+    }
+  } catch { setTranslatedResult(failText || "") }
+  finally { setTranslating(false) }
 }
 
 const SYSTEM_PHRASES = [
@@ -243,44 +282,9 @@ const SYSTEM_PHRASES = [
   { zh: "放輕鬆，我幫你。", en: "Relax, I will help you.", id: "Santai, saya bantu kamu.", vi: "Thư giãn, tôi sẽ giúp bạn.", tl: "Mag-relax, tutulungan kita.", th: "ผ่อนคลาย ฉันจะช่วยคุณ" }
 ]
 
-async function requestMicPermission() {
-  if (Platform.OS !== "android") return true
-  try {
-    const result = await PermissionsAndroid.request(
-      PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-      { title: "麥克風權限", message: "語音辨識需要麥克風權限", buttonPositive: "允許" }
-    )
-    return result === PermissionsAndroid.RESULTS.GRANTED
-  } catch {
-    return false
-  }
-}
-
-// 翻譯並播放繁體中文 TTS（共用邏輯）
-async function translateAndPlay({ text, apiBaseUrl, token, setTranslateInput, setTranslatedResult, setTranslating, setIsPlaying }) {
-  if (!text?.trim()) return
-  setTranslateInput(text)
-  setTranslatedResult("")
-  setTranslating(true)
-  try {
-    const data = await apiRequest({
-      apiBaseUrl, path: "/translate", method: "POST", token,
-      body: { text: text.trim(), targetLang: "zh" }
-    })
-    const result = data.translatedText || ""
-    setTranslatedResult(result)
-    if (result) {
-      setIsPlaying(true)
-      Tts.setDefaultLanguage("zh-TW")
-      Tts.speak(result)
-    }
-  } catch { setTranslatedResult("翻譯失敗") }
-  finally { setTranslating(false) }
-}
-
-export default function LanguageSupportScreen({ apiBaseUrl, token, onBack, uiLang: propUiLang, onUiLangChange }) {
+export default function LanguageSupportScreen({ apiBaseUrl, token, onBack, uiLang: propUiLang, onUiLangChange, embedded = false }) {
   const uiLang = propUiLang || "zh"
-  const t = UI_TEXT[uiLang] || UI_TEXT.zh
+  const t = { ...UI_TEXT.zh, ...(UI_TEXT[uiLang] || {}) }
 
   const [isListening, setIsListening] = useState(false)
   const [voiceStatus, setVoiceStatus] = useState("")
@@ -289,6 +293,7 @@ export default function LanguageSupportScreen({ apiBaseUrl, token, onBack, uiLan
   const [translatedResult, setTranslatedResult] = useState("")
   const [translating, setTranslating] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
+  const [targetLang, setTargetLang] = useState(uiLang === "zh" ? "vi" : "zh")
 
   const [customPhrases, setCustomPhrases] = useState([])
   const [loadingPhrases, setLoadingPhrases] = useState(false)
@@ -306,53 +311,48 @@ export default function LanguageSupportScreen({ apiBaseUrl, token, onBack, uiLan
   const setTranslatedResultRef = useRef(setTranslatedResult)
   const setTranslatingRef = useRef(setTranslating)
   const setIsPlayingRef = useRef(setIsPlaying)
+  const sessionRef = useRef(null)
+  const targetLangRef = useRef(targetLang)
 
   useEffect(() => { apiBaseUrlRef.current = apiBaseUrl }, [apiBaseUrl])
   useEffect(() => { tokenRef.current = token }, [token])
+  useEffect(() => { targetLangRef.current = targetLang }, [targetLang])
 
-  // ── Voice 初始化 ──
-  useEffect(() => {
-    Voice.onSpeechStart = () => {
-      setVoiceStatus(UI_TEXT[uiLang]?.listening || "聆聽中...")
-    }
-    Voice.onSpeechResults = async (e) => {
-      const text = e?.value?.[0] || ""
-      setIsListening(false)
-      setVoiceStatus("")
-      if (!text) return
-      // 停止後立即翻譯並播放繁體中文
-      await translateAndPlay({
-        text,
-        apiBaseUrl: apiBaseUrlRef.current,
-        token: tokenRef.current,
-        setTranslateInput: setTranslateInputRef.current,
-        setTranslatedResult: setTranslatedResultRef.current,
-        setTranslating: setTranslatingRef.current,
-        setIsPlaying: setIsPlayingRef.current,
-      })
-    }
-    Voice.onSpeechEnd = () => {
-      setIsListening(false)
-      setVoiceStatus("")
-    }
-    Voice.onSpeechError = () => {
-      setIsListening(false)
-      setVoiceStatus(UI_TEXT[uiLang]?.voiceError || "語音辨識失敗")
-    }
-    return () => {
-      Voice.destroy().then(Voice.removeAllListeners)
-    }
-  }, [uiLang])
-
-  // ── TTS 固定繁體中文 ──
-  useEffect(() => {
-    Tts.setDefaultLanguage("zh-TW")
-    Tts.addEventListener("tts-finish", () => setIsPlaying(false))
-    return () => {
-      Tts.stop()
-      Tts.removeAllListeners("tts-finish")
-    }
+  useEffect(() => () => {
+    destroyVoice()
+    stopSpeaking()
+    sessionRef.current = null
   }, [])
+
+  const ensureSpeechSession = () => {
+    if (sessionRef.current) return
+    sessionRef.current = bindUtteranceHandlers({
+      onHeard: (text) => setTranslateInput(text),
+      onComplete: async (text) => {
+        setIsListening(false)
+        setVoiceStatus("")
+        if (!text) {
+          setVoiceStatus(t.voiceError)
+          return
+        }
+        await translateAndPlay({
+          text,
+          apiBaseUrl: apiBaseUrlRef.current,
+          token: tokenRef.current,
+          targetLang: targetLangRef.current,
+          setTranslateInput: setTranslateInputRef.current,
+          setTranslatedResult: setTranslatedResultRef.current,
+          setTranslating: setTranslatingRef.current,
+          setIsPlaying: setIsPlayingRef.current,
+          failText: t.translateFail
+        })
+      },
+      onError: () => {
+        setIsListening(false)
+        setVoiceStatus(t.voiceError)
+      }
+    })
+  }
 
   // ── 載入資料 ──
   const loadCustomPhrases = useCallback(async () => {
@@ -391,53 +391,65 @@ export default function LanguageSupportScreen({ apiBaseUrl, token, onBack, uiLan
   // ── 語音輸入開關 ──
   const handleVoiceToggle = async () => {
     if (isListening) {
-      // 停止後由 onSpeechResults 觸發自動翻譯
-      await Voice.stop()
+      await stopListening()
+      setIsListening(false)
+      setTimeout(() => sessionRef.current?.completeNow?.(), 300)
       return
     }
-    const granted = await requestMicPermission()
+    const available = await isVoiceAvailable()
+    if (!available) {
+      setVoiceStatus(t.voiceUnavailable || t.voiceError)
+      return
+    }
+    const granted = await requestMicPermission(t)
     if (!granted) { setVoiceStatus(t.permDenied); return }
     try {
+      ensureSpeechSession()
       setTranslateInput("")
       setTranslatedResult("")
+      sessionRef.current?.reset?.()
       setIsListening(true)
       setVoiceStatus(t.listening)
-      await Voice.start(STT_LANG_MAP[uiLang] || "zh-TW")
-    } catch {
+      await startListening(STT_LANG_MAP[uiLang] || "zh")
+    } catch (err) {
       setIsListening(false)
-      setVoiceStatus(t.voiceError)
+      setVoiceStatus(err?.code === "VOICE_UNAVAILABLE" ? (t.voiceUnavailable || t.voiceError) : t.voiceError)
     }
   }
 
   // ── 手動翻譯並播放（翻譯框按鈕）──
   const handleTranslate = async () => {
     if (!translateInput.trim()) return
-    if (isPlaying) { Tts.stop(); setIsPlaying(false) }
+    if (isPlaying) { await stopSpeaking(); setIsPlaying(false) }
     await translateAndPlay({
       text: translateInput,
       apiBaseUrl, token,
+      targetLang,
       setTranslateInput, setTranslatedResult, setTranslating, setIsPlaying,
+      failText: t.translateFail
     })
   }
 
   // ── 點選語句：自動翻譯並播放 ──
   const handlePhraseSelect = useCallback(async (text) => {
     if (!text?.trim()) return
-    if (isPlaying) { Tts.stop(); setIsPlaying(false) }
+    if (isPlaying) { await stopSpeaking(); setIsPlaying(false) }
     await translateAndPlay({
       text,
       apiBaseUrl, token,
+      targetLang,
       setTranslateInput, setTranslatedResult, setTranslating, setIsPlaying,
+      failText: t.translateFail
     })
-  }, [apiBaseUrl, token, isPlaying])
+  }, [apiBaseUrl, token, isPlaying, t.translateFail, targetLang])
 
   // ── 手動重新播放 TTS ──
-  const handlePlayTts = () => {
+  const handlePlayTts = async () => {
     if (!translatedResult) return
-    if (isPlaying) { Tts.stop(); setIsPlaying(false); return }
+    if (isPlaying) { await stopSpeaking(); setIsPlaying(false); return }
     setIsPlaying(true)
-    Tts.setDefaultLanguage("zh-TW")
-    Tts.speak(translatedResult)
+    await speakText(translatedResult, targetLang)
+    setIsPlaying(false)
   }
 
   // ── 同步歷史 ──
@@ -453,20 +465,33 @@ export default function LanguageSupportScreen({ apiBaseUrl, token, onBack, uiLan
 
   return (
     <View style={styles.screen}>
-      <View style={styles.header}>
-        <Pressable onPress={onBack}>
-          <Text style={styles.backText}>{t.back}</Text>
-        </Pressable>
-        <Text style={styles.title}>{t.title}</Text>
-        <Text style={styles.subtitle}>{t.subtitle}</Text>
-      </View>
+      {embedded ? null : (
+        <View style={styles.header}>
+          {!onBack ? null : (
+            <Pressable onPress={onBack}>
+              <Text style={styles.backText}>{t.back}</Text>
+            </Pressable>
+          )}
+          <Text style={styles.title}>{t.title}</Text>
+        </View>
+      )}
 
       <ScrollView contentContainerStyle={styles.container}>
 
         {/* ── 語音輸入 ── */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>{t.voiceSection}</Text>
-          <Text style={styles.hint}>{t.voiceHint}</Text>
+          <View style={styles.langRow}>
+            {APP_LANGS.map((item) => (
+              <Pressable
+                key={item.code}
+                style={[styles.refreshBtn, targetLang === item.code ? styles.micBtnActive : null]}
+                onPress={() => setTargetLang(item.code)}
+              >
+                <Text style={styles.refreshBtnText}>{item.short}</Text>
+              </Pressable>
+            ))}
+          </View>
 
           <Pressable
             style={[styles.micBtn, isListening && styles.micBtnActive]}
@@ -496,7 +521,6 @@ export default function LanguageSupportScreen({ apiBaseUrl, token, onBack, uiLan
         {/* ── 翻譯工具 ── */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>{t.translateSection}</Text>
-          <Text style={styles.hint}>{t.translateHint}</Text>
 
           <Text style={styles.label}>{t.inputLabel}</Text>
           <TextInput
@@ -518,14 +542,16 @@ export default function LanguageSupportScreen({ apiBaseUrl, token, onBack, uiLan
 
           {translating ? (
             <View style={styles.statusRow}>
-              <ActivityIndicator size="small" color="#1f74d1" style={{ marginRight: 6 }} />
+              <ActivityIndicator size="small" color={colors.pine} style={{ marginRight: 6 }} />
               <Text style={styles.hint}>{t.translating}</Text>
             </View>
           ) : null}
 
           {translatedResult ? (
             <View style={styles.resultBox}>
-              <Text style={styles.resultLabel}>繁體中文</Text>
+              <Text style={styles.resultLabel}>
+                {APP_LANGS.find((item) => item.code === targetLang)?.label || t.resultLang}
+              </Text>
               <Text style={styles.resultText}>{translatedResult}</Text>
               <Pressable
                 style={[styles.playBtn, isPlaying && styles.playBtnActive]}
@@ -542,7 +568,6 @@ export default function LanguageSupportScreen({ apiBaseUrl, token, onBack, uiLan
         {/* ── 系統短語庫 ── */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>{t.systemPhrases}</Text>
-          <Text style={styles.hint}>{t.tapToTranslate}</Text>
           {SYSTEM_PHRASES.map((phrase, i) => {
             const primary = phrase[uiLang] || phrase.zh
             const secondary = uiLang !== "zh" ? phrase.zh : phrase.en
@@ -616,7 +641,7 @@ export default function LanguageSupportScreen({ apiBaseUrl, token, onBack, uiLan
           </View>
           {historyMsg ? <Text style={styles.successText}>{historyMsg}</Text> : null}
           {loadingHistory
-            ? <ActivityIndicator color="#1f74d1" />
+            ? <ActivityIndicator color={colors.pine} />
             : historyRecords.length === 0
               ? <Text style={styles.emptyText}>{t.noData}</Text>
               : historyRecords.map((r, i) => (
@@ -634,28 +659,28 @@ export default function LanguageSupportScreen({ apiBaseUrl, token, onBack, uiLan
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#f2f7ff" },
+  screen: { flex: 1, backgroundColor: colors.bg },
   header: {
     backgroundColor: "#fff",
     borderBottomWidth: 1,
-    borderBottomColor: "#d8e6ff",
+    borderBottomColor: colors.border,
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 14
   },
-  backText: { color: "#1f74d1", fontWeight: "900" },
-  title: { marginTop: 8, color: "#11355c", fontSize: 22, fontWeight: "900" },
+  backText: { color: colors.pine, fontWeight: "900" },
+  title: { marginTop: 8, color: colors.text, fontSize: 22, fontWeight: "900" },
   subtitle: { marginTop: 4, color: "#526b88", lineHeight: 20 },
   container: { padding: 16, gap: 12, paddingBottom: 32 },
   card: {
     backgroundColor: "#fff",
     borderWidth: 1,
-    borderColor: "#d8e6ff",
+    borderColor: colors.border,
     borderRadius: 12,
     padding: 14,
     gap: 8
   },
-  sectionTitle: { color: "#173e67", fontSize: 16, fontWeight: "900" },
+  sectionTitle: { color: colors.text, fontSize: 16, fontWeight: "900" },
   hint: { color: "#6a7e99", fontSize: 12 },
   label: { color: "#244569", fontWeight: "800", fontSize: 13, marginTop: 2 },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
@@ -663,12 +688,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 5,
     borderRadius: 20, borderWidth: 1, borderColor: "#c7d8ed", backgroundColor: "#fff"
   },
-  chipActiveBlue: { backgroundColor: "#1f74d1", borderColor: "#1f74d1" },
-  chipActiveGreen: { backgroundColor: "#16a34a", borderColor: "#16a34a" },
+  chipActiveBlue: { backgroundColor: colors.pine, borderColor: colors.pine },
+  chipActiveGreen: { backgroundColor: colors.pine, borderColor: colors.pine },
   chipText: { color: "#1f507f", fontSize: 12, fontWeight: "700" },
   chipTextWhite: { color: "#fff" },
   micBtn: {
-    backgroundColor: "#1f74d1",
+    backgroundColor: colors.pine,
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: "center",
@@ -689,10 +714,10 @@ const styles = StyleSheet.create({
   textArea: {
     borderWidth: 1, borderColor: "#c8d8ee", borderRadius: 10,
     backgroundColor: "#fbfdff", paddingHorizontal: 10, paddingVertical: 9,
-    color: "#173e67", minHeight: 72, textAlignVertical: "top"
+    color: colors.text, minHeight: 72, textAlignVertical: "top"
   },
   primaryBtn: {
-    backgroundColor: "#1f74d1", borderRadius: 10,
+    backgroundColor: colors.pine, borderRadius: 10,
     paddingVertical: 12, alignItems: "center", marginTop: 4
   },
   primaryBtnText: { color: "#fff", fontWeight: "900" },
@@ -703,7 +728,7 @@ const styles = StyleSheet.create({
   resultLabel: { color: "#065f46", fontSize: 11, fontWeight: "700" },
   resultText: { color: "#065f46", fontSize: 15, lineHeight: 22 },
   playBtn: {
-    backgroundColor: "#16a34a", borderRadius: 8,
+    backgroundColor: colors.pine, borderRadius: 8,
     paddingVertical: 9, paddingHorizontal: 14, alignSelf: "flex-start"
   },
   playBtnActive: { backgroundColor: "#6b7280" },
@@ -712,7 +737,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: "#e5eef9",
     borderRadius: 8, padding: 10, backgroundColor: "#f8faff"
   },
-  phrasePrimary: { color: "#173e67", fontWeight: "800", fontSize: 14 },
+  phrasePrimary: { color: colors.text, fontWeight: "800", fontSize: 14 },
   phraseSecondary: { color: "#6a7e99", fontSize: 11, marginTop: 2 },
   dangerCard: {
     borderWidth: 1, borderColor: "#fecaca",
@@ -729,12 +754,13 @@ const styles = StyleSheet.create({
     borderRadius: 8, padding: 10, backgroundColor: "#f8faff"
   },
   rowBetween: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  langRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 },
   actions: { flexDirection: "row", gap: 8 },
   secondaryBtn: {
     flex: 1, backgroundColor: "#fff", borderWidth: 1,
     borderColor: "#c7d8ed", borderRadius: 10, paddingVertical: 9, alignItems: "center"
   },
-  secondaryBtnText: { color: "#1f74d1", fontWeight: "900", fontSize: 13 },
+  secondaryBtnText: { color: colors.pine, fontWeight: "900", fontSize: 13 },
   refreshBtn: {
     backgroundColor: "#fff", borderWidth: 1, borderColor: "#c7d8ed",
     borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4

@@ -39,6 +39,8 @@ class MainApplication : Application(), ReactApplication {
   override fun onCreate() {
     super.onCreate()
     createSosNotificationChannel()
+    createAbnormalAlertNotificationChannel()
+    createChatNotificationChannel()
     loadReactNative(this)
   }
 
@@ -53,6 +55,40 @@ class MainApplication : Application(), ReactApplication {
       description = "Urgent SOS alerts from family care events"
       enableVibration(true)
       vibrationPattern = longArrayOf(0, 900, 250, 900, 250, 1400)
+      lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+    }
+
+    val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    manager.createNotificationChannel(channel)
+  }
+
+  private fun createAbnormalAlertNotificationChannel() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+
+    val channel = NotificationChannel(
+      "abnormal_alert",
+      "High-risk abnormal event alerts",
+      NotificationManager.IMPORTANCE_HIGH
+    ).apply {
+      description = "High severity fall/abnormal event alerts"
+      enableVibration(true)
+      lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+    }
+
+    val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    manager.createNotificationChannel(channel)
+  }
+
+  private fun createChatNotificationChannel() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+
+    val channel = NotificationChannel(
+      "care_chat",
+      "Care messages",
+      NotificationManager.IMPORTANCE_DEFAULT
+    ).apply {
+      description = "New chat messages from the care circle"
+      enableVibration(true)
       lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
     }
 

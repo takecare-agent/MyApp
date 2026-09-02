@@ -10,11 +10,13 @@ passport.use(
       callbackURL: process.env.GOOGLE_CALLBACK_URL || "http://localhost:5000/auth/google/callback"
     },
     (accessToken, refreshToken, profile, done) => {
+      const email = profile?.emails?.[0]?.value
+      if (!email) return done(new Error("Google 帳號未提供電子郵件"))
       const user = {
-        email: profile.emails[0].value,
-        name: profile.displayName
+        email,
+        name: profile.displayName || email.split("@")[0],
+        googleSub: profile.id
       }
-
       return done(null, user)
     }
   )

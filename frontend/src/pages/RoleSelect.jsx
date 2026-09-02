@@ -33,12 +33,18 @@ export default function RoleSelect() {
 
     setSubmittingRole(role)
     try {
-      const res = await fetch(`${API_BASE_URL}/set-role`, {
+      // 與 App 一致：用 /mobile/dev-login 一次設好角色與長輩綁定
+      const res = await fetch(`${API_BASE_URL}/mobile/dev-login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email, role, linkedPatientEmail }),
+        body: JSON.stringify({
+          email,
+          name: email.split("@")[0],
+          role,
+          linkedPatientEmail: linkedPatientEmail.trim().toLowerCase()
+        }),
       })
 
       const data = await res.json()
@@ -48,9 +54,9 @@ export default function RoleSelect() {
       }
 
       localStorage.setItem("token", data.token)
-      localStorage.setItem("role", role)
+      localStorage.setItem("role", data.role || role)
 
-      window.location.href = `/${role}`
+      window.location.href = `/${data.role || role}`
     } catch {
       alert("Failed to set role, please try again.")
     } finally {

@@ -1,9 +1,14 @@
 <resources>
 
-    <!-- Base application theme. -->
-    <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
-        <!-- Customize your theme here. -->
+    <!-- Light only：華為／小米深色模式會把未指定 color 的 Text 變成白字，淺底上看不見。 -->
+    <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
+        <item name="android:textColor">#FF111827</item>
+        <item name="android:textColorPrimary">#FF111827</item>
+        <item name="android:textColorSecondary">#FF374151</item>
+        <item name="android:forceDarkAllowed">false</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">#FFF2F7FF</item>
     </style>
 
 </resources>

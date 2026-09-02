@@ -1,0 +1,902 @@
+import { useCallback, useEffect, useMemo, useState } from "react"
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Modal,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View
+} from "react-native"
+import DateTimeField from "../components/DateTimeField"
+import DropdownField from "../components/DropdownField"
+import ComboboxField from "../components/ComboboxField"
+import CareCircleSearch from "../components/CareCircleSearch"
+import CareDailyRecordsScreen from "./CareDailyRecordsScreen"
+import ReminderCompletedHistory from "./ReminderCompletedHistory"
+import TranslatedUgcText from "../components/TranslatedUgcText"
+import { apiRequest } from "../lib/api"
+import {
+  formatHHmm,
+  formatReminderTime,
+  isSameLocalDay,
+  toReminderCatCode
+} from "../lib/reminderPresets"
+import {
+  reminderCatLabel,
+  reminderCategoryOptions,
+  reminderContentPresetOptions
+} from "../lib/contentLabels"
+import { resolveCarePresetKey } from "../lib/presetResolve"
+import { usePollingRefresh } from "../lib/usePollingRefresh"
+import { useI18n } from "../i18n/I18nContext"
+import { weekdayShortLabels } from "../i18n/dateLocale"
+import { colors } from "./new_ui/tokens"
+
+function weekdayLabel(weekdays, t, lang) {
+  if (!weekdays || weekdays.length === 0) return t("reminders.everyDay")
+  const labels = weekdayShortLabels(lang)
+  return weekdays.map((d) => labels[d]).join(lang === "zh" ? "、" : ", ")
+}
+
+function emptyForm(kind = "once") {
+  const now = new Date()
+  now.setSeconds(0, 0)
+  return {
+    kind,
+    category: "med",
+    contentText: "",
+    note: "",
+    scheduledAt: now,
+    weekdays: []
+  }
+}
+
+function formFromOnce(item) {
+  return {
+    kind: "once",
+    category: toReminderCatCode(item.category || "med"),
+    contentText: item.content || "",
+    note: item.note || "",
+    scheduledAt: item.time ? new Date(item.time) : new Date(),
+    weekdays: []
+  }
+}
+
+function formFromRepeat(item) {
+  const scheduledAt = new Date()
+  if (typeof item.time === "string" && item.time.includes(":")) {
+    const [h, m] = item.time.split(":")
+    scheduledAt.setHours(Number(h) || 0, Number(m) || 0, 0, 0)
+  }
+  return {
+    kind: "repeat",
+    category: toReminderCatCode(item.category || "med"),
+    contentText: item.content || "",
+    note: item.note || "",
+    scheduledAt,
+    weekdays: Array.isArray(item.weekdays) ? item.weekdays : []
+  }
+}
+
+export default function FamilyRemindersScreen({ apiBaseUrl, token }) {
+  const { t, lang } = useI18n()
+  const [page, setPage] = useState("today") // today | manage | careDaily | doneHistory
+  const [onceList, setOnceList] = useState([])
+  const [templates, setTemplates] = useState([])
+  const [todayTemplates, setTodayTemplates] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState("")
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editing, setEditing] = useState(null)
+  const [form, setForm] = useState(() => emptyForm("once"))
+  const [saving, setSaving] = useState(false)
+  const [customPresets, setCustomPresets] = useState([])
+  const [addingPreset, setAddingPreset] = useState(false)
+  const [removingPreset, setRemovingPreset] = useState(false)
+
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setError("")
+    try {
+      const [remData, tplData, todayTpl, presetData] = await Promise.all([
+        apiRequest({ apiBaseUrl, path: "/family/reminders?limit=100", token }),
+        apiRequest({ apiBaseUrl, path: "/family/task-templates", token }),
+        apiRequest({ apiBaseUrl, path: "/family/task-templates/today", token }),
+        apiRequest({ apiBaseUrl, path: "/family/reminder-presets", token })
+      ])
+      setOnceList(Array.isArray(remData?.records) ? remData.records : [])
+      setTemplates(Array.isArray(tplData?.records) ? tplData.records : [])
+      setTodayTemplates(Array.isArray(todayTpl?.records) ? todayTpl.records : [])
+      setCustomPresets(Array.isArray(presetData?.records) ? presetData.records : [])
+      if (!silent) setError("")
+    } catch (err) {
+      if (!silent) setError(err.message || t("common.loadFailed"))
+    } finally {
+      if (!silent) setLoading(false)
+      setRefreshing(false)
+    }
+  }, [apiBaseUrl, token])
+
+  useEffect(() => {
+    setLoading(true)
+    load()
+  }, [load])
+
+  usePollingRefresh(load, { intervalMs: 5000, enabled: !modalOpen && page !== "doneHistory" })
+
+  const todayTodos = useMemo(() => {
+    const onceToday = onceList
+      .filter((r) => isSameLocalDay(r.time))
+      .map((r) => ({
+        key: `once-${r._id}`,
+        kind: "once",
+        category: r.category,
+        content: r.content,
+        contentKey: r.contentKey,
+        sourceLang: r.sourceLang,
+        note: r.note || "",
+        timeLabel: formatReminderTime(r.time),
+        sortKey: formatHHmm(r.time),
+        isCompleted: Boolean(r.isCompleted),
+        raw: r
+      }))
+    const repeatToday = todayTemplates.map((t) => ({
+      key: `tpl-${t._id}`,
+      kind: "repeat",
+      category: t.category,
+      content: t.content,
+      contentKey: t.contentKey,
+      sourceLang: t.sourceLang,
+      note: t.note || "",
+      timeLabel: t.time || "--:--",
+      sortKey: t.time || "99:99",
+      isCompleted: Boolean(t.isCompleted),
+      raw: t
+    }))
+    return [...onceToday, ...repeatToday].sort((a, b) =>
+      String(a.sortKey).localeCompare(String(b.sortKey))
+    )
+  }, [onceList, todayTemplates])
+
+  const doneToday = todayTodos.filter((t) => t.isCompleted).length
+
+  const contentOptions = useMemo(() => {
+    const cat = toReminderCatCode(form.category)
+    const hidden = new Set(
+      customPresets
+        .filter((p) => toReminderCatCode(p.category) === cat && p.source === "family-hidden")
+        .map((p) => p.content)
+    )
+    const customRows = customPresets.filter(
+      (p) => toReminderCatCode(p.category) === cat && p.source !== "family-hidden"
+    )
+    const customValues = new Set(customRows.map((p) => p.content))
+    const builtIn = reminderContentPresetOptions(cat, t)
+      .map((p) => p.value)
+      .filter((c) => !hidden.has(c) && !customValues.has(c))
+      .map((c) => ({ value: c, kind: "builtin", deletable: true }))
+    const customs = customRows.map((p) => ({
+      value: p.content,
+      id: p._id,
+      kind: "custom",
+      deletable: true
+    }))
+    return [...builtIn, ...customs]
+  }, [form.category, customPresets, t])
+
+  const openCreate = () => {
+    setEditing(null)
+    setForm(emptyForm("once"))
+    setModalOpen(true)
+  }
+
+  const openEditOnce = (item) => {
+    setEditing({ type: "once", id: item._id })
+    setForm(formFromOnce(item))
+    setModalOpen(true)
+  }
+
+  const openEditRepeat = (item) => {
+    setEditing({ type: "repeat", id: item._id })
+    setForm(formFromRepeat(item))
+    setModalOpen(true)
+  }
+
+  const handleAddPreset = async () => {
+    const content = String(form.contentText || "").trim()
+    if (!content) {
+      Alert.alert(t("common.hint"), t("reminders.needContentField"))
+      return
+    }
+    setAddingPreset(true)
+    try {
+      await apiRequest({
+        apiBaseUrl,
+        path: "/family/reminder-presets",
+        method: "POST",
+        token,
+        body: { category: toReminderCatCode(form.category), content }
+      })
+      await load({ silent: true })
+    } catch (err) {
+      Alert.alert(t("common.error"), err.message || t("reminders.addPresetFail"))
+    } finally {
+      setAddingPreset(false)
+    }
+  }
+
+  const handleRemovePreset = async (opt) => {
+    setRemovingPreset(true)
+    try {
+      if (opt.kind === "custom" && opt.id) {
+        await apiRequest({
+          apiBaseUrl,
+          path: `/family/reminder-presets/${encodeURIComponent(opt.id)}`,
+          method: "DELETE",
+          token
+        })
+      } else {
+        // 內建：寫入隱藏標記
+        await apiRequest({
+          apiBaseUrl,
+          path: "/family/reminder-presets",
+          method: "POST",
+          token,
+          body: { category: toReminderCatCode(form.category), content: opt.value, hidden: true }
+        })
+      }
+      if (form.contentText === opt.value) {
+        setForm((prev) => ({ ...prev, contentText: "" }))
+      }
+      await load({ silent: true })
+    } catch (err) {
+      Alert.alert(t("common.error"), err.message || t("reminders.removePresetFail"))
+    } finally {
+      setRemovingPreset(false)
+    }
+  }
+
+  const handleSave = async () => {
+    const content = String(form.contentText || "").trim()
+    if (!content) {
+      Alert.alert(t("common.hint"), t("reminders.needContent"))
+      return
+    }
+    setSaving(true)
+    try {
+      const note = String(form.note || "").trim()
+      if (form.kind === "repeat") {
+        const body = {
+          category: toReminderCatCode(form.category),
+          content,
+          contentKey: resolveCarePresetKey({ text: content }) || "",
+          time: formatHHmm(form.scheduledAt),
+          weekdays: form.weekdays || [],
+          note,
+          sourceLang: lang
+        }
+        if (editing?.type === "repeat" && editing.id) {
+          await apiRequest({
+            apiBaseUrl,
+            path: `/family/task-templates/${encodeURIComponent(editing.id)}`,
+            method: "PATCH",
+            token,
+            body
+          })
+        } else {
+          await apiRequest({
+            apiBaseUrl,
+            path: "/family/task-templates",
+            method: "POST",
+            token,
+            body
+          })
+        }
+      } else {
+        const when = form.scheduledAt instanceof Date ? form.scheduledAt : new Date()
+        if (Number.isNaN(when.getTime())) {
+          Alert.alert(t("common.hint"), t("reminders.invalidTime"))
+          setSaving(false)
+          return
+        }
+        const body = {
+          category: toReminderCatCode(form.category),
+          content,
+          contentKey: resolveCarePresetKey({ text: content }) || "",
+          time: when.toISOString(),
+          note,
+          sourceLang: lang
+        }
+        if (editing?.type === "once" && editing.id) {
+          await apiRequest({
+            apiBaseUrl,
+            path: `/family/reminders/${encodeURIComponent(editing.id)}`,
+            method: "PATCH",
+            token,
+            body
+          })
+        } else {
+          await apiRequest({
+            apiBaseUrl,
+            path: "/family/reminders",
+            method: "POST",
+            token,
+            body
+          })
+        }
+      }
+      setModalOpen(false)
+      await load({ silent: true })
+    } catch (err) {
+      Alert.alert(t("common.error"), err.message || t("common.saveFailed"))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = (kind, item) => {
+    const label = item.content || ""
+    Alert.alert(t("common.confirmDelete"), t("reminders.confirmDeleteMsg", { label }), [
+      { text: t("common.cancel"), style: "cancel" },
+      {
+        text: t("common.delete"),
+        style: "destructive",
+        onPress: async () => {
+          try {
+            const path =
+              kind === "repeat"
+                ? `/family/task-templates/${encodeURIComponent(item._id)}`
+                : `/family/reminders/${encodeURIComponent(item._id)}`
+            await apiRequest({ apiBaseUrl, path, method: "DELETE", token })
+            await load({ silent: true })
+          } catch (err) {
+            Alert.alert(t("common.error"), err.message || t("common.deleteFailed"))
+          }
+        }
+      }
+    ])
+  }
+
+  const toggleWeekday = (day) => {
+    setForm((prev) => {
+      const cur = Array.isArray(prev.weekdays) ? prev.weekdays : []
+      const weekdays = cur.includes(day)
+        ? cur.filter((d) => d !== day)
+        : [...cur, day].sort()
+      return { ...prev, weekdays }
+    })
+  }
+
+  const renderTodayItem = ({ item }) => {
+    const done = item.isCompleted
+    return (
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View style={[styles.badge, item.kind === "repeat" ? styles.badgeGreen : null]}>
+            <Text style={[styles.badgeText, item.kind === "repeat" ? styles.badgeGreenText : null]}>
+              {reminderCatLabel(item.category, t)} · {item.kind === "repeat" ? t("reminders.repeatShort") : t("reminders.onceShort")}
+            </Text>
+          </View>
+          <View style={[styles.statusBadge, done ? styles.statusDone : styles.statusPending]}>
+            <Text style={styles.statusText}>{done ? t("common.done") : t("common.pending")}</Text>
+          </View>
+        </View>
+        <TranslatedUgcText
+          text={item.content}
+          sourceLang={item.sourceLang}
+          contentKey={item.contentKey}
+          apiBaseUrl={apiBaseUrl}
+          token={token}
+          style={styles.content}
+        />
+        {item.note ? (
+          <TranslatedUgcText
+            text={item.note}
+            sourceLang={item.sourceLang}
+            apiBaseUrl={apiBaseUrl}
+            token={token}
+            style={styles.noteText}
+            notePrefix={`${t("common.note")}：`}
+          />
+        ) : null}
+        <Text style={styles.timeText}>{item.timeLabel}</Text>
+      </View>
+    )
+  }
+
+  const renderManageOnce = ({ item }) => (
+    <View style={styles.card}>
+      <View style={styles.cardHeader}>
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>{reminderCatLabel(item.category, t)} · {t("reminders.onceShort")}</Text>
+        </View>
+        <View style={[styles.statusBadge, item.isCompleted ? styles.statusDone : styles.statusPending]}>
+          <Text style={styles.statusText}>{item.isCompleted ? t("common.done") : t("common.pending")}</Text>
+        </View>
+      </View>
+      <TranslatedUgcText
+        text={item.content}
+        sourceLang={item.sourceLang}
+        contentKey={item.contentKey}
+        apiBaseUrl={apiBaseUrl}
+        token={token}
+        style={styles.content}
+      />
+      {item.note ? (
+        <TranslatedUgcText
+          text={item.note}
+          sourceLang={item.sourceLang}
+          apiBaseUrl={apiBaseUrl}
+          token={token}
+          style={styles.noteText}
+          notePrefix={`${t("common.note")}：`}
+        />
+      ) : null}
+      <Text style={styles.timeText}>{formatReminderTime(item.time)}</Text>
+      <View style={styles.actionRow}>
+        <Pressable style={styles.editBtn} onPress={() => openEditOnce(item)}>
+          <Text style={styles.editBtnText}>{t("common.edit")}</Text>
+        </Pressable>
+        <Pressable style={styles.deleteBtn} onPress={() => handleDelete("once", item)}>
+          <Text style={styles.deleteBtnText}>{t("common.delete")}</Text>
+        </Pressable>
+      </View>
+    </View>
+  )
+
+  const renderManageRepeat = ({ item }) => (
+    <View style={[styles.card, styles.cardRepeat]}>
+      <View style={styles.cardHeader}>
+        <View style={[styles.badge, styles.badgeGreen]}>
+          <Text style={[styles.badgeText, styles.badgeGreenText]}>
+            {reminderCatLabel(item.category, t)} · {t("reminders.repeatShort")}
+          </Text>
+        </View>
+        <View style={styles.statusRepeat}>
+          <Text style={styles.statusRepeatText}>{weekdayLabel(item.weekdays, t, lang)}</Text>
+        </View>
+      </View>
+      <TranslatedUgcText
+        text={item.content}
+        sourceLang={item.sourceLang}
+        contentKey={item.contentKey}
+        apiBaseUrl={apiBaseUrl}
+        token={token}
+        style={styles.content}
+      />
+      {item.note ? (
+        <TranslatedUgcText
+          text={item.note}
+          sourceLang={item.sourceLang}
+          apiBaseUrl={apiBaseUrl}
+          token={token}
+          style={styles.noteText}
+          notePrefix={`${t("common.note")}：`}
+        />
+      ) : null}
+      <Text style={styles.timeText}>{t("reminders.dailyAt", { time: item.time || "--:--" })}</Text>
+      <View style={styles.actionRow}>
+        <Pressable style={[styles.editBtn, styles.editBtnGreen]} onPress={() => openEditRepeat(item)}>
+          <Text style={[styles.editBtnText, styles.editBtnGreenText]}>{t("common.edit")}</Text>
+        </Pressable>
+        <Pressable style={styles.deleteBtn} onPress={() => handleDelete("repeat", item)}>
+          <Text style={styles.deleteBtnText}>{t("common.delete")}</Text>
+        </Pressable>
+      </View>
+    </View>
+  )
+
+  const manageData = useMemo(() => {
+    const startToday = new Date()
+    startToday.setHours(0, 0, 0, 0)
+    // 提醒設定＝可編輯的「規則／未完成」：不堆過去已完成單次
+    const onceRows = onceList
+      .filter((r) => {
+        if (!r.isCompleted) return true
+        const t = r.time ? new Date(r.time) : null
+        if (!t || Number.isNaN(t.getTime())) return false
+        return t >= startToday
+      })
+      .map((r) => ({ ...r, _row: "once" }))
+    const tplRows = templates.map((r) => ({ ...r, _row: "repeat" }))
+    return [...onceRows, ...tplRows]
+  }, [onceList, templates])
+
+  return (
+    <View style={styles.container}>
+      {page === "doneHistory" ? (
+        <ReminderCompletedHistory
+          apiBaseUrl={apiBaseUrl}
+          token={token}
+          role="family"
+          days={7}
+          onBack={() => setPage("today")}
+        />
+      ) : (
+      <>
+      <CareCircleSearch
+        apiBaseUrl={apiBaseUrl}
+        token={token}
+        role="family"
+        onOpenResult={(item) => {
+          if (item?.type === "daily") setPage("careDaily")
+          else if (item?.type === "alert") return
+          else setPage("today")
+        }}
+      />
+      <View style={styles.tabRow}>
+        <Pressable
+          style={[styles.tab, page === "today" ? styles.tabActive : null]}
+          onPress={() => setPage("today")}
+        >
+          <Text style={[styles.tabText, page === "today" ? styles.tabTextActive : null]}>{t("reminders.todayTodos")}</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.tab, page === "manage" ? styles.tabActive : null]}
+          onPress={() => setPage("manage")}
+        >
+          <Text style={[styles.tabText, page === "manage" ? styles.tabTextActive : null]}>{t("reminders.manage")}</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.tab, page === "careDaily" ? styles.tabActive : null]}
+          onPress={() => setPage("careDaily")}
+        >
+          <Text style={[styles.tabText, page === "careDaily" ? styles.tabTextActive : null]}>{t("reminders.careDaily")}</Text>
+        </Pressable>
+      </View>
+
+      {page === "careDaily" ? (
+        <CareDailyRecordsScreen apiBaseUrl={apiBaseUrl} token={token} role="family" />
+      ) : error ? <Text style={styles.error}>{error}</Text> : null}
+
+      {page === "careDaily" ? null : page === "today" ? (
+        <View style={styles.flex}>
+          <View style={styles.summary}>
+            <Text style={styles.summaryMeta}>
+              {t("reminders.doneCount")} <Text style={styles.summaryDone}>{doneToday}</Text> / {todayTodos.length}
+            </Text>
+            <Pressable style={styles.historyLink} onPress={() => setPage("doneHistory")}>
+              <Text style={styles.historyLinkText}>{t("reminders.completedHistory")} ›</Text>
+            </Pressable>
+          </View>
+          {loading ? (
+            <ActivityIndicator color={colors.pine} style={{ marginTop: 28 }} />
+          ) : (
+            <FlatList
+              data={todayTodos}
+              keyExtractor={(item) => item.key}
+              renderItem={renderTodayItem}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={() => {
+                    setRefreshing(true)
+                    load()
+                  }}
+                  tintColor={colors.pine}
+                />
+              }
+              contentContainerStyle={styles.listPad}
+              ListEmptyComponent={<Text style={styles.empty}>{t("reminders.emptyToday")}</Text>}
+            />
+          )}
+        </View>
+      ) : (
+        <View style={styles.flex}>
+          <Pressable style={styles.addBtn} onPress={openCreate}>
+            <Text style={styles.addBtnText}>{t("reminders.add")}</Text>
+          </Pressable>
+          {loading ? (
+            <ActivityIndicator color={colors.pine} style={{ marginTop: 28 }} />
+          ) : (
+            <FlatList
+              data={manageData}
+              keyExtractor={(item) => `${item._row}-${item._id}`}
+              renderItem={({ item }) =>
+                item._row === "repeat" ? renderManageRepeat({ item }) : renderManageOnce({ item })
+              }
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={() => {
+                    setRefreshing(true)
+                    load()
+                  }}
+                  tintColor={colors.pine}
+                />
+              }
+              contentContainerStyle={styles.listPad}
+              ListEmptyComponent={<Text style={styles.empty}>{t("reminders.emptyManage")}</Text>}
+            />
+          )}
+        </View>
+      )}
+
+      <Modal visible={modalOpen} animationType="slide" onRequestClose={() => setModalOpen(false)}>
+        <View style={styles.modalRoot}>
+          <View style={styles.modalHeader}>
+            <Pressable onPress={() => setModalOpen(false)}>
+              <Text style={styles.modalClose}>{t("common.close")}</Text>
+            </Pressable>
+            <Text style={styles.modalTitle}>{editing ? t("reminders.edit") : t("reminders.create")}</Text>
+            <View style={{ width: 40 }} />
+          </View>
+
+          <ScrollView contentContainerStyle={styles.modalBody} keyboardShouldPersistTaps="handled">
+            <Text style={styles.label}>{t("reminders.type")}</Text>
+            <View style={styles.typeRow}>
+              <Pressable
+                style={[styles.typeChip, form.kind === "once" ? styles.typeChipOn : null]}
+                onPress={() => setForm((prev) => ({ ...prev, kind: "once" }))}
+                disabled={Boolean(editing)}
+              >
+                <Text style={[styles.typeChipText, form.kind === "once" ? styles.typeChipTextOn : null]}>
+                  {t("reminders.once")}
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.typeChip, form.kind === "repeat" ? styles.typeChipOnGreen : null]}
+                onPress={() => setForm((prev) => ({ ...prev, kind: "repeat" }))}
+                disabled={Boolean(editing)}
+              >
+                <Text style={[styles.typeChipText, form.kind === "repeat" ? styles.typeChipTextOnGreen : null]}>
+                  {t("reminders.repeat")}
+                </Text>
+              </Pressable>
+            </View>
+
+            <DropdownField
+              label={t("reminders.category")}
+              value={toReminderCatCode(form.category)}
+              options={reminderCategoryOptions(t)}
+              onSelect={(cat) => setForm((prev) => ({ ...prev, category: cat, contentText: "" }))}
+            />
+
+            <ComboboxField
+              label={t("reminders.content")}
+              value={form.contentText}
+              onChangeText={(v) => setForm((prev) => ({ ...prev, contentText: v }))}
+              options={contentOptions}
+              placeholder={t("reminders.contentPlaceholder")}
+              emptyText={t("reminders.emptyPreset")}
+              onAddCurrent={handleAddPreset}
+              onRemoveOption={handleRemovePreset}
+              adding={addingPreset}
+              removing={removingPreset}
+            />
+
+            <Text style={styles.label}>{t("reminders.noteOptional")}</Text>
+            <TextInput
+              style={[styles.input, styles.noteInput]}
+              value={form.note}
+              onChangeText={(v) => setForm((prev) => ({ ...prev, note: v }))}
+              placeholder={t("reminders.notePlaceholder")}
+              multiline
+              textAlignVertical="top"
+            />
+
+            {form.kind === "once" ? (
+              <DateTimeField
+                label={t("reminders.datetime")}
+                mode="datetime"
+                value={form.scheduledAt}
+                onChange={(d) => setForm((prev) => ({ ...prev, scheduledAt: d }))}
+              />
+            ) : (
+              <>
+                <DateTimeField
+                  label={t("reminders.dailyTime")}
+                  mode="time"
+                  value={form.scheduledAt}
+                  onChange={(d) => setForm((prev) => ({ ...prev, scheduledAt: d }))}
+                />
+                <Text style={styles.label}>{t("reminders.weekdays")}</Text>
+                <View style={styles.chipRow}>
+                  {weekdayShortLabels(lang).map((label, day) => {
+                    const on = (form.weekdays || []).includes(day)
+                    return (
+                      <Pressable
+                        key={`${label}-${day}`}
+                        style={[styles.chip, on ? styles.chipActiveGreen : null]}
+                        onPress={() => toggleWeekday(day)}
+                      >
+                        <Text style={[styles.chipText, on ? styles.chipTextActiveGreen : null]}>
+                          {label}
+                        </Text>
+                      </Pressable>
+                    )
+                  })}
+                </View>
+              </>
+            )}
+
+            <Pressable
+              style={[styles.saveBtn, saving ? styles.saveBtnDisabled : null]}
+              onPress={handleSave}
+              disabled={saving}
+            >
+              {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>{t("common.save")}</Text>}
+            </Pressable>
+          </ScrollView>
+        </View>
+      </Modal>
+      </>
+      )}
+    </View>
+  )
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
+  flex: { flex: 1 },
+  tabRow: {
+    flexDirection: "row",
+    backgroundColor: "#fff",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#e5e7eb"
+  },
+  tab: { flex: 1, paddingVertical: 14, alignItems: "center" },
+  tabActive: { borderBottomWidth: 2, borderBottomColor: colors.pine },
+  tabText: { fontSize: 15, color: "#6b7280", fontWeight: "600" },
+  tabTextActive: { color: colors.pine },
+  summary: {
+    backgroundColor: "#fff",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#e5e7eb"
+  },
+  summaryMeta: { fontSize: 14, color: "#6b7280" },
+  summaryDone: { color: colors.pine, fontWeight: "800", fontSize: 17 },
+  historyLink: { marginTop: 10, alignSelf: "flex-start" },
+  historyLinkText: { color: colors.pine, fontWeight: "700", fontSize: 14 },
+  addBtn: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 4,
+    backgroundColor: colors.pine,
+    borderRadius: 20,
+    paddingVertical: 14,
+    alignItems: "center"
+  },
+  addBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  listPad: { padding: 16, paddingBottom: 32 },
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 22,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#e5e7eb"
+  },
+  cardRepeat: { borderLeftWidth: 4, borderLeftColor: colors.pine },
+  cardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8
+  },
+  badge: {
+    backgroundColor: colors.mintSoft,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4
+  },
+  badgeGreen: { backgroundColor: "#f6ffed" },
+  badgeText: { color: colors.pine, fontSize: 12, fontWeight: "700" },
+  badgeGreenText: { color: colors.pine },
+  statusBadge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  statusDone: { backgroundColor: "#f6ffed" },
+  statusPending: { backgroundColor: "#fff7e6" },
+  statusText: { fontSize: 12, fontWeight: "600", color: "#374151" },
+  statusRepeat: {
+    backgroundColor: "#f0f5ff",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4
+  },
+  statusRepeatText: { fontSize: 12, fontWeight: "600", color: "#2f54eb" },
+  content: { fontSize: 17, fontWeight: "700", color: "#111827", marginBottom: 6 },
+  noteText: { fontSize: 13, color: "#4b5563", marginBottom: 6 },
+  timeText: { fontSize: 13, color: "#6b7280", marginBottom: 4 },
+  noteInput: { minHeight: 72, paddingTop: 12 },
+  actionRow: { flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: 8 },
+  editBtn: {
+    borderWidth: 1,
+    borderColor: colors.pine,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6
+  },
+  editBtnGreen: { borderColor: colors.pine, backgroundColor: "#f6ffed" },
+  editBtnText: { color: colors.pine, fontWeight: "600" },
+  editBtnGreenText: { color: colors.pine },
+  deleteBtn: {
+    borderWidth: 1,
+    borderColor: "#ff4d4f",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6
+  },
+  deleteBtnText: { color: "#ff4d4f", fontWeight: "600" },
+  empty: { textAlign: "center", marginTop: 48, color: "#9ca3af", fontSize: 15 },
+  error: { color: "#dc2626", marginHorizontal: 16, marginTop: 8 },
+  modalRoot: { flex: 1, backgroundColor: "#fff" },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 56,
+    paddingBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#e5e7eb"
+  },
+  modalClose: { color: colors.pine, fontWeight: "600", width: 40 },
+  modalTitle: { fontSize: 17, fontWeight: "700" },
+  modalBody: { padding: 16, paddingBottom: 40 },
+  label: { fontSize: 14, fontWeight: "700", color: "#374151", marginBottom: 8, marginTop: 12 },
+  typeRow: { flexDirection: "row", gap: 10 },
+  typeChip: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+    backgroundColor: "#fff"
+  },
+  typeChipOn: { borderColor: colors.pine, backgroundColor: colors.mintSoft },
+  typeChipOnGreen: { borderColor: colors.pine, backgroundColor: "#f6ffed" },
+  typeChipText: { fontWeight: "700", color: "#6b7280" },
+  typeChipTextOn: { color: colors.pine },
+  typeChipTextOnGreen: { color: colors.pine },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chip: {
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: "#fff"
+  },
+  chipActive: { backgroundColor: colors.mintSoft, borderColor: colors.pine },
+  chipActiveGreen: { backgroundColor: "#f6ffed", borderColor: colors.pine },
+  chipText: { color: "#4b5563", fontSize: 13, fontWeight: "600" },
+  chipTextActive: { color: colors.pine },
+  chipTextActiveGreen: { color: colors.pine },
+  input: {
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 15,
+    backgroundColor: "#fff"
+  },
+  presetBtn: {
+    marginTop: 8,
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "#f0f5ff",
+    borderWidth: 1,
+    borderColor: "#91caff"
+  },
+  presetBtnText: { color: colors.pine, fontWeight: "700", fontSize: 13 },
+  saveBtn: {
+    marginTop: 24,
+    backgroundColor: colors.pine,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center"
+  },
+  saveBtnDisabled: { opacity: 0.6 },
+  saveBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" }
+})

@@ -1,0 +1,312 @@
+import { useCallback, useEffect, useRef, useState } from "react"
+import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
+import AidTeachMedia from "../components/AidTeachMedia"
+import CprMetronome from "../components/CprMetronome"
+import { useI18n } from "../i18n/I18nContext"
+import { apiRequest } from "../lib/api"
+import { AID_HOME_CALL, AID_HOME_NOW, AID_ROOT, AID_TREE } from "../lib/firstAidTree"
+import { AID_ROUTE_TO_NODE, matchAidVoice } from "../lib/firstAidVoice"
+import {
+  bindUtteranceHandlers,
+  destroyVoice,
+  isVoiceAvailable,
+  requestMicPermission,
+  startListening,
+  stopListening
+} from "../lib/speechCare"
+import { colors } from "./new_ui/tokens"
+
+function call119() {
+  Linking.openURL("tel:119").catch(() => {})
+}
+
+function TileGrid({ tiles, t, onPick }) {
+  return (
+    <View style={styles.grid}>
+      {tiles.map((tile) => (
+        <Pressable
+          key={tile.id}
+          style={({ pressed }) => [
+            styles.tile,
+            tile.urgent ? styles.tileWide : null,
+            pressed ? styles.pressed : null
+          ]}
+          onPress={() => onPick(tile.next)}
+          accessibilityRole="button"
+          accessibilityLabel={t(tile.labelKey)}
+        >
+          {tile.image ? (
+            <Image source={tile.image} style={styles.tileImg} resizeMode="cover" />
+          ) : null}
+          <Text style={[styles.tileText, tile.urgent ? styles.tileUrgentText : null]}>
+            {t(tile.labelKey)}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  )
+}
+
+export default function CaregiverFirstAidScreen({ onBack, embedded = false, apiBaseUrl, token }) {
+  const { t, lang } = useI18n()
+  const [stack, setStack] = useState([AID_ROOT])
+  const [listening, setListening] = useState(false)
+  const [voiceHint, setVoiceHint] = useState("")
+  const sessionRef = useRef(null)
+  const nodeId = stack[stack.length - 1] || AID_ROOT
+  const node = AID_TREE[nodeId] || null
+  const atHome = nodeId === AID_ROOT
+  const canPrev = stack.length > 1
+
+  const goTo = useCallback((nextId) => {
+    if (!nextId || (nextId !== AID_ROOT && !AID_TREE[nextId])) return
+    setStack((prev) => [...prev, nextId])
+  }, [])
+
+  useEffect(() => {
+    const routeUtterance = async (raw) => {
+      setListening(false)
+      if (!raw) {
+        setVoiceHint(t("aid.voice.miss"))
+        return
+      }
+      let next = null
+      if (apiBaseUrl && token) {
+        try {
+          const data = await apiRequest({
+            apiBaseUrl,
+            path: "/aid-route",
+            method: "POST",
+            token,
+            body: { text: raw }
+          })
+          next = AID_ROUTE_TO_NODE[data?.route] || null
+        } catch {
+          next = null
+        }
+      }
+      if (!next) next = matchAidVoice(raw)
+      if (next) goTo(next)
+      else setVoiceHint(t("aid.voice.miss"))
+    }
+    sessionRef.current = bindUtteranceHandlers({
+      onComplete: routeUtterance,
+      onError: () => {
+        setListening(false)
+        setVoiceHint(t("aid.voice.miss"))
+      }
+    })
+    return () => {
+      stopListening()
+      destroyVoice()
+      sessionRef.current = null
+    }
+  }, [apiBaseUrl, goTo, t, token])
+
+  const goPrev = useCallback(() => {
+    if (stack.length <= 1) {
+      onBack?.()
+      return
+    }
+    setStack((prev) => prev.slice(0, -1))
+  }, [onBack, stack.length])
+
+  const listen = useCallback(async () => {
+    if (listening) {
+      await stopListening()
+      setListening(false)
+      setTimeout(() => sessionRef.current?.completeNow?.(), 300)
+      return
+    }
+    const available = await isVoiceAvailable()
+    if (!available) {
+      setVoiceHint(t("aid.voice.miss"))
+      return
+    }
+    const ok = await requestMicPermission()
+    if (!ok) {
+      setVoiceHint(t("aid.voice.miss"))
+      return
+    }
+    setVoiceHint("")
+    sessionRef.current?.reset?.()
+    setListening(true)
+    try {
+      await startListening(lang)
+    } catch {
+      setListening(false)
+      setVoiceHint(t("aid.voice.miss"))
+    }
+  }, [lang, listening, t])
+
+  return (
+    <View style={styles.flex}>
+      {embedded || !onBack ? null : (
+        <View style={styles.topBar}>
+          <Pressable onPress={goPrev} hitSlop={12} accessibilityRole="button">
+            <Text style={styles.back}>‹ {canPrev ? t("aid.prev") : t("common.back")}</Text>
+          </Pressable>
+          <Text style={styles.topTitle}>{t("aid.title")}</Text>
+          <View style={styles.topSpacer} />
+        </View>
+      )}
+
+      <ScrollView
+        contentContainerStyle={styles.pad}
+        contentInsetAdjustmentBehavior="automatic"
+        keyboardShouldPersistTaps="handled"
+      >
+        {atHome ? (
+          <View style={styles.block}>
+            <Pressable
+              style={({ pressed }) => [styles.voiceBtn, pressed ? styles.pressed : null]}
+              onPress={listen}
+              accessibilityRole="button"
+            >
+              <Text style={styles.voiceText}>{listening ? t("aid.voice.listen") : t("aid.voice.say")}</Text>
+            </Pressable>
+            {voiceHint ? <Text style={styles.hint}>{voiceHint}</Text> : null}
+            <Text style={styles.sec}>{t("aid.sec.now")}</Text>
+            <TileGrid tiles={AID_HOME_NOW} t={t} onPick={goTo} />
+            <Text style={styles.sec}>{t("aid.sec.call")}</Text>
+            <TileGrid tiles={AID_HOME_CALL} t={t} onPick={goTo} />
+          </View>
+        ) : null}
+
+        {!atHome && node?.videoId ? <AidTeachMedia videoId={node.videoId} t={t} /> : null}
+        {!atHome && !node?.videoId && node?.image ? (
+          <Image source={node.image} style={styles.hero} resizeMode="contain" />
+        ) : null}
+
+        {node?.type === "q" ? (
+          <View style={styles.block}>
+            <Text style={styles.prompt}>{t(node.promptKey)}</Text>
+            {node.hintKey ? <Text style={styles.hint}>{t(node.hintKey)}</Text> : null}
+            <View style={styles.choices}>
+              {(node.choices || []).map((choice) => (
+                <Pressable
+                  key={choice.id}
+                  style={({ pressed }) => [styles.choice, pressed ? styles.pressed : null]}
+                  onPress={() => goTo(choice.next)}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.choiceText}>{t(choice.labelKey)}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        ) : null}
+
+        {node?.type === "leaf" ? (
+          <View style={styles.block}>
+            <Text style={styles.prompt}>{t(node.titleKey)}</Text>
+            {(node.bodyKeys || []).map((key) => (
+              <Text key={key} style={styles.stepLine}>{t(key)}</Text>
+            ))}
+            {node.hasMetronome ? <CprMetronome t={t} enabled /> : null}
+            {node.poisonTel ? (
+              <Pressable
+                style={({ pressed }) => [styles.choice, pressed ? styles.pressed : null]}
+                onPress={() => Linking.openURL(node.poisonTel).catch(() => {})}
+              >
+                <Text style={styles.choiceText}>{t("aid.poison.call")}</Text>
+              </Pressable>
+            ) : null}
+            {node.extraNext && node.extraNext.next !== nodeId ? (
+              <Pressable
+                style={({ pressed }) => [styles.choice, styles.choiceWarn, pressed ? styles.pressed : null]}
+                onPress={() => goTo(node.extraNext.next)}
+              >
+                <Text style={styles.choiceText}>{t(node.extraNext.labelKey)}</Text>
+              </Pressable>
+            ) : null}
+            <Pressable onPress={() => setStack([AID_ROOT])}>
+              <Text style={styles.restart}>{t("aid.restart")}</Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </ScrollView>
+
+      <View style={styles.footer}>
+        <Pressable style={styles.cta119} onPress={call119} accessibilityRole="button">
+          <Text style={styles.cta119Text}>119</Text>
+        </Pressable>
+      </View>
+    </View>
+  )
+}
+
+const styles = StyleSheet.create({
+  flex: { flex: 1, backgroundColor: colors.bg },
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: "#fff",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border
+  },
+  back: { color: colors.pine, fontWeight: "800", fontSize: 16 },
+  topTitle: { color: colors.text, fontWeight: "900", fontSize: 17 },
+  topSpacer: { width: 48 },
+  pad: { padding: 16, paddingBottom: 24, gap: 12 },
+  block: { gap: 10 },
+  sec: { color: "#667085", fontWeight: "800", fontSize: 13, marginTop: 4 },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  tile: {
+    width: "48%",
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    borderCurve: "continuous",
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: "hidden"
+  },
+  tileWide: { width: "100%" },
+  tileImg: { width: "100%", height: 92, backgroundColor: "#e8f0fa" },
+  tileText: { color: colors.text, fontWeight: "900", fontSize: 15, paddingHorizontal: 10, paddingVertical: 8 },
+  tileUrgentText: { color: "#c62828" },
+  voiceBtn: {
+    backgroundColor: colors.text,
+    borderRadius: 14,
+    borderCurve: "continuous",
+    paddingVertical: 12,
+    alignItems: "center"
+  },
+  voiceText: { color: "#fff", fontWeight: "800" },
+  hero: { width: "100%", height: 220, backgroundColor: "#e8f0fa", borderRadius: 14, borderCurve: "continuous" },
+  prompt: { color: colors.text, fontWeight: "900", fontSize: 22, lineHeight: 30 },
+  hint: { color: "#667085", fontWeight: "600" },
+  choices: { gap: 10 },
+  choice: {
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    borderCurve: "continuous",
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 16,
+    paddingHorizontal: 14
+  },
+  choiceWarn: { borderColor: "#f2b8b5", backgroundColor: "#fff6f6" },
+  choiceText: { color: colors.text, fontWeight: "800", fontSize: 17, lineHeight: 24 },
+  stepLine: { color: colors.text, fontWeight: "700", fontSize: 17, lineHeight: 26 },
+  restart: { color: colors.pine, fontWeight: "800" },
+  pressed: { opacity: 0.7 },
+  footer: {
+    padding: 16,
+    paddingBottom: 20,
+    backgroundColor: "#fff",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border
+  },
+  cta119: {
+    backgroundColor: "#c62828",
+    borderRadius: 14,
+    borderCurve: "continuous",
+    paddingVertical: 16,
+    alignItems: "center"
+  },
+  cta119Text: { color: "#fff", fontSize: 22, fontWeight: "900" }
+})

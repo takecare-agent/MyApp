@@ -65,3 +65,48 @@ export async function saveChatPartner(myEmail, partnerEmail) {
 export async function loadChatPartner(myEmail) {
   return (await AsyncStorage.getItem(scopedKey(CHAT_PARTNER_KEY, myEmail))) || ""
 }
+
+const CHAT_NICK_KEY = "TAKECARE_EXPO_CHAT_NICK_V1"
+
+/** LINE 式備註暱稱：僅自己裝置可見，key＝對方 email */
+export async function loadChatNicknames(myEmail) {
+  const raw = await AsyncStorage.getItem(scopedKey(CHAT_NICK_KEY, myEmail))
+  if (!raw) return {}
+  try {
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === "object" ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+const HIDDEN_PRESET_KEY = "TAKECARE_EXPO_CHAT_HIDDEN_PRESET_V1"
+
+export async function loadHiddenChatPresets(myEmail) {
+  const raw = await AsyncStorage.getItem(scopedKey(HIDDEN_PRESET_KEY, myEmail))
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.map((k) => String(k)) : []
+  } catch {
+    return []
+  }
+}
+
+export async function saveHiddenChatPresets(myEmail, keys) {
+  const me = String(myEmail || "").trim().toLowerCase()
+  if (!me) return
+  const list = Array.isArray(keys) ? keys.map((k) => String(k)) : []
+  await AsyncStorage.setItem(scopedKey(HIDDEN_PRESET_KEY, me), JSON.stringify(list))
+}
+
+export async function saveChatNickname(myEmail, partnerEmail, nickname) {
+  const me = String(myEmail || "").trim().toLowerCase()
+  const partner = String(partnerEmail || "").trim().toLowerCase()
+  if (!me || !partner) return
+  const map = await loadChatNicknames(me)
+  const nick = String(nickname || "").trim()
+  if (nick) map[partner] = nick
+  else delete map[partner]
+  await AsyncStorage.setItem(scopedKey(CHAT_NICK_KEY, me), JSON.stringify(map))
+}

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   ActivityIndicator,
-  Linking,
   Modal,
   Platform,
   Pressable,
@@ -12,6 +11,8 @@ import {
   View
 } from "react-native"
 import { apiRequest } from "../lib/api"
+import MonthCalendar from "../components/MonthCalendar"
+import { colors } from "./new_ui/tokens"
 
 const HEALTH_CONNECT_PERMISSIONS = [
   { accessType: "read", recordType: "BloodPressure" },
@@ -19,12 +20,103 @@ const HEALTH_CONNECT_PERMISSIONS = [
 ]
 const PULSE_MATCH_WINDOW_MS = 15 * 60 * 1000
 const UNMARKED_MOOD = "未標記"
+const MOOD_UNMARKED_LABELS = {
+  zh: "未標記",
+  en: "Not set",
+  id: "Belum ditandai",
+  vi: "Chưa đánh dấu",
+  tl: "Hindi naka-marka",
+  th: "ยังไม่บันทึก"
+}
 const MOOD_OPTIONS = [
-  { value: "平靜", emoji: "🙂" },
-  { value: "開心", emoji: "😄" },
-  { value: "焦慮", emoji: "😟" },
-  { value: "頭暈", emoji: "😵" }
+  {
+    value: "平靜",
+    tint: "#0f766e",
+    wash: "#ccfbf1",
+    labels: { zh: "平靜", en: "Calm", id: "Tenang", vi: "Bình tĩnh", tl: "Kalmado", th: "สงบ" }
+  },
+  {
+    value: "開心",
+    tint: "#b45309",
+    wash: "#fef3c7",
+    labels: { zh: "開心", en: "Happy", id: "Senang", vi: "Vui", tl: "Masaya", th: "ดีใจ" }
+  },
+  {
+    value: "焦慮",
+    tint: "#c2410c",
+    wash: "#ffedd5",
+    labels: { zh: "焦慮", en: "Anxious", id: "Cemas", vi: "Lo âu", tl: "Balisa", th: "กังวล" }
+  },
+  {
+    value: "頭暈",
+    tint: "#be123c",
+    wash: "#ffe4e6",
+    labels: { zh: "頭暈", en: "Dizzy", id: "Pusing", vi: "Chóng mặt", tl: "Nahihilo", th: "เวียนหัว" }
+  }
 ]
+
+function moodDisplay(raw, lang) {
+  const key = lang || "zh"
+  if (!raw || raw === UNMARKED_MOOD) return MOOD_UNMARKED_LABELS[key] || MOOD_UNMARKED_LABELS.en
+  const opt = MOOD_OPTIONS.find((item) => item.value === raw)
+  if (!opt) return raw
+  return opt.labels[key] || opt.labels.en
+}
+
+function MoodDot({ mood, size = 14, selected = false }) {
+  const opt = MOOD_OPTIONS.find((item) => item.value === mood)
+  const tint = opt?.tint || "#98a2b3"
+  const wash = opt?.wash || "#f2f4f7"
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: selected ? tint : wash,
+        borderWidth: 2,
+        borderColor: tint
+      }}
+    />
+  )
+}
+
+function MoodPicker({ value, onChange, lang, compact = false }) {
+  return (
+    <View style={compact ? styles.moodRowCompact : styles.moodRow}>
+      {MOOD_OPTIONS.map((option) => {
+        const selected = value === option.value
+        const label = moodDisplay(option.value, lang)
+        return (
+          <Pressable
+            key={option.value}
+            onPress={() => onChange(option.value)}
+            accessibilityRole="button"
+            accessibilityLabel={label}
+            accessibilityState={{ selected }}
+            style={[
+              compact ? styles.moodItemCompact : styles.moodItem,
+              selected
+                ? { borderColor: option.tint, backgroundColor: option.wash }
+                : null
+            ]}
+          >
+            <MoodDot mood={option.value} size={compact ? 14 : 18} selected={selected} />
+            <Text
+              style={[
+                compact ? styles.moodItemLabelCompact : styles.moodItemLabel,
+                selected ? { color: option.tint } : null
+              ]}
+              numberOfLines={2}
+            >
+              {label}
+            </Text>
+          </Pressable>
+        )
+      })}
+    </View>
+  )
+}
 const STRESS_MOODS = new Set(["焦慮", "頭暈"])
 
 const UI_TEXT = {
@@ -47,7 +139,7 @@ const UI_TEXT = {
     taskMorningLatestFn: (sys, dia) => `最新紀錄 ${sys}/${dia} mmHg`,
     taskMorningNew: "同步或新增今日第一筆血壓。",
     taskMoodTitle: "心情狀態註記",
-    taskMoodCurrentFn: (emoji, mood) => `目前標記：${emoji} ${mood}`,
+    taskMoodCurrentFn: (mood) => `目前標記：${mood}`,
     taskMoodNew: "量測後補上長輩當下狀態。",
     taskNotify: "異常通知家屬", taskNotifyOk: "目前無需通知，維持觀察。",
     taskEvening: "晚間回顧", taskEveningDesc: "交班前確認是否已同步資料並完成必要備註。",
@@ -65,7 +157,8 @@ const UI_TEXT = {
     totalPrefix: "總量測", abnormalSuffix: " 筆，異常優先顯示如下。",
     noAbnormal: "目前沒有異常血壓紀錄。",
     bpLabel: "血壓", fiveDayTrend: "近 5 日趨勢", dailyAlert: "每日警示", avgPrefix: "平均",
-    autoImport: "自動匯入", addRecord: "新增一筆紀錄", saveRecord: "儲存血壓紀錄",
+    autoImport: "從血壓計同步", addRecord: "對照血壓計手動輸入", saveRecord: "儲存血壓紀錄",
+    meterHint: "量完請按同步。若血壓計沒進 Health Connect，把螢幕上的數字打進來即可。",
     range1m: "1個月", range3m: "3個月", range6m: "6個月",
     bpDiary: "血壓日記", dateRecordsSuffix: " 的紀錄", emptyDay: "這天沒有血壓紀錄",
     pulsePrefix: "脈搏", moodPrefix: "心情：",
@@ -102,7 +195,7 @@ const UI_TEXT = {
     obsWarning: "血壓前期或警示天數較多，建議留意鹽分、睡眠、壓力與固定量測。",
     obsNormal: "目前大多數紀錄落在穩定範圍，請持續維持規律量測與生活管理。",
     noMiniTrendData: "尚無血壓趨勢資料", noLongTrendData: "尚無長期趨勢資料",
-    calendarLegend: "標記日期代表當天有血壓紀錄，紅框代表有高風險數值。",
+    calendarLegend: "• 有紀錄　紅框＝偏高",
     weekdays: ["日", "一", "二", "三", "四", "五", "六"],
     errFamilyReadOnly: "家屬端僅能查看長輩資料，請由受顧者端或照顧者端新增血壓紀錄。",
     errInvalidBP: "請輸入有效的收縮壓與舒張壓。",
@@ -121,11 +214,11 @@ const UI_TEXT = {
     warningDaysFn: (days, pct) => `血壓前期/警示天數：${days} 天（${pct}%）`,
     normalDaysFn: (days, pct) => `正常天數：${days} 天（${pct}%）`,
     periodSummaryFn: (months) => `近 ${months} 個月健康摘要`,
-    moodStressTitle: "血壓與心理狀態關聯性分析",
-    pulseStressTitle: "脈搏與情緒壓力分析",
+    moodStressTitle: "心情提醒",
+    pulseStressTitle: "脈搏提醒",
     observation: "觀察", reference: "參考來源",
-    moodSourceNote: "壓力可能造成短暫血壓上升，建議搭配呼吸、運動、睡眠與生活習慣管理。本分析僅供參考，不能取代醫療診斷。",
-    pulseSourceNote: "安靜狀態下的脈搏會受情緒、壓力、活動量與藥物影響，請搭配血壓、心情與症狀一起觀察。",
+    moodSourceNote: "僅供日常觀察，不能取代醫療診斷。",
+    pulseSourceNote: "脈搏會受活動與情緒影響，請搭配血壓一起看。",
     recordDays: "紀錄天數", highRisk: "高風險", warning: "警示",
     avgPulse: "平均脈搏", recentPulse: "最近脈搏",
   },
@@ -148,7 +241,7 @@ const UI_TEXT = {
     taskMorningLatestFn: (sys, dia) => `Latest: ${sys}/${dia} mmHg`,
     taskMorningNew: "Sync or add today's first BP reading.",
     taskMoodTitle: "Mood Note",
-    taskMoodCurrentFn: (emoji, mood) => `Marked: ${emoji} ${mood}`,
+    taskMoodCurrentFn: (mood) => `Marked: ${mood}`,
     taskMoodNew: "Add mood after measurement.",
     taskNotify: "Alert Family", taskNotifyOk: "No alert needed; continue monitoring.",
     taskEvening: "Evening Review", taskEveningDesc: "Before handoff, confirm sync and notes are complete.",
@@ -203,7 +296,7 @@ const UI_TEXT = {
     obsWarning: "Several prehypertension or warning days. Watch salt, sleep, stress, and measure regularly.",
     obsNormal: "Most records are in the stable range. Keep regular measurement and healthy habits.",
     noMiniTrendData: "No trend data", noLongTrendData: "No long-term trend data",
-    calendarLegend: "Marked dates have BP records. Red border = high-risk value.",
+    calendarLegend: "• = logged　Red = high",
     weekdays: ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"],
     errFamilyReadOnly: "Family view is read-only. Use the patient or caregiver app to add records.",
     errInvalidBP: "Please enter valid systolic and diastolic values.",
@@ -249,7 +342,7 @@ const UI_TEXT = {
     taskMorningLatestFn: (sys, dia) => `Terbaru: ${sys}/${dia} mmHg`,
     taskMorningNew: "Sinkron atau tambahkan TD pertama hari ini.",
     taskMoodTitle: "Catatan Mood",
-    taskMoodCurrentFn: (emoji, mood) => `Ditandai: ${emoji} ${mood}`,
+    taskMoodCurrentFn: (mood) => `Ditandai: ${mood}`,
     taskMoodNew: "Tambahkan mood setelah pengukuran.",
     taskNotify: "Beri Tahu Keluarga", taskNotifyOk: "Tidak perlu notifikasi; lanjutkan pemantauan.",
     taskEvening: "Tinjauan Malam", taskEveningDesc: "Sebelum selesai, pastikan sinkron dan catatan lengkap.",
@@ -350,7 +443,7 @@ const UI_TEXT = {
     taskMorningLatestFn: (sys, dia) => `Gần nhất: ${sys}/${dia} mmHg`,
     taskMorningNew: "Đồng bộ hoặc thêm HA đầu tiên hôm nay.",
     taskMoodTitle: "Ghi Chú Tâm Trạng",
-    taskMoodCurrentFn: (emoji, mood) => `Đã đánh dấu: ${emoji} ${mood}`,
+    taskMoodCurrentFn: (mood) => `Đã đánh dấu: ${mood}`,
     taskMoodNew: "Thêm tâm trạng sau khi đo.",
     taskNotify: "Thông Báo Gia Đình", taskNotifyOk: "Không cần thông báo; tiếp tục theo dõi.",
     taskEvening: "Tổng Kết Buổi Tối", taskEveningDesc: "Trước khi kết thúc, xác nhận đồng bộ và ghi chú.",
@@ -451,7 +544,7 @@ const UI_TEXT = {
     taskMorningLatestFn: (sys, dia) => `Pinakabago: ${sys}/${dia} mmHg`,
     taskMorningNew: "Mag-sync o magdagdag ng unang BP ngayon.",
     taskMoodTitle: "Tala ng Mood",
-    taskMoodCurrentFn: (emoji, mood) => `Minarkahan: ${emoji} ${mood}`,
+    taskMoodCurrentFn: (mood) => `Minarkahan: ${mood}`,
     taskMoodNew: "Magdagdag ng mood pagkatapos sukatin.",
     taskNotify: "Abisuhan ang Pamilya", taskNotifyOk: "Hindi kailangan ng abiso; ipagpatuloy ang pagmamanman.",
     taskEvening: "Pagsusuri sa Gabi", taskEveningDesc: "Bago matapos, kumpirmahin ang sync at mga tala.",
@@ -552,7 +645,7 @@ const UI_TEXT = {
     taskMorningLatestFn: (sys, dia) => `ล่าสุด: ${sys}/${dia} mmHg`,
     taskMorningNew: "ซิงค์หรือเพิ่มความดันโลหิตแรกของวันนี้",
     taskMoodTitle: "บันทึกอารมณ์",
-    taskMoodCurrentFn: (emoji, mood) => `ทำเครื่องหมาย: ${emoji} ${mood}`,
+    taskMoodCurrentFn: (mood) => `ทำเครื่องหมาย: ${mood}`,
     taskMoodNew: "เพิ่มอารมณ์หลังการวัด",
     taskNotify: "แจ้งครอบครัว", taskNotifyOk: "ไม่จำเป็นต้องแจ้ง ติดตามต่อไป",
     taskEvening: "ทบทวนตอนเย็น", taskEveningDesc: "ก่อนสิ้นสุด ยืนยันการซิงค์และบันทึก",
@@ -827,10 +920,6 @@ function getPulseStatus(pulse, t) {
   return { label: t ? t.pulseNormal : "心跳正常", color: "#067647" }
 }
 
-function getMoodEmoji(mood) {
-  return MOOD_OPTIONS.find(item => item.value === mood)?.emoji || "🙂"
-}
-
 function normalizeDisplayMood(mood) {
   return mood === "疲倦" ? "開心" : mood
 }
@@ -949,11 +1038,6 @@ function getTrendSummary(records, months) {
     ...summary,
     periodicObservationKey: getPeriodicObservationKey(summary)
   }
-}
-
-function formatMonthLabel(dateKey) {
-  const date = toDate(`${dateKey}T00:00:00`)
-  return date.toLocaleDateString("zh-TW", { year: "numeric", month: "long" })
 }
 
 function shiftMonth(dateKey, offset) {
@@ -1295,75 +1379,17 @@ function BloodPressureAlertPanel({ record, title, t }) {
   )
 }
 
-function CalendarMonth({ dateKey, days, selectedDate, onSelectDate, onShiftMonth, t }) {
-  const weekdays = t ? t.weekdays : ["日", "一", "二", "三", "四", "五", "六"]
-  return (
-    <View style={styles.calendarCard}>
-      <View style={styles.calendarHeader}>
-        <Pressable style={styles.monthButton} onPress={() => onShiftMonth(-1)}>
-          <Text style={styles.monthButtonText}>‹</Text>
-        </Pressable>
-        <Text style={styles.calendarTitle}>{formatMonthLabel(dateKey)}</Text>
-        <Pressable style={styles.monthButton} onPress={() => onShiftMonth(1)}>
-          <Text style={styles.monthButtonText}>›</Text>
-        </Pressable>
-      </View>
-      <View style={styles.weekRow}>
-        {weekdays.map((day, idx) => (
-          <Text key={idx} style={styles.weekLabel}>{day}</Text>
-        ))}
-      </View>
-      <View style={styles.calendarGrid}>
-        {days.map(day => {
-          if (day.blank) return <View key={day.key} style={styles.customDay} />
-          const selected = selectedDate === day.dateKey
-          return (
-            <Pressable
-              key={day.key}
-              style={[
-                styles.customDay,
-                day.hasAbnormal && styles.abnormalDay,
-                day.hasDanger && styles.dangerDay,
-                selected && styles.selectedDay
-              ]}
-              onPress={() => onSelectDate(day.dateKey)}
-            >
-              {day.hasAbnormal ? (
-                <Text style={styles.abnormalDayIcon}>{day.hasDanger ? "!" : "•"}</Text>
-              ) : null}
-              <Text style={[styles.dayLabel, day.hasDanger && styles.dangerDayText]}>
-                {day.day}
-              </Text>
-              {day.topRecord ? (
-                <Text
-                  style={[
-                    styles.dayValue,
-                    { color: day.hasDanger ? "#cf1322" : day.topRecord.status.color }
-                  ]}
-                >
-                  {day.topRecord.sys}/{day.topRecord.dia}
-                </Text>
-              ) : null}
-            </Pressable>
-          )
-        })}
-      </View>
-      <View style={styles.calendarLegend}>
-        <Text style={styles.calendarLegendText}>{t ? t.calendarLegend : "標記日期代表當天有血壓紀錄，紅框代表有高風險數值。"}</Text>
-      </View>
-    </View>
-  )
-}
-
 export default function BloodPressureScreen({
   role,
   user,
   apiBaseUrl,
   token,
   uiLang,
-  onBack
+  onBack,
+  embedded = false
 }) {
-  const t = UI_TEXT[role === "caregiver" ? (uiLang || "zh") : "zh"] || UI_TEXT.zh
+  const langKey = uiLang || "zh"
+  const t = { ...UI_TEXT.zh, ...(UI_TEXT.en || {}), ...(UI_TEXT[langKey] || {}) }
   const apiPrefix =
     role === "caregiver" ? "/caregiver" : role === "family" ? "/family" : "/patient"
   const readOnly = role === "family"
@@ -1375,7 +1401,6 @@ export default function BloodPressureScreen({
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
   const [linkedPatientEmail, setLinkedPatientEmail] = useState(user?.linkedPatientEmail || "")
-  const [completedDailyTasks, setCompletedDailyTasks] = useState({})
   const [selectedDate, setSelectedDate] = useState(() => toDateKey(new Date()))
   const [selectedTrendDay, setSelectedTrendDay] = useState(null)
   const [selectedFamilyRecord, setSelectedFamilyRecord] = useState(null)
@@ -1419,7 +1444,6 @@ export default function BloodPressureScreen({
     [trendPulseRecords]
   )
   const latestTrendPulse = trendPulseRecords.length ? trendPulseRecords[trendPulseRecords.length - 1].pulse : null
-  const todayTaskKey = toDateKey(new Date())
   const selectedRecords = useMemo(
     () => sortRecordsAbnormalFirst(normalizedRecords.filter(record => record.dateKey === selectedDate)),
     [normalizedRecords, selectedDate]
@@ -1636,14 +1660,6 @@ export default function BloodPressureScreen({
     }
   }
 
-  const toggleDailyTask = taskKey => {
-    const storageKey = `${todayTaskKey}:${taskKey}`
-    setCompletedDailyTasks(current => ({
-      ...current,
-      [storageKey]: !current[storageKey]
-    }))
-  }
-
   if (role === "caregiver") {
     const caregiverNextStep = latest
       ? latest.status.isCritical ? t.nextCritical
@@ -1651,44 +1667,23 @@ export default function BloodPressureScreen({
         : latest.status.category === "warning" ? t.nextWarning
         : t.nextStable
       : t.nextNoData
-    const caregiverDailyTasks = [
-      {
-        key: "morning-check",
-        title: t.taskMorning,
-        desc: latest ? t.taskMorningLatestFn(latest.sys, latest.dia) : t.taskMorningNew
-      },
-      {
-        key: "mood-note",
-        title: t.taskMoodTitle,
-        desc: latest ? t.taskMoodCurrentFn(getMoodEmoji(latest.mood), latest.mood) : t.taskMoodNew
-      },
-      {
-        key: "family-notify",
-        title: t.taskNotify,
-        desc: latest?.status.isAbnormal ? (t[latest.status.recommendationKey] || latest.status.recommendation) : t.taskNotifyOk
-      },
-      {
-        key: "evening-review",
-        title: t.taskEvening,
-        desc: t.taskEveningDesc
-      }
-    ]
-    const completedCount = caregiverDailyTasks.filter(
-      task => completedDailyTasks[`${todayTaskKey}:${task.key}`]
-    ).length
 
     return (
       <View style={styles.screen}>
-        <View style={styles.headerCard}>
-          <Pressable onPress={onBack}>
-            <Text style={styles.backText}>{t.back}</Text>
-          </Pressable>
-          <Text style={styles.title}>{t.caregiverTitle}</Text>
-          <Text style={styles.sub}>{t.caregiverSub}</Text>
-        </View>
+        {embedded ? null : (
+          <View style={styles.headerCard}>
+            {!onBack ? null : (
+              <Pressable onPress={onBack}>
+                <Text style={styles.backText}>{t.back}</Text>
+              </Pressable>
+            )}
+            <Text style={styles.title}>{t.caregiverTitle}</Text>
+            <Text style={styles.sub}>{t.caregiverSub}</Text>
+          </View>
+        )}
 
         <ScrollView contentContainerStyle={styles.container}>
-          {loading ? <ActivityIndicator color="#1f74d1" /> : null}
+          {loading ? <ActivityIndicator color={colors.pine} /> : null}
           {message ? <Text style={styles.message}>{message}</Text> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -1740,23 +1735,23 @@ export default function BloodPressureScreen({
 
             <View style={styles.moodStrip}>
               <Text style={styles.moodStripLabel}>{t.moodStatus}</Text>
-              <Text style={styles.moodStripValue}>
-                {latest ? `${getMoodEmoji(latest.mood)} ${latest.mood}` : "--"}
-              </Text>
+              {latest ? (
+                <View style={styles.moodStripValueRow}>
+                  <MoodDot mood={latest.mood} size={10} selected />
+                  <Text style={styles.moodStripValue}>{moodDisplay(latest.mood, langKey)}</Text>
+                </View>
+              ) : (
+                <Text style={styles.moodStripValue}>--</Text>
+              )}
             </View>
 
             {latest ? (
-              <View style={styles.inlineMoodRow}>
-                {MOOD_OPTIONS.map(option => (
-                  <Pressable
-                    key={option.value}
-                    style={[styles.moodChipSmall, latest.mood === option.value && styles.moodChipSelected]}
-                    onPress={() => updateMood(latest, option.value)}
-                  >
-                    <Text style={styles.moodChipText}>{option.emoji}</Text>
-                  </Pressable>
-                ))}
-              </View>
+              <MoodPicker
+                value={latest.mood}
+                lang={langKey}
+                compact
+                onChange={(nextMood) => updateMood(latest, nextMood)}
+              />
             ) : null}
 
             <View style={styles.adviceBox}>
@@ -1765,50 +1760,23 @@ export default function BloodPressureScreen({
             </View>
           </View>
 
-          <View style={styles.taskCard}>
-            <View style={styles.cardHead}>
-              <View>
-                <Text style={styles.sectionTitle}>{t.dailyTasksTitle}</Text>
-                <Text style={styles.rowSub}>{completedCount}/{caregiverDailyTasks.length} {t.completed}</Text>
-              </View>
-              <Text style={styles.taskDate}>{todayTaskKey}</Text>
-            </View>
-            {caregiverDailyTasks.map(task => {
-              const checked = Boolean(completedDailyTasks[`${todayTaskKey}:${task.key}`])
-              return (
-                <Pressable
-                  key={task.key}
-                  style={[styles.taskRow, checked && styles.taskRowDone]}
-                  onPress={() => toggleDailyTask(task.key)}
-                >
-                  <View style={[styles.taskCheck, checked && styles.taskCheckDone]}>
-                    <Text style={styles.taskCheckText}>{checked ? "✓" : ""}</Text>
-                  </View>
-                  <View style={styles.taskBody}>
-                    <Text style={[styles.taskTitle, checked && styles.taskTextDone]}>{task.title}</Text>
-                    <Text style={styles.taskDesc}>{task.desc}</Text>
-                  </View>
-                </Pressable>
-              )
-            })}
-          </View>
-
           <View style={styles.formCard}>
             <Text style={styles.sectionTitle}>{t.syncInput}</Text>
             <Pressable style={styles.buttonSecondary} onPress={handleSync} disabled={syncing}>
               {syncing ? (
-                <ActivityIndicator color="#1f74d1" />
+                <ActivityIndicator color={colors.pine} />
               ) : (
                 <Text style={styles.buttonSecondaryText}>{t.syncHC}</Text>
               )}
             </Pressable>
+            <Text style={styles.meterHint}>{t.meterHint || "量完請按同步，或把血壓計數字打進來。"}</Text>
 
             <Text style={styles.sectionTitleSpacing}>{t.caregiverAddTitle}</Text>
             <View style={styles.inputGrid}>
               <View style={styles.inputCell}>
                 <Text style={styles.label}>{t.sysBP}</Text>
                 <TextInput
-                  style={styles.input}
+                  style={styles.inputMeter}
                   value={form.sys}
                   onChangeText={value => updateForm("sys", value)}
                   keyboardType="numeric"
@@ -1818,7 +1786,7 @@ export default function BloodPressureScreen({
               <View style={styles.inputCell}>
                 <Text style={styles.label}>{t.diaBP}</Text>
                 <TextInput
-                  style={styles.input}
+                  style={styles.inputMeter}
                   value={form.dia}
                   onChangeText={value => updateForm("dia", value)}
                   keyboardType="numeric"
@@ -1828,7 +1796,7 @@ export default function BloodPressureScreen({
               <View style={styles.inputCell}>
                 <Text style={styles.label}>{t.pulse}</Text>
                 <TextInput
-                  style={styles.input}
+                  style={styles.inputMeter}
                   value={form.pulse}
                   onChangeText={value => updateForm("pulse", value)}
                   keyboardType="numeric"
@@ -1838,18 +1806,11 @@ export default function BloodPressureScreen({
             </View>
 
             <Text style={styles.label}>{t.mood}</Text>
-            <View style={styles.moodGrid}>
-              {MOOD_OPTIONS.map(option => (
-                <Pressable
-                  key={option.value}
-                  style={[styles.moodChip, form.mood === option.value && styles.moodChipSelected]}
-                  onPress={() => updateForm("mood", option.value)}
-                >
-                  <Text style={styles.moodEmoji}>{option.emoji}</Text>
-                  <Text style={styles.moodLabel}>{option.value}</Text>
-                </Pressable>
-              ))}
-            </View>
+            <MoodPicker
+              value={form.mood}
+              lang={langKey}
+              onChange={(nextMood) => updateForm("mood", nextMood)}
+            />
 
             <Pressable style={styles.buttonPrimary} onPress={handleRecord} disabled={saving}>
               {saving ? (
@@ -1874,13 +1835,17 @@ export default function BloodPressureScreen({
 
     return (
       <View style={styles.screen}>
-        <View style={styles.headerCard}>
-          <Pressable onPress={onBack}>
-            <Text style={styles.backText}>{t.back}</Text>
-          </Pressable>
-          <Text style={styles.title}>{t.familyTitle}</Text>
-          <Text style={styles.sub}>{t.familySub}</Text>
-        </View>
+        {embedded ? null : (
+          <View style={styles.headerCard}>
+            {!onBack ? null : (
+              <Pressable onPress={onBack}>
+                <Text style={styles.backText}>{t.back}</Text>
+              </Pressable>
+            )}
+            <Text style={styles.title}>{t.familyTitle}</Text>
+            <Text style={styles.sub}>{t.familySub}</Text>
+          </View>
+        )}
 
         <ScrollView contentContainerStyle={styles.container}>
           <View style={styles.connectionBox}>
@@ -1888,7 +1853,7 @@ export default function BloodPressureScreen({
             <Text style={styles.connectionText}>{connectionLabel}</Text>
           </View>
 
-          {loading ? <ActivityIndicator color="#1f74d1" /> : null}
+          {loading ? <ActivityIndicator color={colors.pine} /> : null}
           {message ? <Text style={styles.message}>{message}</Text> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -2094,7 +2059,7 @@ export default function BloodPressureScreen({
                   </View>
 
                   <Text style={styles.detailModalMeta}>
-                    {t.moodPrefix}{getMoodEmoji(selectedFamilyRecord.mood)} {selectedFamilyRecord.mood}
+                    {t.moodPrefix}{moodDisplay(selectedFamilyRecord.mood, langKey)}
                   </Text>
                   <Text style={styles.detailModalMeta}>
                     {t.sourcePrefix}{getSourceLabel(selectedFamilyRecord.source, t)}
@@ -2113,13 +2078,17 @@ export default function BloodPressureScreen({
 
   return (
     <View style={styles.screen}>
-      <View style={styles.headerCard}>
-        <Pressable onPress={onBack}>
-          <Text style={styles.backText}>{t.back}</Text>
-        </Pressable>
-        <Text style={styles.title}>{t.patientTitle}</Text>
-        <Text style={styles.sub}>{t.patientSub}</Text>
-      </View>
+      {embedded ? null : (
+        <View style={styles.headerCard}>
+          {!onBack ? null : (
+            <Pressable onPress={onBack}>
+              <Text style={styles.backText}>{t.back}</Text>
+            </Pressable>
+          )}
+          <Text style={styles.title}>{t.patientTitle}</Text>
+          <Text style={styles.sub}>{t.patientSub}</Text>
+        </View>
+      )}
 
       <View style={styles.tabRow}>
         {[
@@ -2138,7 +2107,7 @@ export default function BloodPressureScreen({
       </View>
 
       <ScrollView contentContainerStyle={styles.container}>
-        {loading ? <ActivityIndicator color="#1f74d1" /> : null}
+        {loading ? <ActivityIndicator color={colors.pine} /> : null}
         {message ? <Text style={styles.message}>{message}</Text> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -2192,23 +2161,23 @@ export default function BloodPressureScreen({
 
               <View style={styles.moodStrip}>
                 <Text style={styles.moodStripLabel}>{t.moodStatus}</Text>
-                <Text style={styles.moodStripValue}>
-                  {latest ? `${getMoodEmoji(latest.mood)} ${latest.mood}` : "--"}
-                </Text>
+                {latest ? (
+                  <View style={styles.moodStripValueRow}>
+                    <MoodDot mood={latest.mood} size={10} selected />
+                    <Text style={styles.moodStripValue}>{moodDisplay(latest.mood, langKey)}</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.moodStripValue}>--</Text>
+                )}
               </View>
 
               {latest ? (
-                <View style={styles.inlineMoodRow}>
-                  {MOOD_OPTIONS.map(option => (
-                    <Pressable
-                      key={option.value}
-                      style={[styles.moodChipSmall, latest.mood === option.value && styles.moodChipSelected]}
-                      onPress={() => updateMood(latest, option.value)}
-                    >
-                      <Text style={styles.moodChipText}>{option.emoji}</Text>
-                    </Pressable>
-                  ))}
-                </View>
+                <MoodPicker
+                  value={latest.mood}
+                  lang={langKey}
+                  compact
+                  onChange={(nextMood) => updateMood(latest, nextMood)}
+                />
               ) : null}
 
               <Text style={styles.sectionHint}>{t.fiveDayTrend}</Text>
@@ -2233,11 +2202,12 @@ export default function BloodPressureScreen({
 
             <View style={styles.formCard}>
               <Text style={styles.sectionTitle}>{t.autoImport}</Text>
-              <Pressable style={styles.buttonSecondary} onPress={handleSync} disabled={syncing}>
+              <Text style={styles.meterHint}>{t.meterHint || "量完請按同步，或把血壓計數字打進來。"}</Text>
+              <Pressable style={styles.buttonPrimary} onPress={handleSync} disabled={syncing}>
                 {syncing ? (
-                  <ActivityIndicator color="#1f74d1" />
+                  <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.buttonSecondaryText}>{t.syncHC}</Text>
+                  <Text style={styles.buttonPrimaryText}>{t.syncHC}</Text>
                 )}
               </Pressable>
 
@@ -2246,7 +2216,7 @@ export default function BloodPressureScreen({
                 <View style={styles.inputCell}>
                   <Text style={styles.label}>{t.sysBP}</Text>
                   <TextInput
-                    style={styles.input}
+                    style={styles.inputMeter}
                     value={form.sys}
                     onChangeText={value => updateForm("sys", value)}
                     keyboardType="numeric"
@@ -2256,7 +2226,7 @@ export default function BloodPressureScreen({
                 <View style={styles.inputCell}>
                   <Text style={styles.label}>{t.diaBP}</Text>
                   <TextInput
-                    style={styles.input}
+                    style={styles.inputMeter}
                     value={form.dia}
                     onChangeText={value => updateForm("dia", value)}
                     keyboardType="numeric"
@@ -2266,7 +2236,7 @@ export default function BloodPressureScreen({
                 <View style={styles.inputCell}>
                   <Text style={styles.label}>{t.pulse}</Text>
                   <TextInput
-                    style={styles.input}
+                    style={styles.inputMeter}
                     value={form.pulse}
                     onChangeText={value => updateForm("pulse", value)}
                     keyboardType="numeric"
@@ -2276,18 +2246,11 @@ export default function BloodPressureScreen({
               </View>
 
               <Text style={styles.label}>{t.mood}</Text>
-              <View style={styles.moodGrid}>
-                {MOOD_OPTIONS.map(option => (
-                  <Pressable
-                    key={option.value}
-                    style={[styles.moodChip, form.mood === option.value && styles.moodChipSelected]}
-                    onPress={() => updateForm("mood", option.value)}
-                  >
-                    <Text style={styles.moodEmoji}>{option.emoji}</Text>
-                    <Text style={styles.moodLabel}>{option.value}</Text>
-                  </Pressable>
-                ))}
-              </View>
+              <MoodPicker
+                value={form.mood}
+                lang={langKey}
+                onChange={(nextMood) => updateForm("mood", nextMood)}
+              />
 
               <Pressable style={styles.buttonPrimary} onPress={handleRecord} disabled={saving}>
                 {saving ? (
@@ -2376,29 +2339,13 @@ export default function BloodPressureScreen({
 
             <View style={styles.moodAnalysisBox}>
               <Text style={styles.moodAnalysisTitle}>{t.moodStressTitle}</Text>
-              <Text style={styles.analysisLabel}>{t.observation}</Text>
               <Text style={styles.moodAnalysisText}>{getMoodStressAnalysis(trendRecords, t)}</Text>
-              <Text style={styles.analysisLabel}>{t.reference}</Text>
-              <Text
-                style={styles.sourceLinkText}
-                onPress={() => Linking.openURL("https://www.heart.org/en/health-topics/high-blood-pressure/changes-you-can-make-to-manage-high-blood-pressure/managing-stress-to-control-high-blood-pressure")}
-              >
-                American Heart Association - Managing Stress to Control High Blood Pressure
-              </Text>
               <Text style={styles.moodSourceText}>{t.moodSourceNote}</Text>
             </View>
 
             <View style={styles.pulseAnalysisBox}>
               <Text style={styles.pulseAnalysisTitle}>{t.pulseStressTitle}</Text>
-              <Text style={styles.analysisLabel}>{t.observation}</Text>
               <Text style={styles.pulseAnalysisText}>{getPulseMoodAnalysis(trendRecords, t)}</Text>
-              <Text style={styles.analysisLabel}>{t.reference}</Text>
-              <Text
-                style={styles.sourceLinkText}
-                onPress={() => Linking.openURL("https://www.health.harvard.edu/heart-health/hows-your-heart-rate-and-why-it-matters")}
-              >
-                Harvard Health Publishing - How's your heart rate and why it matters?
-              </Text>
               <Text style={styles.pulseSourceText}>{t.pulseSourceNote}</Text>
             </View>
           </View>
@@ -2413,13 +2360,15 @@ export default function BloodPressureScreen({
               </Pressable>
             </View>
 
-            <CalendarMonth
+            <MonthCalendar
               dateKey={selectedDate}
               days={calendarDays}
               selectedDate={selectedDate}
               onSelectDate={setSelectedDate}
               onShiftMonth={offset => setSelectedDate(current => shiftMonth(current, offset))}
-              t={t}
+              weekdays={t.weekdays}
+              lang={uiLang || "zh"}
+              legend={t.calendarLegend}
             />
 
             <View style={styles.diaryDetailHeader}>
@@ -2435,21 +2384,15 @@ export default function BloodPressureScreen({
                     <Text style={styles.recordText}>{formatDateTime(record.measuredAt)}</Text>
                     <View style={styles.recordValueRow}>
                       <Text style={styles.recordVal}>{record.sys}/{record.dia} mmHg</Text>
-                      <Text style={styles.recordMoodIcon}>{getMoodEmoji(record.mood)}</Text>
+                      <MoodDot mood={record.mood} size={10} selected />
                     </View>
                     <Text style={styles.recordPulse}>{t.pulsePrefix} {record.pulse ?? "--"} bpm</Text>
-                    <Text style={styles.recordMood}>{t.moodPrefix}{getMoodEmoji(record.mood)} {record.mood}</Text>
-                    <View style={styles.recordMoodPicker}>
-                      {MOOD_OPTIONS.map(option => (
-                        <Pressable
-                          key={option.value}
-                          style={[styles.recordMoodChip, record.mood === option.value && styles.recordMoodChipSelected]}
-                          onPress={() => updateMood(record, option.value)}
-                        >
-                          <Text style={styles.recordMoodChipText}>{option.emoji}</Text>
-                        </Pressable>
-                      ))}
-                    </View>
+                    <MoodPicker
+                      value={record.mood}
+                      lang={langKey}
+                      compact
+                      onChange={(nextMood) => updateMood(record, nextMood)}
+                    />
                   </View>
                   <View style={[styles.levelTag, { backgroundColor: record.status.color }]}>
                     <Text style={styles.levelTagText}>{t[record.status.levelKey] || record.status.level}</Text>
@@ -2526,7 +2469,7 @@ export default function BloodPressureScreen({
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#f2f7ff"
+    backgroundColor: colors.bg
   },
   container: {
     padding: 16,
@@ -2536,20 +2479,20 @@ const styles = StyleSheet.create({
   headerCard: {
     backgroundColor: "#fff",
     borderBottomWidth: 1,
-    borderBottomColor: "#d8e6ff",
+    borderBottomColor: colors.border,
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 12
   },
   backText: {
-    color: "#1f74d1",
+    color: colors.pine,
     fontWeight: "800"
   },
   title: {
     marginTop: 8,
     fontSize: 21,
     fontWeight: "800",
-    color: "#11355c"
+    color: colors.text
   },
   sub: {
     marginTop: 4,
@@ -2560,7 +2503,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     backgroundColor: "#fff",
     borderBottomWidth: 1,
-    borderBottomColor: "#d8e6ff",
+    borderBottomColor: colors.border,
     paddingHorizontal: 12,
     paddingVertical: 8,
     gap: 8
@@ -2576,8 +2519,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8fbff"
   },
   tabBtnActive: {
-    backgroundColor: "#1f74d1",
-    borderColor: "#1f74d1"
+    backgroundColor: colors.pine,
+    borderColor: colors.pine
   },
   tabText: {
     color: "#1f507f",
@@ -2590,7 +2533,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#d8e6ff",
+    borderColor: colors.border,
     padding: 14
   },
   latestCardAbnormal: {
@@ -2610,28 +2553,28 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#d8e6ff",
+    borderColor: colors.border,
     padding: 14
   },
   analysisCard: {
     backgroundColor: "#fff",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#d8e6ff",
+    borderColor: colors.border,
     padding: 14
   },
   historyCard: {
     backgroundColor: "#fff",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#d8e6ff",
+    borderColor: colors.border,
     padding: 14
   },
   taskCard: {
     backgroundColor: "#fff",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#d8e6ff",
+    borderColor: colors.border,
     padding: 14,
     gap: 10
   },
@@ -2678,7 +2621,7 @@ const styles = StyleSheet.create({
     flex: 1
   },
   taskTitle: {
-    color: "#173e67",
+    color: colors.text,
     fontSize: 15,
     fontWeight: "900"
   },
@@ -2699,14 +2642,14 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: "800",
-    color: "#173e67"
+    color: colors.text
   },
   sectionTitleSpacing: {
     marginTop: 18,
     marginBottom: 4,
     fontSize: 18,
     fontWeight: "800",
-    color: "#173e67"
+    color: colors.text
   },
   sectionHint: {
     marginTop: 14,
@@ -2741,7 +2684,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 25,
     fontWeight: "900",
-    color: "#11355c"
+    color: colors.text
   },
   unitText: {
     marginTop: 2,
@@ -2776,27 +2719,64 @@ const styles = StyleSheet.create({
     color: "#8c5a00",
     fontWeight: "800"
   },
+  moodStripValueRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6
+  },
   moodStripValue: {
     color: "#ad6800",
     fontWeight: "900"
   },
-  inlineMoodRow: {
+  moodRow: {
     flexDirection: "row",
     gap: 8,
+    marginBottom: 12
+  },
+  moodRowCompact: {
+    flexDirection: "row",
+    gap: 6,
     marginTop: 10
   },
-  moodChipSmall: {
-    width: 38,
-    height: 34,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#d8e1ed",
+  moodItem: {
+    flex: 1,
+    minHeight: 72,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    borderRadius: 14,
+    borderCurve: "continuous",
+    borderWidth: 1.5,
+    borderColor: "#e4e7ec",
+    backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#fafcff"
+    gap: 6
   },
-  moodChipText: {
-    fontSize: 17
+  moodItemCompact: {
+    flex: 1,
+    minHeight: 56,
+    paddingVertical: 8,
+    paddingHorizontal: 2,
+    borderRadius: 12,
+    borderCurve: "continuous",
+    borderWidth: 1.5,
+    borderColor: "#e4e7ec",
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4
+  },
+  moodItemLabel: {
+    color: "#475467",
+    fontWeight: "700",
+    fontSize: 12,
+    textAlign: "center"
+  },
+  moodItemLabelCompact: {
+    color: "#475467",
+    fontWeight: "700",
+    fontSize: 10,
+    textAlign: "center"
   },
   miniChart: {
     height: 166,
@@ -2845,7 +2825,7 @@ const styles = StyleSheet.create({
   sysBar: {
     width: 10,
     borderRadius: 8,
-    backgroundColor: "#1f74d1"
+    backgroundColor: colors.pine
   },
   diaBar: {
     width: 10,
@@ -2854,13 +2834,13 @@ const styles = StyleSheet.create({
   },
   chartValue: {
     position: "absolute",
-    color: "#173e67",
+    color: colors.text,
     fontSize: 11,
     fontWeight: "800",
     zIndex: 4
   },
   chartValueSys: {
-    color: "#173e67",
+    color: colors.text,
     fontWeight: "900"
   },
   chartValueSlash: {
@@ -2868,7 +2848,7 @@ const styles = StyleSheet.create({
     fontWeight: "900"
   },
   chartValueDia: {
-    color: "#173e67",
+    color: colors.text,
     fontWeight: "900"
   },
   chartLabel: {
@@ -2887,7 +2867,7 @@ const styles = StyleSheet.create({
     zIndex: 1
   },
   miniLineSegmentSys: {
-    backgroundColor: "#1f74d1"
+    backgroundColor: colors.pine
   },
   miniLineSegmentDia: {
     backgroundColor: "#17a36b"
@@ -2903,7 +2883,7 @@ const styles = StyleSheet.create({
     zIndex: 3
   },
   miniLinePointSys: {
-    backgroundColor: "#1f74d1"
+    backgroundColor: colors.pine
   },
   miniLinePointDia: {
     width: 10,
@@ -2919,7 +2899,7 @@ const styles = StyleSheet.create({
     marginTop: 8
   },
   legendSys: {
-    color: "#1f74d1",
+    color: colors.pine,
     fontWeight: "800",
     fontSize: 12
   },
@@ -2953,38 +2933,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 9,
     backgroundColor: "#fbfdff",
-    color: "#173e67"
+    color: colors.text
   },
-  moodGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 12
-  },
-  moodChip: {
-    flexBasis: "48%",
-    minHeight: 58,
-    borderRadius: 10,
+  inputMeter: {
     borderWidth: 1,
-    borderColor: "#d8e1ed",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#fafcff"
+    borderColor: "#c8d8ee",
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+    minHeight: 52,
+    backgroundColor: "#fbfdff",
+    color: colors.text,
+    fontSize: 26,
+    fontWeight: "800",
+    textAlign: "center"
   },
-  moodChipSelected: {
-    borderColor: "#1f74d1",
-    backgroundColor: "#edf6ff"
-  },
-  moodEmoji: {
-    fontSize: 20
-  },
-  moodLabel: {
-    marginTop: 2,
-    color: "#31587d",
-    fontWeight: "800"
+  meterHint: {
+    marginTop: 8,
+    marginBottom: 4,
+    color: "#526b88",
+    fontWeight: "600",
+    lineHeight: 20
   },
   buttonPrimary: {
-    backgroundColor: "#1f74d1",
+    backgroundColor: colors.pine,
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: "center"
@@ -3003,7 +2975,7 @@ const styles = StyleSheet.create({
     alignItems: "center"
   },
   buttonSecondaryText: {
-    color: "#1f74d1",
+    color: colors.pine,
     fontWeight: "900"
   },
   message: {
@@ -3046,7 +3018,7 @@ const styles = StyleSheet.create({
   },
   summaryValue: {
     marginTop: 6,
-    color: "#173e67",
+    color: colors.text,
     fontSize: 17,
     fontWeight: "900"
   },
@@ -3058,7 +3030,7 @@ const styles = StyleSheet.create({
   adviceBox: {
     marginTop: 12,
     borderLeftWidth: 4,
-    borderLeftColor: "#1f74d1",
+    borderLeftColor: colors.pine,
     backgroundColor: "#edf6ff",
     borderRadius: 10,
     padding: 12
@@ -3090,7 +3062,7 @@ const styles = StyleSheet.create({
   recommendationBox: {
     marginTop: 12,
     borderLeftWidth: 4,
-    borderLeftColor: "#1f74d1",
+    borderLeftColor: colors.pine,
     backgroundColor: "#f8fbff",
     borderRadius: 10,
     padding: 12
@@ -3153,7 +3125,7 @@ const styles = StyleSheet.create({
     padding: 12
   },
   adviceTitle: {
-    color: "#173e67",
+    color: colors.text,
     fontWeight: "900"
   },
   familyInfoRow: {
@@ -3170,7 +3142,7 @@ const styles = StyleSheet.create({
   connectionBox: {
     backgroundColor: "#f8fbff",
     borderWidth: 1,
-    borderColor: "#d8e6ff",
+    borderColor: colors.border,
     borderRadius: 12,
     padding: 12
   },
@@ -3231,14 +3203,14 @@ const styles = StyleSheet.create({
     alignItems: "center"
   },
   dateChipSelected: {
-    borderColor: "#1f74d1",
+    borderColor: colors.pine,
     backgroundColor: "#edf6ff"
   },
   dateChipAbnormal: {
     borderColor: "#cf1322"
   },
   dateChipText: {
-    color: "#173e67",
+    color: colors.text,
     fontWeight: "900"
   },
   dateChipMeta: {
@@ -3247,7 +3219,7 @@ const styles = StyleSheet.create({
     fontSize: 11
   },
   selectedDateTitle: {
-    color: "#173e67",
+    color: colors.text,
     fontWeight: "900",
     marginBottom: 8
   },
@@ -3258,7 +3230,7 @@ const styles = StyleSheet.create({
   },
   rowMain: {
     fontWeight: "900",
-    color: "#173e67",
+    color: colors.text,
     fontSize: 16
   },
   rowSub: {
@@ -3272,7 +3244,7 @@ const styles = StyleSheet.create({
     fontWeight: "800"
   },
   refreshText: {
-    color: "#1f74d1",
+    color: colors.pine,
     fontWeight: "900"
   },
   emptyText: {
@@ -3282,7 +3254,7 @@ const styles = StyleSheet.create({
   analysisTitle: {
     fontSize: 18,
     fontWeight: "900",
-    color: "#173e67",
+    color: colors.text,
     marginBottom: 10
   },
   segmentedControl: {
@@ -3300,7 +3272,7 @@ const styles = StyleSheet.create({
     justifyContent: "center"
   },
   segmentButtonActive: {
-    backgroundColor: "#1f74d1"
+    backgroundColor: colors.pine
   },
   segmentButtonText: {
     color: "#4f6682",
@@ -3315,7 +3287,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: "#f7fbff",
     borderWidth: 1,
-    borderColor: "#d8e6ff",
+    borderColor: colors.border,
     paddingHorizontal: 10,
     paddingTop: 20,
     paddingBottom: 10,
@@ -3364,7 +3336,7 @@ const styles = StyleSheet.create({
     transformOrigin: "left center"
   },
   lineSegmentSys: {
-    backgroundColor: "#1f74d1"
+    backgroundColor: colors.pine
   },
   lineSegmentDia: {
     backgroundColor: "#17a36b"
@@ -3380,7 +3352,7 @@ const styles = StyleSheet.create({
     zIndex: 2
   },
   linePointSys: {
-    backgroundColor: "#1f74d1"
+    backgroundColor: colors.pine
   },
   linePointDia: {
     backgroundColor: "#17a36b",
@@ -3394,7 +3366,7 @@ const styles = StyleSheet.create({
     left: -10,
     minWidth: 30,
     textAlign: "center",
-    color: "#173e67",
+    color: colors.text,
     fontSize: 10,
     fontWeight: "900"
   },
@@ -3432,7 +3404,7 @@ const styles = StyleSheet.create({
   longSysBar: {
     width: 12,
     borderRadius: 8,
-    backgroundColor: "#1f74d1"
+    backgroundColor: colors.pine
   },
   longDiaBar: {
     width: 12,
@@ -3459,7 +3431,7 @@ const styles = StyleSheet.create({
   chartSummaryPill: {
     flex: 1,
     borderWidth: 1,
-    borderColor: "#d8e6ff",
+    borderColor: colors.border,
     backgroundColor: "#f8fbff",
     borderRadius: 10,
     paddingVertical: 9,
@@ -3473,7 +3445,7 @@ const styles = StyleSheet.create({
   },
   chartSummaryValue: {
     marginTop: 3,
-    color: "#173e67",
+    color: colors.text,
     fontSize: 18,
     fontWeight: "900"
   },
@@ -3516,7 +3488,7 @@ const styles = StyleSheet.create({
     borderLeftColor: "#17a36b"
   },
   macroSummaryTitle: {
-    color: "#173e67",
+    color: colors.text,
     fontWeight: "900",
     fontSize: 15
   },
@@ -3555,7 +3527,7 @@ const styles = StyleSheet.create({
   },
   macroSummaryObservation: {
     marginTop: 4,
-    color: "#173e67",
+    color: colors.text,
     lineHeight: 20,
     fontWeight: "800"
   },
@@ -3572,7 +3544,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 6,
     backgroundColor: "rgba(255,255,255,0.72)",
-    color: "#173e67",
+    color: colors.text,
     fontSize: 11,
     fontWeight: "900"
   },
@@ -3586,8 +3558,22 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontSize: 12
   },
+  analysisToggle: {
+    marginTop: 8,
+    alignSelf: "flex-start",
+    paddingVertical: 4
+  },
+  analysisToggleText: {
+    color: colors.pine,
+    fontSize: 12,
+    fontWeight: "800"
+  },
+  analysisDetail: {
+    marginTop: 6,
+    gap: 6
+  },
   sourceLinkText: {
-    color: "#1f74d1",
+    color: colors.pine,
     lineHeight: 19,
     fontSize: 12,
     fontWeight: "900",
@@ -3595,7 +3581,7 @@ const styles = StyleSheet.create({
     marginBottom: 4
   },
   pulseAnalysisTitle: {
-    color: "#173e67",
+    color: colors.text,
     fontSize: 15,
     fontWeight: "900"
   },
@@ -3609,109 +3595,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontSize: 12
   },
-  calendarCard: {
-    marginTop: 12,
-    borderRadius: 12,
-    backgroundColor: "#f8fbff",
-    borderWidth: 1,
-    borderColor: "#d8e6ff",
-    padding: 10
-  },
-  calendarHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 8
-  },
-  calendarTitle: {
-    color: "#173e67",
-    fontSize: 16,
-    fontWeight: "900"
-  },
-  monthButton: {
-    width: 36,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: "#edf6ff",
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  monthButtonText: {
-    color: "#1f74d1",
-    fontSize: 22,
-    fontWeight: "900"
-  },
-  weekRow: {
-    flexDirection: "row",
-    marginBottom: 6
-  },
-  weekLabel: {
-    width: "14.285%",
-    textAlign: "center",
-    color: "#607990",
-    fontWeight: "900",
-    fontSize: 12
-  },
-  calendarGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap"
-  },
-  customDay: {
-    width: "14.285%",
-    minHeight: 54,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    position: "relative",
-    marginVertical: 2
-  },
-  abnormalDay: {
-    backgroundColor: "#fff7e6",
-    borderWidth: 1,
-    borderColor: "#f59e0b"
-  },
-  dangerDay: {
-    backgroundColor: "#fff1f0",
-    borderWidth: 1,
-    borderColor: "#cf1322"
-  },
-  selectedDay: {
-    backgroundColor: "#edf6ff",
-    borderWidth: 1,
-    borderColor: "#1f74d1"
-  },
-  abnormalDayIcon: {
-    position: "absolute",
-    top: 3,
-    right: 5,
-    color: "#cf1322",
-    fontSize: 10,
-    fontWeight: "900"
-  },
-  dayLabel: {
-    color: "#173e67",
-    fontWeight: "900"
-  },
-  dayValue: {
-    marginTop: 2,
-    fontSize: 9,
-    fontWeight: "900"
-  },
-  dangerDayText: {
-    color: "#cf1322"
-  },
-  calendarLegend: {
-    marginTop: 8,
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: "#edf6ff"
-  },
-  calendarLegendText: {
-    color: "#4f6682",
-    fontSize: 12,
-    textAlign: "center",
-    fontWeight: "700"
-  },
   diaryDetailHeader: {
     marginTop: 12,
     paddingVertical: 10,
@@ -3720,7 +3603,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between"
   },
   detailTitle: {
-    color: "#173e67",
+    color: colors.text,
     fontWeight: "900",
     fontSize: 15
   },
@@ -3760,41 +3643,15 @@ const styles = StyleSheet.create({
     marginTop: 3
   },
   recordVal: {
-    color: "#173e67",
+    color: colors.text,
     fontSize: 18,
     fontWeight: "900"
-  },
-  recordMoodIcon: {
-    marginLeft: 8,
-    fontSize: 18
   },
   recordPulse: {
     marginTop: 3,
     color: "#b54708",
     fontSize: 12,
     fontWeight: "800"
-  },
-  recordMoodPicker: {
-    flexDirection: "row",
-    gap: 6,
-    marginTop: 8
-  },
-  recordMoodChip: {
-    width: 34,
-    height: 30,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#d8e1ed",
-    backgroundColor: "#fafcff",
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  recordMoodChipSelected: {
-    borderColor: "#1f74d1",
-    backgroundColor: "#edf6ff"
-  },
-  recordMoodChipText: {
-    fontSize: 16
   },
   levelTag: {
     paddingHorizontal: 9,
@@ -3816,7 +3673,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: "#fff",
     borderWidth: 1,
-    borderColor: "#d8e6ff",
+    borderColor: colors.border,
     padding: 16
   },
   detailModalHead: {
@@ -3826,7 +3683,7 @@ const styles = StyleSheet.create({
     gap: 12
   },
   detailModalTitle: {
-    color: "#11355c",
+    color: colors.text,
     fontSize: 20,
     fontWeight: "900"
   },
@@ -3889,7 +3746,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#d8e6ff",
+    borderColor: colors.border,
     backgroundColor: "#f8fbff",
     padding: 10,
     alignItems: "center"
@@ -3901,7 +3758,7 @@ const styles = StyleSheet.create({
   },
   detailValue: {
     marginTop: 4,
-    color: "#11355c",
+    color: colors.text,
     fontSize: 22,
     fontWeight: "900"
   },

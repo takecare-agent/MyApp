@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { API_BASE_URL } from "../../config/runtime"
 
-const MOOD_OPTIONS = ["平靜", "疲倦", "焦慮", "頭暈", "未標記"]
+// 必須與後端 BloodPressureRecord.mood enum 一致（勿再放「疲倦」）
+const MOOD_OPTIONS = ["平靜", "開心", "焦慮", "頭暈", "未標記"]
 
 function numberOrNull(value) {
   const parsed = Number(value)

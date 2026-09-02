@@ -8,146 +8,232 @@ import {
   TextInput,
   View
 } from "react-native"
-import { mobileDevLogin } from "../lib/api"
-
-const ROLE_OPTIONS = [
-  {
-    key: "patient",
-    title: "受顧者端",
-    badge: "長輩使用",
-    desc: "量測、同步 Health Connect 血壓資料，並管理自己的心情日記。",
-    accent: "#1f74d1",
-    soft: "#e8f2ff"
-  },
-  {
-    key: "family",
-    title: "家屬端",
-    badge: "追蹤查看",
-    desc: "固定查看已連接長輩的血壓紀錄、趨勢與異常提醒。",
-    accent: "#b54708",
-    soft: "#fff7e6"
-  },
-  {
-    key: "caregiver",
-    title: "看護端",
-    badge: "照護紀錄",
-    desc: "協助長輩新增血壓資料，並查看照護所需的趨勢分析。",
-    accent: "#067647",
-    soft: "#ecfdf3"
-  }
-]
+import { mobileCompleteProfile, mobileDevLogin } from "../lib/api"
+import { useI18n } from "../i18n/I18nContext"
+import { colors } from "./new_ui/tokens"
 
 export default function RoleSelectScreen({ loginDraft, onBack, onLoginSuccess }) {
-  const [loadingRole, setLoadingRole] = useState("")
+  const { t } = useI18n()
+  const ROLE_OPTIONS = [
+    { key: "family", title: t("role.familyTitle"), desc: t("role.familyDesc") },
+    { key: "caregiver", title: t("role.caregiverTitle"), desc: t("role.caregiverDesc") },
+    { key: "patient", title: t("role.patientTitle"), desc: t("role.patientDesc") }
+  ]
+  const [step, setStep] = useState("role")
+  const [selectedRole, setSelectedRole] = useState("")
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
-  const [linkedPatientEmail, setLinkedPatientEmail] = useState("")
+  const [bindMode, setBindMode] = useState("invite")
+  const [linkedPatientEmail, setLinkedPatientEmail] = useState("patient@test.com")
+  const [inviteCode, setInviteCode] = useState("")
+  const [careRecipientName, setCareRecipientName] = useState("")
 
+  const isDev = loginDraft?.mode === "dev"
+  const hasToken = Boolean(loginDraft?.token)
   const isReady = useMemo(
-    () => Boolean(loginDraft?.apiBaseUrl && loginDraft?.email),
-    [loginDraft]
+    () => Boolean(loginDraft?.apiBaseUrl && loginDraft?.email && (hasToken || isDev)),
+    [hasToken, isDev, loginDraft]
   )
-  const busy = Boolean(loadingRole)
+  const needsBind = selectedRole === "family" || selectedRole === "caregiver"
 
-  const handleSelectRole = async role => {
-    if (!isReady) {
-      setError("登入資料不完整，請回上一頁重新輸入。")
+  const finish = async () => {
+    if (!isReady || !selectedRole) {
+      setError(t("role.needFirst"))
       return
     }
-
-    const normalizedLinkedPatientEmail = linkedPatientEmail.trim().toLowerCase()
-    if ((role === "family" || role === "caregiver") && !normalizedLinkedPatientEmail) {
-      setError("家屬端與看護端需要輸入要連接的長輩 Email。")
-      return
+    const normalizedLinked = linkedPatientEmail.trim().toLowerCase()
+    const normalizedInvite = inviteCode.trim().toUpperCase()
+    if (needsBind) {
+      if (bindMode === "invite" && !normalizedInvite) {
+        setError(t("role.needInvite"))
+        return
+      }
+      if (bindMode === "email" && !normalizedLinked) {
+        setError(t("role.needEmail"))
+        return
+      }
     }
 
-    setLoadingRole(role)
+    setLoading(true)
     setError("")
-
     try {
+      if (hasToken && !isDev) {
+        const data = await mobileCompleteProfile({
+          apiBaseUrl: loginDraft.apiBaseUrl,
+          token: loginDraft.token,
+          role: selectedRole,
+          linkedPatientEmail: needsBind && bindMode === "email" ? normalizedLinked : "",
+          inviteCode: needsBind && bindMode === "invite" ? normalizedInvite : "",
+          name: careRecipientName || loginDraft.name || ""
+        })
+        await onLoginSuccess({
+          token: data.token,
+          role: data.role || selectedRole,
+          user: data.user,
+          apiBaseUrl: loginDraft.apiBaseUrl
+        })
+        return
+      }
+
       const data = await mobileDevLogin({
         apiBaseUrl: loginDraft.apiBaseUrl,
         email: loginDraft.email,
-        name: loginDraft.name || "",
-        role,
-        linkedPatientEmail: normalizedLinkedPatientEmail
+        name: loginDraft.name || careRecipientName || "",
+        role: selectedRole,
+        linkedPatientEmail: needsBind
+          ? bindMode === "email"
+            ? normalizedLinked
+            : "patient@test.com"
+          : ""
       })
-
       await onLoginSuccess({
         token: data.token,
-        role: data.role || role,
+        role: data.role || selectedRole,
         user: data.user || {
           email: loginDraft.email,
           name: loginDraft.name || "",
-          role,
-          linkedPatientEmail: normalizedLinkedPatientEmail
+          role: selectedRole,
+          linkedPatientEmail: data.user?.linkedPatientEmail || normalizedLinked
         },
         apiBaseUrl: loginDraft.apiBaseUrl
       })
     } catch (loginError) {
-      setError(loginError.message || "身分設定失敗，請確認後再試一次。")
-      setLoadingRole("")
+      setError(loginError.message || t("role.setupFail"))
+      setLoading(false)
     }
   }
 
+  const handlePrimary = () => {
+    if (step === "role") {
+      if (!selectedRole) {
+        setError(t("role.needOne"))
+        return
+      }
+      setError("")
+      if (needsBind) setStep("bind")
+      else finish()
+      return
+    }
+    finish()
+  }
+
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.header}>
-        <Pressable onPress={onBack}>
-          <Text style={styles.backText}>返回</Text>
-        </Pressable>
-        <Text style={styles.title}>選擇使用身分</Text>
-        <Text style={styles.subtitle}>
-          受顧者端會建立長輩資料；家屬端與看護端會在這一步直接連接到長輩 Email。
-        </Text>
-      </View>
+    <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+      <Pressable onPress={step === "bind" ? () => setStep("role") : onBack} style={styles.backBtn}>
+        <Text style={styles.backText}>‹ {t("common.back")}</Text>
+      </Pressable>
 
-      <View style={styles.card}>
-        <Text style={styles.label}>長輩端 Email</Text>
-        <TextInput
-          style={styles.input}
-          value={linkedPatientEmail}
-          onChangeText={setLinkedPatientEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          placeholder="家屬/看護選擇身分時必填"
-          placeholderTextColor="#8aa0b8"
-        />
-        <Text style={styles.hint}>選受顧者端可以留空；選家屬端或看護端時，請輸入已建立受顧者端的 Email。</Text>
-      </View>
+      {step === "role" ? (
+        <>
+          <Text style={styles.title}>{t("role.pickTitle")}</Text>
+          <Text style={styles.subtitle}>
+            {isDev ? t("role.pickDev") : t("role.pickHint")}
+          </Text>
+          <Text style={styles.accountLine}>{loginDraft?.email || ""}</Text>
 
-      {ROLE_OPTIONS.map(roleItem => {
-        const loading = loadingRole === roleItem.key
-        return (
-          <Pressable
-            key={roleItem.key}
-            style={[
-              styles.roleCard,
-              { borderColor: roleItem.soft },
-              busy && !loading ? styles.roleCardDisabled : null
-            ]}
-            onPress={() => handleSelectRole(roleItem.key)}
-            disabled={busy}
-          >
-            <View style={[styles.roleIcon, { backgroundColor: roleItem.soft }]}>
-              <Text style={[styles.roleInitial, { color: roleItem.accent }]}>
-                {roleItem.title.slice(0, 1)}
+          <View style={styles.roleList}>
+            {ROLE_OPTIONS.map(item => {
+              const active = selectedRole === item.key
+              return (
+                <Pressable
+                  key={item.key}
+                  style={[styles.roleRow, active && styles.roleRowActive]}
+                  onPress={() => setSelectedRole(item.key)}
+                >
+                  <View style={[styles.radio, active && styles.radioActive]}>
+                    {active ? <View style={styles.radioDot} /> : null}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.roleTitle}>{item.title}</Text>
+                    <Text style={styles.roleDesc}>{item.desc}</Text>
+                  </View>
+                </Pressable>
+              )
+            })}
+          </View>
+        </>
+      ) : (
+        <>
+          <Text style={styles.title}>{t("role.joinTitle")}</Text>
+          <Text style={styles.subtitle}>
+            {t("role.joinHint")}
+          </Text>
+          <Text style={styles.accountLine}>
+            {t("role.asRole", { role: ROLE_OPTIONS.find(r => r.key === selectedRole)?.title })}
+          </Text>
+
+          <View style={styles.modeRow}>
+            <Pressable
+              style={[styles.modeChip, bindMode === "invite" && styles.modeChipActive]}
+              onPress={() => setBindMode("invite")}
+            >
+              <Text style={[styles.modeChipText, bindMode === "invite" && styles.modeChipTextActive]}>
+                {t("circle.inviteCode")}
               </Text>
-            </View>
-            <View style={styles.roleContent}>
-              <View style={styles.roleTitleRow}>
-                <Text style={styles.roleTitle}>{roleItem.title}</Text>
-                <Text style={[styles.roleBadge, { color: roleItem.accent }]}>
-                  {roleItem.badge}
-                </Text>
-              </View>
-              <Text style={styles.roleDesc}>{roleItem.desc}</Text>
-            </View>
-            {loading ? <ActivityIndicator color={roleItem.accent} /> : null}
-          </Pressable>
-        )
-      })}
+            </Pressable>
+            <Pressable
+              style={[styles.modeChip, bindMode === "email" && styles.modeChipActive]}
+              onPress={() => setBindMode("email")}
+            >
+              <Text style={[styles.modeChipText, bindMode === "email" && styles.modeChipTextActive]}>
+                {t("circle.elderEmail")}
+              </Text>
+            </Pressable>
+          </View>
+
+          {bindMode === "invite" ? (
+            <>
+              <Text style={styles.label}>{t("circle.inviteCode")}</Text>
+              <TextInput
+                style={styles.input}
+                value={inviteCode}
+                onChangeText={setInviteCode}
+                autoCapitalize="characters"
+                placeholder={t("role.invitePlaceholder")}
+                placeholderTextColor="#8aa0b8"
+              />
+            </>
+          ) : (
+            <>
+              <Text style={styles.label}>{t("circle.elderEmail")}</Text>
+              <TextInput
+                style={styles.input}
+                value={linkedPatientEmail}
+                onChangeText={setLinkedPatientEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                placeholder="patient@test.com"
+                placeholderTextColor="#8aa0b8"
+              />
+            </>
+          )}
+
+          <Text style={styles.label}>{t("role.nickname")}</Text>
+          <TextInput
+            style={styles.input}
+            value={careRecipientName}
+            onChangeText={setCareRecipientName}
+            placeholder={t("role.nicknamePh")}
+            placeholderTextColor="#8aa0b8"
+          />
+        </>
+      )}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
+
+      <Pressable
+        style={[styles.primaryBtn, loading && styles.primaryBtnDisabled]}
+        onPress={handlePrimary}
+        disabled={loading}
+      >
+        {loading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.primaryBtnText}>
+            {step === "role" ? (needsBind ? t("role.continue") : t("role.enterApp")) : t("role.bindEnter")}
+          </Text>
+        )}
+      </Pressable>
     </ScrollView>
   )
 }
@@ -155,107 +241,93 @@ export default function RoleSelectScreen({ loginDraft, onBack, onLoginSuccess })
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
-    backgroundColor: "#f2f7ff",
-    padding: 16,
-    gap: 12
-  },
-  header: {
     backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#d8e6ff",
-    borderRadius: 12,
-    padding: 14
+    padding: 24,
+    paddingTop: 20
   },
-  backText: {
-    color: "#1f74d1",
-    fontWeight: "900"
-  },
-  title: {
-    marginTop: 8,
-    color: "#11355c",
-    fontSize: 22,
-    fontWeight: "900"
-  },
+  backBtn: { alignSelf: "flex-start", paddingVertical: 8, marginBottom: 8 },
+  backText: { color: colors.pine, fontWeight: "800", fontSize: 16 },
+  title: { fontSize: 24, fontWeight: "900", color: "#111827", textAlign: "center" },
   subtitle: {
-    marginTop: 6,
-    color: "#526b88",
-    lineHeight: 20
+    marginTop: 8,
+    color: "#6b7280",
+    textAlign: "center",
+    lineHeight: 20,
+    fontWeight: "600"
   },
-  card: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#d8e6ff",
-    borderRadius: 12,
-    padding: 14
+  accountLine: {
+    marginTop: 12,
+    marginBottom: 16,
+    textAlign: "center",
+    color: colors.pine,
+    fontWeight: "700",
+    fontSize: 13
   },
-  label: {
-    color: "#244569",
-    fontWeight: "800",
-    marginBottom: 6
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#c8d8ee",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: "#1b2a3d",
-    backgroundColor: "#fbfdff"
-  },
-  hint: {
-    marginTop: 6,
-    color: "#667d97",
-    fontSize: 12,
-    lineHeight: 18
-  },
-  roleCard: {
-    minHeight: 104,
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
+  roleList: { gap: 10 },
+  roleRow: {
     flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    padding: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#fff"
+  },
+  roleRowActive: { borderColor: colors.pine, backgroundColor: "#f0f7ff" },
+  radio: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: "#cbd5e1",
     alignItems: "center",
-    gap: 12
+    justifyContent: "center",
+    marginTop: 2
   },
-  roleCardDisabled: {
-    opacity: 0.5
+  radioActive: { borderColor: colors.pine },
+  radioDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: colors.pine
   },
-  roleIcon: {
-    width: 48,
-    height: 48,
+  roleTitle: { color: "#111827", fontSize: 17, fontWeight: "900" },
+  roleDesc: { marginTop: 4, color: "#6b7280", lineHeight: 20, fontWeight: "600" },
+  modeRow: { flexDirection: "row", gap: 8, marginBottom: 8 },
+  modeChip: {
+    flex: 1,
+    paddingVertical: 10,
     borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    alignItems: "center"
+  },
+  modeChipActive: { backgroundColor: colors.text, borderColor: colors.text },
+  modeChipText: { color: "#64748b", fontWeight: "800" },
+  modeChipTextActive: { color: "#fff" },
+  label: { marginTop: 14, color: "#334155", fontWeight: "800", fontSize: 13 },
+  input: {
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    minHeight: 50,
+    color: "#111827",
+    fontSize: 16
+  },
+  error: { marginTop: 14, color: "#b42318", fontWeight: "700", textAlign: "center" },
+  primaryBtn: {
+    marginTop: 24,
+    backgroundColor: colors.pine,
+    borderRadius: 12,
+    paddingVertical: 16,
     alignItems: "center",
+    minHeight: 52,
     justifyContent: "center"
   },
-  roleInitial: {
-    fontSize: 22,
-    fontWeight: "900"
-  },
-  roleContent: {
-    flex: 1
-  },
-  roleTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8
-  },
-  roleTitle: {
-    color: "#173e67",
-    fontSize: 18,
-    fontWeight: "900"
-  },
-  roleBadge: {
-    fontSize: 12,
-    fontWeight: "900"
-  },
-  roleDesc: {
-    marginTop: 5,
-    color: "#526b88",
-    lineHeight: 20
-  },
-  error: {
-    color: "#b42318",
-    fontWeight: "800"
-  }
+  primaryBtnDisabled: { opacity: 0.7 },
+  primaryBtnText: { color: "#fff", fontWeight: "900", fontSize: 16 }
 })

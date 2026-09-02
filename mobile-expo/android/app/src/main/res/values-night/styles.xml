@@ -1,0 +1,12 @@
+<resources>
+    <!-- 系統夜間模式仍用淺色主題，避免 OEM 反白字。 -->
+    <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
+        <item name="android:textColor">#FF111827</item>
+        <item name="android:textColorPrimary">#FF111827</item>
+        <item name="android:textColorSecondary">#FF374151</item>
+        <item name="android:forceDarkAllowed">false</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">#FFF2F7FF</item>
+    </style>
+</resources>
