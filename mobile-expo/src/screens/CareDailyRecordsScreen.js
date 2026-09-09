@@ -27,6 +27,9 @@ import { resolveCarePresetKey } from "../lib/presetResolve"
 import { usePollingRefresh } from "../lib/usePollingRefresh"
 import { useI18n } from "../i18n/I18nContext"
 import { colors } from "./new_ui/tokens"
+import { NeoIcon } from "./new_ui/NeoIcons"
+import { USE_SCREENSHOT_FILL } from "./new_ui/flag"
+import { ensureFilled, screenshotDailyRecords, screenshotDailyDraft } from "./new_ui/screenshotFill"
 
 function listPath(role) {
   if (role === "caregiver") return "/caregiver/care-daily-records"
@@ -84,9 +87,10 @@ export default function CareDailyRecordsScreen({
         path: `${listPath(role)}?limit=80`,
         token
       })
-      setRecords(Array.isArray(data?.records) ? data.records : [])
+      setRecords(ensureFilled(Array.isArray(data?.records) ? data.records : [], screenshotDailyRecords, 2))
     } catch (err) {
       if (!silent) setError(err.message || t("common.loadFailed"))
+      setRecords(ensureFilled([], screenshotDailyRecords, 2))
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -97,6 +101,15 @@ export default function CareDailyRecordsScreen({
     setLoading(true)
     load()
   }, [load])
+
+  useEffect(() => {
+    if (!USE_SCREENSHOT_FILL || !canWrite) return
+    const draft = screenshotDailyDraft()
+    setCategory(draft.category)
+    setContent(draft.content)
+    setNote(draft.note)
+    setObs(draft.obs)
+  }, [canWrite])
 
   usePollingRefresh(load, { intervalMs: 8000 })
 
@@ -202,10 +215,14 @@ export default function CareDailyRecordsScreen({
     <View style={styles.card}>
       <View style={styles.cardHead}>
         <View style={styles.badge}>
+          <NeoIcon name="clock" size={12} color={colors.mint} />
           <Text style={styles.badgeText}>{formatCareDailyAt(item.recordedAt || item.createdAt)}</Text>
         </View>
         {item.caregiverName ? (
-          <Text style={styles.caregiver}>{item.caregiverName}</Text>
+          <View style={styles.caregiverPill}>
+            <NeoIcon name="user" size={12} color="#FFFFFF" />
+            <Text style={styles.caregiver} numberOfLines={1}>{item.caregiverName}</Text>
+          </View>
         ) : null}
       </View>
       <Text style={styles.cat}>{careDailyCatLabel(item.category, t)}</Text>
@@ -216,6 +233,7 @@ export default function CareDailyRecordsScreen({
         apiBaseUrl={apiBaseUrl}
         token={token}
         style={styles.content}
+        numberOfLines={1}
       />
       {item.note ? (
         <TranslatedUgcText
@@ -230,32 +248,46 @@ export default function CareDailyRecordsScreen({
       {hasObs(item) ? (
         <View style={styles.obsBox}>
           {item.sleep ? (
-            <TranslatedUgcText
-              text={item.sleep}
-              sourceLang={item.sourceLang}
-              apiBaseUrl={apiBaseUrl}
-              token={token}
-              style={styles.obsLine}
-              notePrefix={`${t("daily.sleep")}：`}
-            />
+            <View style={styles.obsIconRow}>
+              <NeoIcon name="moon" size={14} color={colors.mint} />
+              <TranslatedUgcText
+                text={item.sleep}
+                sourceLang={item.sourceLang}
+                apiBaseUrl={apiBaseUrl}
+                token={token}
+                style={styles.obsLine}
+                notePrefix={`${t("daily.sleep")}：`}
+              />
+            </View>
           ) : null}
           {item.bloodPressure ? (
-            <Text style={styles.obsLine}>{`${t("daily.bp")}：${item.bloodPressure}`}</Text>
+            <View style={styles.obsIconRow}>
+              <NeoIcon name="activity" size={14} color={colors.mint} />
+              <Text style={styles.obsLine}>{`${t("daily.bp")}：${item.bloodPressure}`}</Text>
+            </View>
           ) : null}
           {item.heartRate ? (
-            <Text style={styles.obsLine}>{`${t("daily.hr")}：${item.heartRate}`}</Text>
+            <View style={styles.obsIconRow}>
+              <NeoIcon name="heart" size={14} color={colors.mint} />
+              <Text style={styles.obsLine}>{`${t("daily.hr")}：${item.heartRate}`}</Text>
+            </View>
           ) : null}
           {item.temperature ? (
-            <Text style={styles.obsLine}>{`${t("daily.temp")}：${item.temperature}`}</Text>
+            <View style={styles.obsIconRow}>
+              <NeoIcon name="thermometer" size={14} color={colors.mint} />
+              <Text style={styles.obsLine}>{`${t("daily.temp")}：${item.temperature}`}</Text>
+            </View>
           ) : null}
         </View>
       ) : null}
       {role === "caregiver" || (role === "patient" && item.createdByRole === "patient") ? (
         <View style={styles.cardActions}>
           <Pressable style={styles.editBtn} onPress={() => startEdit(item)}>
+            <NeoIcon name="edit-3" size={13} color="#10B981" />
             <Text style={styles.editText}>{t("daily.editNote")}</Text>
           </Pressable>
           <Pressable style={styles.delBtn} onPress={() => handleDelete(item)}>
+            <NeoIcon name="trash-2" size={13} color="#FF4D4D" />
             <Text style={styles.delText}>{t("common.delete")}</Text>
           </Pressable>
         </View>
@@ -274,7 +306,7 @@ export default function CareDailyRecordsScreen({
             style={[styles.tab, tab === "add" ? styles.tabOn : null]}
             onPress={() => setTab("add")}
           >
-            <Text style={[styles.tabText, tab === "add" ? styles.tabTextOn : null]}>
+            <Text style={[styles.tabText, tab === "add" ? styles.tabTextOn : null]} numberOfLines={1}>
               {editingId ? t("daily.edit") : t("daily.tabAdd")}
             </Text>
           </Pressable>
@@ -282,7 +314,9 @@ export default function CareDailyRecordsScreen({
             style={[styles.tab, tab === "list" ? styles.tabOn : null]}
             onPress={() => setTab("list")}
           >
-            <Text style={[styles.tabText, tab === "list" ? styles.tabTextOn : null]}>{t("daily.tabList")}</Text>
+            <Text style={[styles.tabText, tab === "list" ? styles.tabTextOn : null]} numberOfLines={1}>
+              {t("daily.tabList")}
+            </Text>
           </Pressable>
         </View>
       ) : (
@@ -299,8 +333,10 @@ export default function CareDailyRecordsScreen({
               <Text style={styles.cancelEditText}>{t("daily.cancelEdit")}</Text>
             </Pressable>
           ) : null}
+          <View style={styles.formCard}>
           <DropdownField
             label={t("reminders.category")}
+            leftIcon="tag"
             value={toCareDailyCatCode(category)}
             options={careDailyCategoryOptions(t)}
             onSelect={(c) => {
@@ -310,6 +346,7 @@ export default function CareDailyRecordsScreen({
           />
           <ComboboxField
             label={t("reminders.content")}
+            leftIcon="file-text"
             value={content}
             onChangeText={setContent}
             options={contentOptions}
@@ -317,50 +354,71 @@ export default function CareDailyRecordsScreen({
             emptyText={t("reminders.emptyPreset")}
           />
           <Text style={styles.label}>{t("reminders.noteOptional")}</Text>
-          <TextInput
-            style={styles.noteInput}
-            value={note}
-            onChangeText={setNote}
-            placeholder={t("daily.notePlaceholder")}
-            placeholderTextColor="#9ca3af"
-            multiline
-            textAlignVertical="top"
-          />
+          <View style={styles.noteRow}>
+            <NeoIcon name="edit-3" size={18} glow style={styles.noteIcon} />
+            <TextInput
+              style={styles.noteInput}
+              value={note}
+              onChangeText={setNote}
+              placeholder={t("daily.notePlaceholder")}
+              placeholderTextColor={colors.textMuted}
+              multiline
+              textAlignVertical="top"
+            />
+          </View>
+          </View>
           {role === "caregiver" ? (
           <View style={styles.obsCard}>
-          <Text style={styles.section}>{t("daily.obsSection")}</Text>
-          <Text style={styles.label}>{t("daily.sleep")}</Text>
+          <View style={styles.obsHead}>
+            <NeoIcon name="eye" size={18} glow />
+            <Text style={styles.section} numberOfLines={1}>
+              {t("daily.obsSection")}
+            </Text>
+          </View>
+          <View style={styles.obsLabelRow}>
+            <NeoIcon name="moon" size={16} glow />
+            <Text style={styles.obsLabel} numberOfLines={1}>{t("daily.sleep")}</Text>
+          </View>
           <TextInput
-            style={styles.lineInput}
+            style={styles.obsInput}
             value={obs.sleep}
             onChangeText={(v) => setObs((prev) => ({ ...prev, sleep: v }))}
             placeholder={t("daily.sleepPh")}
-            placeholderTextColor="#9ca3af"
+            placeholderTextColor={colors.textMuted}
           />
-          <Text style={styles.label}>{t("daily.bp")}</Text>
+          <View style={styles.obsLabelRow}>
+            <NeoIcon name="activity" size={16} glow />
+            <Text style={styles.obsLabel} numberOfLines={1}>{t("daily.bp")}</Text>
+          </View>
           <TextInput
-            style={styles.lineInput}
+            style={styles.obsInput}
             value={obs.bloodPressure}
             onChangeText={(v) => setObs((prev) => ({ ...prev, bloodPressure: v }))}
             placeholder={t("daily.bpPh")}
-            placeholderTextColor="#9ca3af"
+            placeholderTextColor={colors.textMuted}
           />
-          <Text style={styles.label}>{t("daily.hr")}</Text>
+          <View style={styles.obsLabelRow}>
+            <NeoIcon name="heart" size={16} glow />
+            <Text style={styles.obsLabel} numberOfLines={1}>{t("daily.hr")}</Text>
+          </View>
           <TextInput
-            style={styles.lineInput}
+            style={styles.obsInput}
             value={obs.heartRate}
             onChangeText={(v) => setObs((prev) => ({ ...prev, heartRate: v }))}
             placeholder={t("daily.hrPh")}
-            placeholderTextColor="#9ca3af"
+            placeholderTextColor={colors.textMuted}
             keyboardType="numeric"
           />
-          <Text style={styles.label}>{t("daily.temp")}</Text>
+          <View style={styles.obsLabelRow}>
+            <NeoIcon name="thermometer" size={16} glow />
+            <Text style={styles.obsLabel} numberOfLines={1}>{t("daily.temp")}</Text>
+          </View>
           <TextInput
-            style={styles.lineInput}
+            style={styles.obsInput}
             value={obs.temperature}
             onChangeText={(v) => setObs((prev) => ({ ...prev, temperature: v }))}
             placeholder={t("daily.tempPh")}
-            placeholderTextColor="#9ca3af"
+            placeholderTextColor={colors.textMuted}
             keyboardType="decimal-pad"
           />
           </View>
@@ -371,7 +429,7 @@ export default function CareDailyRecordsScreen({
             disabled={saving}
           >
             {saving ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color="#0D0F11" />
             ) : (
               <Text style={styles.saveText}>{editingId ? t("daily.saveEdit") : t("daily.saveBtn")}</Text>
             )}
@@ -385,7 +443,7 @@ export default function CareDailyRecordsScreen({
           keyExtractor={(item) => String(item._id)}
           renderItem={renderItem}
           contentContainerStyle={styles.listPad}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.mint} />}
           ListHeaderComponent={
             error ? <Text style={styles.error}>{error}</Text> : (
               <Text style={styles.count}>{t("daily.count", { n: records.length })}</Text>
@@ -402,79 +460,126 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   tabRow: {
     flexDirection: "row",
-    backgroundColor: "#fff",
+    backgroundColor: colors.bg,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#e5e7eb"
+    borderBottomColor: colors.border
   },
   tab: { flex: 1, paddingVertical: 14, alignItems: "center" },
-  tabOn: { borderBottomWidth: 2, borderBottomColor: colors.mint },
-  tabText: { fontSize: 15, color: "#6b7280", fontWeight: "600" },
-  tabTextOn: { color: colors.pine },
+  tabOn: { borderBottomWidth: 2, borderBottomColor: "#10B981" },
+  tabText: { fontSize: 15, color: colors.textMuted, fontWeight: "600" },
+  tabTextOn: { color: "#10B981" },
   readonlyHead: {
-    backgroundColor: "#fff",
+    backgroundColor: colors.bg,
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#e5e7eb"
+    borderBottomColor: colors.border
   },
-  readonlyTitle: { fontSize: 17, fontWeight: "800", color: "#111827" },
-  readonlySub: { marginTop: 4, fontSize: 13, color: "#6b7280" },
+  readonlyTitle: { fontSize: 17, fontWeight: "800", color: colors.text },
+  readonlySub: { marginTop: 4, fontSize: 13, color: colors.textMuted },
   formPad: { padding: 16, paddingBottom: 40 },
-  label: { fontSize: 14, fontWeight: "700", color: "#374151", marginTop: 12, marginBottom: 8 },
-  section: { fontSize: 15, fontWeight: "800", color: "#111827", marginTop: 4 },
+  formCard: {
+    backgroundColor: colors.card,
+    borderRadius: 24,
+    borderCurve: "continuous",
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 14
+  },
+  label: { fontSize: 14, fontWeight: "700", color: colors.textMuted, marginTop: 12, marginBottom: 8 },
+  section: { flex: 1, fontSize: 15, fontWeight: "800", color: colors.mint },
+  obsHead: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4, marginBottom: 8 },
   obsCard: {
     marginTop: 20,
     padding: 14,
-    borderRadius: 12,
-    backgroundColor: "#f6ffed",
+    borderRadius: 24,
+    borderCurve: "continuous",
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: "#b7eb8f"
+    borderColor: "#10B981"
   },
-  noteInput: {
-    minHeight: 88,
-    borderWidth: 1,
-    borderColor: "#d1d5db",
-    borderRadius: 12,
-    backgroundColor: "#fff",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#111827"
+  obsLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 10,
+    marginBottom: 8
   },
-  lineInput: {
+  obsLabel: { flex: 1, fontSize: 14, fontWeight: "700", color: colors.text },
+  obsInput: {
     height: 44,
     borderWidth: 1,
-    borderColor: "#d1d5db",
-    borderRadius: 12,
-    backgroundColor: "#fff",
-    paddingHorizontal: 14,
+    borderColor: colors.border,
+    borderRadius: 16,
+    backgroundColor: colors.bg,
+    paddingHorizontal: 12,
     fontSize: 15,
     fontWeight: "600",
-    color: "#111827"
+    color: colors.text
+  },
+  noteRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    minHeight: 88,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 16,
+    backgroundColor: colors.bg,
+    paddingHorizontal: 12,
+    paddingVertical: 12
+  },
+  noteIcon: { marginTop: 2 },
+  noteInput: {
+    flex: 1,
+    minHeight: 64,
+    padding: 0,
+    fontSize: 15,
+    fontWeight: "600",
+    color: colors.text
+  },
+  lineRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    height: 44,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 16,
+    backgroundColor: colors.bg,
+    paddingHorizontal: 12
+  },
+  lineInput: {
+    flex: 1,
+    height: 44,
+    padding: 0,
+    fontSize: 15,
+    fontWeight: "600",
+    color: colors.text
   },
   cancelEdit: { alignSelf: "flex-start", marginBottom: 8, paddingVertical: 4 },
-  cancelEditText: { color: colors.pine, fontWeight: "700" },
+  cancelEditText: { color: colors.mint, fontWeight: "700" },
   saveBtn: {
     marginTop: 20,
-    backgroundColor: colors.mint,
-    borderRadius: 12,
+    backgroundColor: colors.pine,
+    borderRadius: 16,
     paddingVertical: 14,
     alignItems: "center"
   },
   saveDisabled: { opacity: 0.6 },
-  saveText: { color: "#fff", fontWeight: "800", fontSize: 16 },
+  saveText: { color: "#0D0F11", fontWeight: "800", fontSize: 16 },
   listPad: { padding: 16, paddingBottom: 40 },
-  count: { marginBottom: 10, color: "#6b7280", fontWeight: "600" },
-  error: { color: "#dc2626", marginBottom: 10 },
-  empty: { textAlign: "center", marginTop: 48, color: "#9ca3af", fontSize: 15 },
+  count: { marginBottom: 10, color: "#10B981", fontWeight: "600" },
+  error: { color: "#E05A47", marginBottom: 10 },
+  empty: { textAlign: "center", marginTop: 48, color: colors.textMuted, fontSize: 15 },
   card: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
+    backgroundColor: colors.card,
+    borderRadius: 24,
+    borderCurve: "continuous",
     padding: 14,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: "#e5e7eb"
+    borderColor: colors.border
   },
   cardHead: {
     flexDirection: "row",
@@ -483,22 +588,36 @@ const styles = StyleSheet.create({
     marginBottom: 8
   },
   badge: {
-    backgroundColor: "#f6ffed",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: colors.mintSoft,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999
   },
   badgeText: {
-    color: colors.pine,
+    color: colors.mint,
     fontSize: 12,
     fontWeight: "700"
   },
-  caregiver: { fontSize: 12, color: "#6b7280", fontWeight: "600" },
-  cat: { fontSize: 13, fontWeight: "700", color: "#6b7280", marginBottom: 4 },
-  content: { fontSize: 16, fontWeight: "700", color: "#111827" },
-  note: { marginTop: 6, fontSize: 13, color: "#6b7280", fontWeight: "600", lineHeight: 18 },
+  caregiverPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#2A2D32",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    maxWidth: "48%"
+  },
+  caregiver: { fontSize: 12, color: "#FFFFFF", fontWeight: "600" },
+  obsIconRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
+  cat: { fontSize: 13, fontWeight: "700", color: colors.textMuted, marginBottom: 4 },
+  content: { fontSize: 16, fontWeight: "700", color: colors.text },
+  note: { marginTop: 6, fontSize: 13, color: colors.textMuted, fontWeight: "600", lineHeight: 18 },
   obsBox: { marginTop: 8, gap: 4 },
-  obsLine: { fontSize: 13, color: "#4b5563", fontWeight: "600" },
+  obsLine: { fontSize: 13, color: colors.textMuted, fontWeight: "600" },
   cardActions: {
     flexDirection: "row",
     justifyContent: "flex-end",
@@ -507,12 +626,27 @@ const styles = StyleSheet.create({
     gap: 12
   },
   editBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: colors.mintSoft,
-    borderRadius: 8
+    backgroundColor: "rgba(16,185,129,0.12)",
+    borderWidth: 1,
+    borderColor: "#10B981",
+    borderRadius: 999
   },
-  editText: { color: colors.pine, fontWeight: "800", fontSize: 14 },
-  delBtn: { paddingHorizontal: 12, paddingVertical: 8 },
-  delText: { color: "#ef4444", fontWeight: "700", fontSize: 13 }
+  editText: { color: "#10B981", fontWeight: "800", fontSize: 14 },
+  delBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: "rgba(255,77,77,0.12)",
+    borderWidth: 1,
+    borderColor: "#FF4D4D",
+    borderRadius: 999
+  },
+  delText: { color: "#FF4D4D", fontWeight: "700", fontSize: 13 }
 })

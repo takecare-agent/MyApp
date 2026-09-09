@@ -13,6 +13,8 @@ import {
 import { apiRequest } from "../lib/api"
 import MonthCalendar from "../components/MonthCalendar"
 import { colors } from "./new_ui/tokens"
+import { NeoIcon } from "./new_ui/NeoIcons"
+import { ensureFilled, screenshotBpRecords } from "./new_ui/screenshotFill"
 
 const HEALTH_CONNECT_PERMISSIONS = [
   { accessType: "read", recordType: "BloodPressure" },
@@ -31,26 +33,30 @@ const MOOD_UNMARKED_LABELS = {
 const MOOD_OPTIONS = [
   {
     value: "平靜",
-    tint: "#0f766e",
-    wash: "#ccfbf1",
+    tint: "#10B981",
+    wash: "rgba(16,185,129,0.15)",
+    icon: "emoticon-neutral",
     labels: { zh: "平靜", en: "Calm", id: "Tenang", vi: "Bình tĩnh", tl: "Kalmado", th: "สงบ" }
   },
   {
     value: "開心",
-    tint: "#b45309",
-    wash: "#fef3c7",
+    tint: "#FFA726",
+    wash: "rgba(255,167,38,0.15)",
+    icon: "emoticon-happy",
     labels: { zh: "開心", en: "Happy", id: "Senang", vi: "Vui", tl: "Masaya", th: "ดีใจ" }
   },
   {
     value: "焦慮",
-    tint: "#c2410c",
-    wash: "#ffedd5",
+    tint: "#FF7043",
+    wash: "rgba(255,112,67,0.15)",
+    icon: "emoticon-confused",
     labels: { zh: "焦慮", en: "Anxious", id: "Cemas", vi: "Lo âu", tl: "Balisa", th: "กังวล" }
   },
   {
     value: "頭暈",
-    tint: "#be123c",
-    wash: "#ffe4e6",
+    tint: "#EF5350",
+    wash: "rgba(239,83,80,0.15)",
+    icon: "emoticon-dizzy",
     labels: { zh: "頭暈", en: "Dizzy", id: "Pusing", vi: "Chóng mặt", tl: "Nahihilo", th: "เวียนหัว" }
   }
 ]
@@ -66,14 +72,16 @@ function moodDisplay(raw, lang) {
 function MoodDot({ mood, size = 14, selected = false }) {
   const opt = MOOD_OPTIONS.find((item) => item.value === mood)
   const tint = opt?.tint || "#98a2b3"
-  const wash = opt?.wash || "#f2f4f7"
+  if (opt?.icon) {
+    return <NeoIcon name={opt.icon} size={size} color={tint} />
+  }
   return (
     <View
       style={{
         width: size,
         height: size,
         borderRadius: size / 2,
-        backgroundColor: selected ? tint : wash,
+        backgroundColor: selected ? tint : "rgba(255,255,255,0.08)",
         borderWidth: 2,
         borderColor: tint
       }}
@@ -96,18 +104,16 @@ function MoodPicker({ value, onChange, lang, compact = false }) {
             accessibilityState={{ selected }}
             style={[
               compact ? styles.moodItemCompact : styles.moodItem,
-              selected
-                ? { borderColor: option.tint, backgroundColor: option.wash }
-                : null
+              selected ? styles.moodItemOn : null
             ]}
           >
-            <MoodDot mood={option.value} size={compact ? 14 : 18} selected={selected} />
+            <MoodDot mood={option.value} size={compact ? 22 : 28} selected={selected} />
             <Text
               style={[
                 compact ? styles.moodItemLabelCompact : styles.moodItemLabel,
                 selected ? { color: option.tint } : null
               ]}
-              numberOfLines={2}
+              numberOfLines={1}
             >
               {label}
             </Text>
@@ -128,7 +134,7 @@ const UI_TEXT = {
     noRecord: "尚無紀錄", refresh: "重新整理", syncHC: "從 Health Connect 同步",
     moodStatus: "心情狀態", sysBP: "收縮壓", diaBP: "舒張壓", pulse: "脈搏", mood: "心情",
     alertNeedsConfirm: "需要看護確認", bpAlert: "血壓提醒",
-    currentBP: "目前照護血壓", nextStepLabel: "看護下一步",
+    currentBP: "目前血壓", nextStepLabel: "照護者建議",
     nextCritical: "立即確認長輩症狀，必要時聯絡家屬並協助就醫。",
     nextDanger: "請安排長輩休息 5 分鐘後複測，並在照護紀錄中註記。",
     nextWarning: "持續追蹤今日血壓，留意頭暈或焦慮狀態。",
@@ -899,7 +905,7 @@ function getBpStatus(sys, dia) {
     return {
       level: "血壓前期", levelKey: "levelPrehypertension",
       familyLabel: "血壓前期", familyLabelKey: "familyLabelPrehypertension",
-      color: "#b54708", softColor: "#fff7e6",
+      color: "#FFA726", softColor: "rgba(255,167,38,0.15)",
       category: "warning", isAbnormal: false, isCritical: false,
       recommendation: "建議增加監測頻率，並留意飲食與作息。", recommendationKey: "recPrehypertension"
     }
@@ -1484,12 +1490,13 @@ export default function BloodPressureScreen({
         path: `${apiPrefix}/blood-pressure/history?limit=100`,
         token
       })
-      setRecords(Array.isArray(data.records) ? data.records : [])
+      setRecords(ensureFilled(Array.isArray(data.records) ? data.records : [], screenshotBpRecords, 8))
       if (typeof data.linkedPatientEmail === "string") {
         setLinkedPatientEmail(data.linkedPatientEmail)
       }
     } catch (loadError) {
       setError(loadError.message)
+      setRecords(ensureFilled([], screenshotBpRecords, 8))
     } finally {
       setLoading(false)
     }
@@ -1699,7 +1706,10 @@ export default function BloodPressureScreen({
           >
             <View style={styles.cardHead}>
               <View>
-                <Text style={styles.sectionTitle}>{t.currentBP}</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <NeoIcon name="heart-fill" size={18} color="#FF4D4D" />
+                  <Text style={styles.sectionTitle}>{t.currentBP}</Text>
+                </View>
                 <Text style={styles.rowSub}>{latest ? formatDateTime(latest.measuredAt) : t.noRecord}</Text>
               </View>
               {latest ? (
@@ -1707,6 +1717,7 @@ export default function BloodPressureScreen({
                   style={[
                     styles.statusBadge,
                     latest.status.isAbnormal && styles.statusBadgeAbnormal,
+                    latest.status.levelKey === "levelPrehypertension" ? styles.statusBadgePre : null,
                     { color: latest.status.color, backgroundColor: latest.status.softColor }
                   ]}
                 >
@@ -1734,7 +1745,10 @@ export default function BloodPressureScreen({
             </View>
 
             <View style={styles.moodStrip}>
-              <Text style={styles.moodStripLabel}>{t.moodStatus}</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <NeoIcon name="smile" size={16} color="#10B981" />
+                <Text style={styles.moodStripLabel}>{t.moodStatus}</Text>
+              </View>
               {latest ? (
                 <View style={styles.moodStripValueRow}>
                   <MoodDot mood={latest.mood} size={10} selected />
@@ -1755,18 +1769,28 @@ export default function BloodPressureScreen({
             ) : null}
 
             <View style={styles.adviceBox}>
-              <Text style={styles.adviceTitle}>{t.nextStepLabel}</Text>
-              <Text style={styles.bodyText}>{caregiverNextStep}</Text>
+              <NeoIcon name="lightbulb-on" size={20} color="#FACC15" />
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.adviceTitle}>{t.nextStepLabel}</Text>
+                <Text style={styles.adviceBody}>{caregiverNextStep}</Text>
+              </View>
+              <NeoIcon name="chevron-right" size={16} color="#10B981" />
             </View>
           </View>
 
           <View style={styles.formCard}>
-            <Text style={styles.sectionTitle}>{t.syncInput}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <NeoIcon name="link" size={16} color="#10B981" />
+              <Text style={styles.sectionTitle}>{t.syncInput}</Text>
+            </View>
             <Pressable style={styles.buttonSecondary} onPress={handleSync} disabled={syncing}>
               {syncing ? (
-                <ActivityIndicator color={colors.pine} />
+                <ActivityIndicator color="#10B981" />
               ) : (
-                <Text style={styles.buttonSecondaryText}>{t.syncHC}</Text>
+                <>
+                  <NeoIcon name="heart-circle" size={18} color="#10B981" />
+                  <Text style={styles.buttonSecondaryText}>{t.syncHC}</Text>
+                </>
               )}
             </Pressable>
             <Text style={styles.meterHint}>{t.meterHint || "量完請按同步，或把血壓計數字打進來。"}</Text>
@@ -1775,33 +1799,42 @@ export default function BloodPressureScreen({
             <View style={styles.inputGrid}>
               <View style={styles.inputCell}>
                 <Text style={styles.label}>{t.sysBP}</Text>
-                <TextInput
-                  style={styles.inputMeter}
-                  value={form.sys}
-                  onChangeText={value => updateForm("sys", value)}
-                  keyboardType="numeric"
-                  placeholder="128"
-                />
+                <View style={styles.inputMeterWrap}>
+                  <TextInput
+                    style={styles.inputMeter}
+                    value={form.sys}
+                    onChangeText={value => updateForm("sys", value)}
+                    keyboardType="numeric"
+                    placeholder="128"
+                  />
+                  <NeoIcon name="chevron-right" size={14} color="#8E95A3" />
+                </View>
               </View>
               <View style={styles.inputCell}>
                 <Text style={styles.label}>{t.diaBP}</Text>
-                <TextInput
-                  style={styles.inputMeter}
-                  value={form.dia}
-                  onChangeText={value => updateForm("dia", value)}
-                  keyboardType="numeric"
-                  placeholder="82"
-                />
+                <View style={styles.inputMeterWrap}>
+                  <TextInput
+                    style={styles.inputMeter}
+                    value={form.dia}
+                    onChangeText={value => updateForm("dia", value)}
+                    keyboardType="numeric"
+                    placeholder="82"
+                  />
+                  <NeoIcon name="chevron-right" size={14} color="#8E95A3" />
+                </View>
               </View>
               <View style={styles.inputCell}>
                 <Text style={styles.label}>{t.pulse}</Text>
-                <TextInput
-                  style={styles.inputMeter}
-                  value={form.pulse}
-                  onChangeText={value => updateForm("pulse", value)}
-                  keyboardType="numeric"
-                  placeholder="76"
-                />
+                <View style={styles.inputMeterWrap}>
+                  <TextInput
+                    style={styles.inputMeter}
+                    value={form.pulse}
+                    onChangeText={value => updateForm("pulse", value)}
+                    keyboardType="numeric"
+                    placeholder="76"
+                  />
+                  <NeoIcon name="chevron-right" size={14} color="#8E95A3" />
+                </View>
               </View>
             </View>
 
@@ -2123,7 +2156,10 @@ export default function BloodPressureScreen({
             >
               <View style={styles.cardHead}>
                 <View>
-                  <Text style={styles.sectionTitle}>{t.bpLabel}</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <NeoIcon name="heart-fill" size={18} color="#FF4D4D" />
+                    <Text style={styles.sectionTitle}>{t.bpLabel}</Text>
+                  </View>
                   <Text style={styles.rowSub}>{latest ? formatDateTime(latest.measuredAt) : t.noRecord}</Text>
                 </View>
                 {latest ? (
@@ -2477,7 +2513,7 @@ const styles = StyleSheet.create({
     paddingBottom: 28
   },
   headerCard: {
-    backgroundColor: "#fff",
+    backgroundColor: colors.bg,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     paddingHorizontal: 16,
@@ -2496,12 +2532,12 @@ const styles = StyleSheet.create({
   },
   sub: {
     marginTop: 4,
-    color: "#4e6482",
+    color: colors.textMuted,
     lineHeight: 20
   },
   tabRow: {
     flexDirection: "row",
-    backgroundColor: "#fff",
+    backgroundColor: colors.bg,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     paddingHorizontal: 12,
@@ -2511,102 +2547,107 @@ const styles = StyleSheet.create({
   tabBtn: {
     flex: 1,
     minHeight: 38,
-    borderRadius: 8,
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#d7e4f6",
+    borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#f8fbff"
+    backgroundColor: colors.card
   },
   tabBtnActive: {
     backgroundColor: colors.pine,
     borderColor: colors.pine
   },
   tabText: {
-    color: "#1f507f",
+    color: colors.textMuted,
     fontWeight: "800"
   },
   tabTextActive: {
-    color: "#fff"
+    color: "#0D0F11"
   },
   latestCard: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
+    backgroundColor: colors.card,
+    borderRadius: 24,
+    borderCurve: "continuous",
     borderWidth: 1,
     borderColor: colors.border,
     padding: 14
   },
   latestCardAbnormal: {
-    borderColor: "#ffb4a8",
-    backgroundColor: "#fffafa",
-    shadowColor: "#cf1322",
+    borderColor: "#E05A47",
+    backgroundColor: "rgba(224,90,71,0.12)",
+    shadowColor: "#E05A47",
     shadowOpacity: 0.18,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
     elevation: 3
   },
   latestCardCritical: {
-    borderColor: "#cf1322",
-    backgroundColor: "#fff5f5"
+    borderColor: "#E05A47",
+    backgroundColor: "rgba(224,90,71,0.18)"
   },
   formCard: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
+    backgroundColor: colors.card,
+    borderRadius: 24,
+    borderCurve: "continuous",
     borderWidth: 1,
     borderColor: colors.border,
     padding: 14
   },
   analysisCard: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
+    backgroundColor: colors.card,
+    borderRadius: 24,
+    borderCurve: "continuous",
     borderWidth: 1,
     borderColor: colors.border,
     padding: 14
   },
   historyCard: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
+    backgroundColor: colors.card,
+    borderRadius: 24,
+    borderCurve: "continuous",
     borderWidth: 1,
     borderColor: colors.border,
     padding: 14
   },
   taskCard: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
+    backgroundColor: colors.card,
+    borderRadius: 24,
+    borderCurve: "continuous",
     borderWidth: 1,
     borderColor: colors.border,
     padding: 14,
     gap: 10
   },
   taskDate: {
-    color: "#526b88",
+    color: colors.textMuted,
     fontSize: 12,
     fontWeight: "900"
   },
   taskRow: {
     minHeight: 72,
     borderWidth: 1,
-    borderColor: "#e1ebf8",
-    backgroundColor: "#f8fbff",
-    borderRadius: 10,
+    borderColor: colors.border,
+    backgroundColor: colors.bg,
+    borderRadius: 16,
     padding: 10,
     flexDirection: "row",
     alignItems: "center",
     gap: 10
   },
   taskRowDone: {
-    backgroundColor: "#f0f9f5",
-    borderColor: "#b7ebd0"
+    backgroundColor: colors.mintSoft,
+    borderColor: colors.pine
   },
   taskCheck: {
     width: 28,
     height: 28,
     borderRadius: 14,
     borderWidth: 2,
-    borderColor: "#9bb3ce",
+    borderColor: colors.textMuted,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#fff"
+    backgroundColor: colors.card
   },
   taskCheckDone: {
     borderColor: "#17a36b",
@@ -2654,50 +2695,58 @@ const styles = StyleSheet.create({
   sectionHint: {
     marginTop: 14,
     marginBottom: 6,
-    color: "#4f6582",
+    color: colors.textMuted,
     fontWeight: "800"
   },
   valueGrid: {
     flexDirection: "row",
-    gap: 8,
-    marginTop: 12
+    gap: 10,
+    marginVertical: 12
   },
   valueBox: {
     flex: 1,
-    borderRadius: 10,
-    backgroundColor: "#f7fbff",
+    borderRadius: 12,
+    backgroundColor: "#13151B",
     borderWidth: 1,
-    borderColor: "#e1ebf8",
-    padding: 10,
+    borderColor: "rgba(16,185,129,0.45)",
+    paddingVertical: 12,
+    paddingHorizontal: 6,
     alignItems: "center"
   },
   valueBoxAbnormal: {
-    backgroundColor: "#fff5f5",
-    borderColor: "#ffccc7"
+    backgroundColor: "rgba(224,90,71,0.12)",
+    borderColor: "#E05A47"
   },
   valueLabel: {
-    color: "#59728e",
+    color: colors.textMuted,
     fontSize: 12,
     fontWeight: "700"
   },
   bigValue: {
     marginTop: 4,
-    fontSize: 25,
+    fontSize: 30,
     fontWeight: "900",
-    color: colors.text
+    color: "#FFFFFF",
+    letterSpacing: -0.6
   },
   unitText: {
-    marginTop: 2,
-    color: "#70839d",
+    marginTop: 4,
+    color: "#6C727A",
     fontSize: 11
   },
   statusBadge: {
     borderRadius: 999,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    fontWeight: "900",
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    fontWeight: "700",
     fontSize: 12,
-    overflow: "hidden"
+    overflow: "hidden",
+    backgroundColor: "rgba(255,167,38,0.15)",
+    color: "#FFA726"
+  },
+  statusBadgePre: {
+    backgroundColor: "rgba(255,167,38,0.15)",
+    color: "#FFA726"
   },
   statusBadgeAbnormal: {
     borderWidth: 1,
@@ -2708,15 +2757,16 @@ const styles = StyleSheet.create({
   },
   moodStrip: {
     marginTop: 10,
-    paddingHorizontal: 12,
+    paddingHorizontal: 0,
     paddingVertical: 9,
     borderRadius: 10,
-    backgroundColor: "#fff7e6",
+    backgroundColor: "transparent",
     flexDirection: "row",
-    justifyContent: "space-between"
+    justifyContent: "space-between",
+    alignItems: "center"
   },
   moodStripLabel: {
-    color: "#8c5a00",
+    color: "#FFFFFF",
     fontWeight: "800"
   },
   moodStripValueRow: {
@@ -2725,57 +2775,64 @@ const styles = StyleSheet.create({
     gap: 6
   },
   moodStripValue: {
-    color: "#ad6800",
+    color: colors.text,
     fontWeight: "900"
   },
   moodRow: {
     flexDirection: "row",
-    gap: 8,
-    marginBottom: 12
+    gap: 10,
+    marginVertical: 12
   },
   moodRowCompact: {
     flexDirection: "row",
-    gap: 6,
-    marginTop: 10
+    gap: 10,
+    marginVertical: 12
   },
   moodItem: {
     flex: 1,
-    minHeight: 72,
-    paddingVertical: 10,
+    aspectRatio: 1,
+    paddingVertical: 8,
     paddingHorizontal: 4,
-    borderRadius: 14,
+    borderRadius: 16,
     borderCurve: "continuous",
-    borderWidth: 1.5,
-    borderColor: "#e4e7ec",
-    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)",
+    backgroundColor: "#191B22",
     alignItems: "center",
     justifyContent: "center",
     gap: 6
   },
   moodItemCompact: {
     flex: 1,
-    minHeight: 56,
+    aspectRatio: 1,
     paddingVertical: 8,
     paddingHorizontal: 2,
-    borderRadius: 12,
+    borderRadius: 16,
     borderCurve: "continuous",
-    borderWidth: 1.5,
-    borderColor: "#e4e7ec",
-    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)",
+    backgroundColor: "#191B22",
     alignItems: "center",
     justifyContent: "center",
     gap: 4
   },
+  moodItemOn: {
+    borderWidth: 2,
+    borderColor: "#10B981",
+    backgroundColor: "rgba(16,185,129,0.15)"
+  },
   moodItemLabel: {
-    color: "#475467",
-    fontWeight: "700",
-    fontSize: 12,
+    color: "#8E95A3",
+    fontWeight: "500",
+    fontSize: 11,
+    marginTop: 6,
     textAlign: "center"
   },
   moodItemLabelCompact: {
-    color: "#475467",
-    fontWeight: "700",
-    fontSize: 10,
+    color: "#8E95A3",
+    fontWeight: "500",
+    fontSize: 11,
+    marginTop: 6,
     textAlign: "center"
   },
   miniChart: {
@@ -2916,7 +2973,7 @@ const styles = StyleSheet.create({
   label: {
     marginTop: 10,
     marginBottom: 6,
-    color: "#244569",
+    color: "#8E95A3",
     fontWeight: "700"
   },
   inputGrid: {
@@ -2928,55 +2985,69 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: "#c8d8ee",
+    borderColor: colors.border,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 9,
-    backgroundColor: "#fbfdff",
+    backgroundColor: colors.bg,
     color: colors.text
   },
-  inputMeter: {
+  inputMeterWrap: {
+    flexDirection: "row",
+    alignItems: "center",
     borderWidth: 1,
-    borderColor: "#c8d8ee",
+    borderColor: "rgba(255,255,255,0.05)",
     borderRadius: 12,
+    backgroundColor: "#13151B",
+    paddingVertical: 12,
+    paddingHorizontal: 12
+  },
+  inputMeter: {
+    flex: 1,
+    borderWidth: 0,
     paddingHorizontal: 10,
     paddingVertical: 12,
     minHeight: 52,
-    backgroundColor: "#fbfdff",
+    backgroundColor: "transparent",
     color: colors.text,
-    fontSize: 26,
+    fontSize: 22,
     fontWeight: "800",
     textAlign: "center"
   },
   meterHint: {
     marginTop: 8,
     marginBottom: 4,
-    color: "#526b88",
+    color: "#8E95A3",
     fontWeight: "600",
     lineHeight: 20
   },
   buttonPrimary: {
-    backgroundColor: colors.pine,
-    borderRadius: 10,
+    backgroundColor: "#10B981",
+    borderRadius: 12,
     paddingVertical: 12,
     alignItems: "center"
   },
   buttonPrimaryText: {
-    color: "#fff",
-    fontWeight: "900"
+    color: "#0B0D0E",
+    fontWeight: "800"
   },
   buttonSecondary: {
     marginTop: 10,
-    backgroundColor: "#fff",
-    borderColor: "#c7d8ed",
+    height: 44,
+    backgroundColor: "transparent",
+    borderColor: "rgba(16,185,129,0.4)",
     borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 11,
-    alignItems: "center"
+    borderRadius: 999,
+    paddingVertical: 0,
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 8
   },
   buttonSecondaryText: {
-    color: colors.pine,
-    fontWeight: "900"
+    color: "#10B981",
+    fontWeight: "700",
+    fontSize: 12
   },
   message: {
     color: "#067647",
@@ -3028,12 +3099,14 @@ const styles = StyleSheet.create({
     fontSize: 12
   },
   adviceBox: {
-    marginTop: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.pine,
-    backgroundColor: "#edf6ff",
-    borderRadius: 10,
-    padding: 12
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#13231B",
+    borderWidth: 1,
+    borderColor: "rgba(16,185,129,0.3)",
+    borderRadius: 16,
+    padding: 16,
+    marginVertical: 8
   },
   pulseBox: {
     marginTop: 12,
@@ -3125,8 +3198,16 @@ const styles = StyleSheet.create({
     padding: 12
   },
   adviceTitle: {
-    color: colors.text,
-    fontWeight: "900"
+    color: "#FFFFFF",
+    fontWeight: "700",
+    fontSize: 12
+  },
+  adviceBody: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    lineHeight: 20,
+    marginTop: 4,
+    fontWeight: "400"
   },
   familyInfoRow: {
     marginTop: 10,
@@ -3165,18 +3246,18 @@ const styles = StyleSheet.create({
   statCell: {
     width: "48%",
     borderWidth: 1,
-    borderColor: "#e1ebf8",
-    backgroundColor: "#f8fbff",
-    borderRadius: 10,
+    borderColor: colors.border,
+    backgroundColor: colors.bg,
+    borderRadius: 16,
     padding: 10
   },
   alertRecord: {
     marginTop: 10,
     borderTopWidth: 1,
-    borderTopColor: "#edf3fd",
+    borderTopColor: colors.border,
     borderLeftWidth: 4,
-    borderRadius: 10,
-    backgroundColor: "#fff",
+    borderRadius: 16,
+    backgroundColor: colors.card,
     paddingVertical: 10,
     paddingHorizontal: 12
   },
@@ -3235,7 +3316,7 @@ const styles = StyleSheet.create({
   },
   rowSub: {
     marginTop: 3,
-    color: "#70839d",
+    color: "#8E95A3",
     fontSize: 12
   },
   recordMood: {
@@ -3297,7 +3378,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 6,
     left: 8,
-    color: "#1f507f",
+    color: colors.textMuted,
     fontSize: 10,
     fontWeight: "900"
   },
@@ -3521,7 +3602,7 @@ const styles = StyleSheet.create({
   },
   macroSummaryText: {
     flex: 1,
-    color: "#244569",
+    color: "#8E95A3",
     lineHeight: 19,
     fontWeight: "800"
   },
@@ -3613,16 +3694,16 @@ const styles = StyleSheet.create({
   },
   emptyDayText: {
     padding: 16,
-    borderRadius: 10,
-    backgroundColor: "#f8fbff",
-    color: "#6a7e99",
+    borderRadius: 16,
+    backgroundColor: colors.card,
+    color: colors.textMuted,
     textAlign: "center",
     fontWeight: "800"
   },
   diaryRecordItem: {
-    backgroundColor: "#fff",
+    backgroundColor: colors.card,
     borderTopWidth: 1,
-    borderTopColor: "#edf3fd",
+    borderTopColor: colors.border,
     paddingVertical: 12,
     flexDirection: "row",
     alignItems: "center",
@@ -3670,8 +3751,9 @@ const styles = StyleSheet.create({
     padding: 20
   },
   detailModalPanel: {
-    borderRadius: 14,
-    backgroundColor: "#fff",
+    borderRadius: 24,
+    borderCurve: "continuous",
+    backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
     padding: 16
@@ -3689,14 +3771,14 @@ const styles = StyleSheet.create({
   },
   detailModalSub: {
     marginTop: 3,
-    color: "#607990",
+    color: colors.textMuted,
     fontWeight: "800"
   },
   detailModalClose: {
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: "#edf6ff",
+    backgroundColor: colors.bg,
     alignItems: "center",
     justifyContent: "center"
   },
@@ -3773,7 +3855,7 @@ const styles = StyleSheet.create({
   },
   detailAdvice: {
     marginTop: 8,
-    color: "#244569",
+    color: "#8E95A3",
     lineHeight: 21,
     fontWeight: "800"
   }

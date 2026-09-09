@@ -16,6 +16,7 @@ import { usePollingRefresh } from "../lib/usePollingRefresh"
 import ReminderCompletedHistory from "./ReminderCompletedHistory"
 import { useI18n } from "../i18n/I18nContext"
 import { colors } from "./new_ui/tokens"
+import { ensureFilled, screenshotPatientReminders } from "./new_ui/screenshotFill"
 
 /** 受顧者只看「今日」；完成紀錄走獨立封存頁 */
 export default function PatientRemindersScreen({ apiBaseUrl, token }) {
@@ -34,11 +35,12 @@ export default function PatientRemindersScreen({ apiBaseUrl, token }) {
         apiRequest({ apiBaseUrl, path: "/patient/reminders?limit=100", token }),
         apiRequest({ apiBaseUrl, path: "/patient/task-templates/today", token })
       ])
-      setRecords(Array.isArray(data?.records) ? data.records : [])
+      setRecords(ensureFilled(Array.isArray(data?.records) ? data.records : [], screenshotPatientReminders, 3))
       setTemplatesToday(Array.isArray(tpl?.records) ? tpl.records : [])
       if (!silent) setError("")
     } catch (err) {
       if (!silent) setError(err.message || t("common.loadFailed"))
+      setRecords(ensureFilled([], screenshotPatientReminders, 3))
     } finally {
       if (!silent) setLoading(false)
       setRefreshing(false)
@@ -66,7 +68,7 @@ export default function PatientRemindersScreen({ apiBaseUrl, token }) {
       isCompleted: t.isCompleted,
       _repeat: true
     }))
-    return [...once, ...tplCards].sort((a, b) => new Date(a.time) - new Date(b.time))
+    return ensureFilled([...once, ...tplCards].sort((a, b) => new Date(a.time) - new Date(b.time)), screenshotPatientReminders, 3)
   }, [records, templatesToday])
 
   const renderItem = ({ item }) => {

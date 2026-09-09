@@ -141,33 +141,33 @@ export default function BirthdayField({ label, value, onChange }) {
 }
 
 const styles = StyleSheet.create({
-  label: { color: "#101828", fontWeight: "800", fontSize: 14, marginTop: 8 },
+  label: { color: colors.text, fontWeight: "800", fontSize: 14, marginTop: 8 },
   chip: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     borderWidth: 1,
-    borderColor: "#d0d5dd",
+    borderColor: colors.border,
     borderRadius: 12,
     borderCurve: "continuous",
-    backgroundColor: "#fff",
+    backgroundColor: colors.card,
     paddingHorizontal: 12,
     paddingVertical: 12,
     minHeight: 48
   },
-  chipValue: { fontSize: 16, fontWeight: "700", color: "#101828" },
-  chipPlaceholder: { color: "#98a2b3", fontWeight: "600" },
-  chipChevron: { fontSize: 12, color: "#98a2b3", fontWeight: "700" },
+  chipValue: { fontSize: 16, fontWeight: "700", color: colors.text },
+  chipPlaceholder: { color: colors.textMuted, fontWeight: "600" },
+  chipChevron: { fontSize: 12, color: colors.textMuted, fontWeight: "700" },
   sheetMask: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.35)"
+    backgroundColor: "rgba(0,0,0,0.55)"
   },
   sheetDismiss: { flex: 1 },
   sheet: {
-    backgroundColor: "#fff",
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
+    backgroundColor: colors.card,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     paddingBottom: 28,
     paddingHorizontal: 16
   },
@@ -176,7 +176,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: "#d1d5db",
+    backgroundColor: colors.border,
     marginTop: 10,
     marginBottom: 8
   },
@@ -187,9 +187,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     marginBottom: 4
   },
-  sheetCancel: { fontSize: 16, color: "#6b7280", fontWeight: "600", minWidth: 48 },
-  sheetTitle: { fontSize: 16, fontWeight: "800", color: "#111827" },
-  sheetDone: { fontSize: 16, color: colors.pine, fontWeight: "800", minWidth: 48, textAlign: "right" },
+  sheetCancel: { fontSize: 16, color: colors.textMuted, fontWeight: "600", minWidth: 48 },
+  sheetTitle: { fontSize: 16, fontWeight: "800", color: colors.text },
+  sheetDone: { fontSize: 16, color: colors.mint, fontWeight: "800", minWidth: 48, textAlign: "right" },
   alarmRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -201,7 +201,7 @@ const styles = StyleSheet.create({
   alarmCaption: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#6b7280",
+    color: colors.textMuted,
     marginBottom: 4
   }
 })

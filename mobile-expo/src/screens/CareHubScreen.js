@@ -95,11 +95,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 16,
-    backgroundColor: "#eef2f6",
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
     minHeight: 36,
     justifyContent: "center"
   },
-  segChipActive: { backgroundColor: colors.pine },
-  segChipText: { color: "#111827", fontWeight: "700", fontSize: 13 },
-  segChipTextActive: { color: "#fff" }
+  segChipActive: { backgroundColor: colors.pine, borderColor: colors.pine },
+  segChipText: { color: colors.textMuted, fontWeight: "700", fontSize: 13 },
+  segChipTextActive: { color: "#0D0F11" }
 })

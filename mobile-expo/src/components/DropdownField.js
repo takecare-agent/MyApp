@@ -8,6 +8,7 @@ import {
   View
 } from "react-native"
 import { colors } from "../screens/new_ui/tokens"
+import { NeoIcon } from "../screens/new_ui/NeoIcons"
 
 import { useI18n } from "../i18n/I18nContext"
 
@@ -28,7 +29,8 @@ export default function DropdownField({
   placeholder,
   options = [],
   onSelect,
-  emptyText
+  emptyText,
+  leftIcon
 }) {
   const { t } = useI18n()
   const ph = placeholder ?? t("dropdown.placeholder")
@@ -41,10 +43,11 @@ export default function DropdownField({
     <View style={styles.wrap}>
       {label ? <Text style={styles.label}>{label}</Text> : null}
       <Pressable style={styles.field} onPress={() => setOpen(true)}>
+        {leftIcon ? <NeoIcon name={leftIcon} size={18} glow style={styles.fieldIcon} /> : null}
         <Text style={[styles.fieldText, !value ? styles.placeholder : null]} numberOfLines={1}>
           {display}
         </Text>
-        <Text style={styles.chevron}>▼</Text>
+        <NeoIcon name="chevron-down" size={16} color={colors.textMuted} />
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
@@ -89,51 +92,56 @@ export default function DropdownField({
 
 const styles = StyleSheet.create({
   wrap: { marginTop: 12 },
-  label: { fontSize: 14, fontWeight: "700", color: "#374151", marginBottom: 8 },
+  label: { fontSize: 14, fontWeight: "700", color: colors.textMuted, marginBottom: 8 },
   field: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     borderWidth: 1,
-    borderColor: "#d1d5db",
-    backgroundColor: "#fff",
-    borderRadius: 12,
+    borderColor: colors.border,
+    backgroundColor: colors.bg,
+    borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 14
   },
-  fieldText: { flex: 1, fontSize: 16, fontWeight: "600", color: "#111827", marginRight: 8 },
-  placeholder: { color: "#9ca3af", fontWeight: "500" },
-  chevron: { fontSize: 12, color: "#6b7280" },
+  fieldText: { flex: 1, fontSize: 16, fontWeight: "600", color: colors.text, marginRight: 8 },
+  fieldIcon: { marginRight: 10 },
+  placeholder: { color: colors.textMuted, fontWeight: "500" },
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.35)",
+    backgroundColor: "rgba(0,0,0,0.55)",
     justifyContent: "center",
     padding: 24
   },
   sheet: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
+    backgroundColor: colors.card,
+    borderRadius: 24,
+    borderCurve: "continuous",
+    borderWidth: 1,
+    borderColor: colors.border,
     padding: 16,
     maxHeight: "70%"
   },
-  sheetTitle: { fontSize: 16, fontWeight: "800", marginBottom: 10, color: "#111827" },
+  sheetTitle: { fontSize: 16, fontWeight: "800", marginBottom: 10, color: colors.text },
   option: {
     paddingVertical: 14,
     paddingHorizontal: 10,
     borderRadius: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.bg
+    borderBottomColor: colors.border
   },
   optionOn: { backgroundColor: colors.mintSoft },
-  optionText: { fontSize: 16, color: "#111827", fontWeight: "600" },
-  optionTextOn: { color: colors.pine },
-  empty: { textAlign: "center", color: "#9ca3af", paddingVertical: 24 },
+  optionText: { fontSize: 16, color: colors.text, fontWeight: "600" },
+  optionTextOn: { color: colors.mint },
+  empty: { textAlign: "center", color: colors.textMuted, paddingVertical: 24 },
   closeBtn: {
     marginTop: 12,
     alignItems: "center",
     paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: colors.bg
+    borderRadius: 16,
+    backgroundColor: colors.bg,
+    borderWidth: 1,
+    borderColor: colors.border
   },
-  closeText: { fontWeight: "700", color: "#374151" }
+  closeText: { fontWeight: "700", color: colors.text }
 })

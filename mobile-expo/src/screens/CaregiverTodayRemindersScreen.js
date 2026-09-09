@@ -19,6 +19,7 @@ import { useI18n } from "../i18n/I18nContext"
 import { USE_MORANDI_UI } from "./new_ui/flag"
 import { colors } from "./new_ui/tokens"
 import NewTodoScreen from "./new_ui/NewTodoScreen"
+import { ensureFilled, screenshotTodayTasks } from "./new_ui/screenshotFill"
 
 const CAT_ICON = {
   med: "Rx",
@@ -74,7 +75,7 @@ export default function CaregiverTodayRemindersScreen({ apiBaseUrl, token, onWri
       const today = [...once, ...templates].sort((a, b) =>
         String(a.time).localeCompare(String(b.time))
       )
-      setTasks(today)
+      setTasks(ensureFilled(today, screenshotTodayTasks, 3))
       setLocalMark((prev) => {
         const ids = new Set(today.map((t) => t.id))
         const next = {}
@@ -96,6 +97,7 @@ export default function CaregiverTodayRemindersScreen({ apiBaseUrl, token, onWri
       if (!silent) setError("")
     } catch (err) {
       if (!silent) setError(err.message || t("common.loadFailed"))
+      setTasks(ensureFilled([], screenshotTodayTasks, 3))
     } finally {
       if (!silent) setLoading(false)
       setRefreshing(false)
@@ -235,11 +237,15 @@ export default function CaregiverTodayRemindersScreen({ apiBaseUrl, token, onWri
       <View style={styles.morandiWrap}>
         <View style={styles.morandiTools}>
           <Pressable onPress={() => setView("doneHistory")} hitSlop={8}>
-            <Text style={styles.morandiLink}>{t("reminders.completedHistory")} ›</Text>
+            <Text style={styles.morandiLink} numberOfLines={1}>
+              {t("reminders.completedHistory")} ›
+            </Text>
           </Pressable>
           {typeof onWriteDaily === "function" ? (
-            <Pressable onPress={onWriteDaily} hitSlop={8}>
-              <Text style={styles.morandiLink}>{t("daily.goWrite")}</Text>
+            <Pressable onPress={onWriteDaily} hitSlop={8} style={styles.morandiLinkBtn}>
+              <Text style={styles.morandiLink} numberOfLines={1}>
+                {t("daily.goWrite")}
+              </Text>
             </Pressable>
           ) : null}
         </View>
@@ -383,10 +389,13 @@ const styles = StyleSheet.create({
   morandiTools: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: 20,
-    paddingBottom: 4
+    paddingBottom: 4,
+    gap: 12
   },
-  morandiLink: { color: colors.pine, fontWeight: "700", fontSize: 13 },
+  morandiLinkBtn: { flexShrink: 1 },
+  morandiLink: { color: "#10B981", fontWeight: "700", fontSize: 13 },
   container: { flex: 1, backgroundColor: colors.bg },
   header: {
     backgroundColor: "#fff",

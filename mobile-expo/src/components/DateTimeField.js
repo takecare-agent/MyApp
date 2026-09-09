@@ -286,13 +286,14 @@ export default function DateTimeField({
 
 const styles = StyleSheet.create({
   wrap: { marginTop: 12 },
-  label: { fontSize: 14, fontWeight: "700", color: "#374151", marginBottom: 8 },
-  subLabel: { fontSize: 13, fontWeight: "600", color: "#6b7280", marginTop: 12, marginBottom: 6 },
+  label: { fontSize: 14, fontWeight: "700", color: colors.textMuted, marginBottom: 8 },
+  subLabel: { fontSize: 13, fontWeight: "600", color: colors.textMuted, marginTop: 12, marginBottom: 6 },
   calCard: {
     borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: 14,
-    backgroundColor: "#fff",
+    borderColor: colors.border,
+    borderRadius: 24,
+    borderCurve: "continuous",
+    backgroundColor: colors.card,
     padding: 12
   },
   calHeader: {
@@ -302,7 +303,7 @@ const styles = StyleSheet.create({
     marginBottom: 8
   },
   navBtn: { fontSize: 28, color: colors.pine, fontWeight: "600", paddingHorizontal: 8 },
-  calTitle: { fontSize: 16, fontWeight: "800", color: "#111827" },
+  calTitle: { fontSize: 16, fontWeight: "800", color: colors.text },
   weekRow: { flexDirection: "row", marginBottom: 4 },
   weekLabel: {
     width: `${100 / 7}%`,
@@ -321,7 +322,7 @@ const styles = StyleSheet.create({
   },
   dayToday: { backgroundColor: colors.bg },
   daySelected: { backgroundColor: colors.pine },
-  dayText: { fontSize: 15, fontWeight: "600", color: "#111827" },
+  dayText: { fontSize: 15, fontWeight: "600", color: colors.text },
   dayTextSelected: { color: "#fff" },
   dayTextToday: { color: colors.pine },
 
@@ -336,26 +337,26 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     borderWidth: 1,
-    borderColor: "#d1d5db",
-    borderRadius: 12,
-    backgroundColor: "#fff",
+    borderColor: colors.border,
+    borderRadius: 16,
+    backgroundColor: colors.card,
     paddingHorizontal: 14,
     paddingVertical: 14
   },
-  timeChipValue: { fontSize: 18, fontWeight: "800", color: "#111827" },
-  timeChipChevron: { fontSize: 12, color: "#9ca3af", fontWeight: "700" },
-  timeChipColon: { fontSize: 22, fontWeight: "800", color: "#111827" },
+  timeChipValue: { fontSize: 18, fontWeight: "800", color: colors.text },
+  timeChipChevron: { fontSize: 12, color: colors.textMuted, fontWeight: "700" },
+  timeChipColon: { fontSize: 22, fontWeight: "800", color: colors.text },
 
   sheetMask: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.35)"
+    backgroundColor: "rgba(0,0,0,0.55)"
   },
   sheetDismiss: { flex: 1 },
   sheet: {
-    backgroundColor: "#fff",
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
+    backgroundColor: colors.card,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     paddingBottom: 28,
     paddingHorizontal: 16
   },
@@ -364,7 +365,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: "#d1d5db",
+    backgroundColor: colors.border,
     marginTop: 10,
     marginBottom: 8
   },
@@ -375,9 +376,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     marginBottom: 4
   },
-  sheetCancel: { fontSize: 16, color: "#6b7280", fontWeight: "600", minWidth: 48 },
-  sheetTitle: { fontSize: 16, fontWeight: "800", color: "#111827" },
-  sheetDone: { fontSize: 16, color: colors.pine, fontWeight: "800", minWidth: 48, textAlign: "right" },
+  sheetCancel: { fontSize: 16, color: colors.textMuted, fontWeight: "600", minWidth: 48 },
+  sheetTitle: { fontSize: 16, fontWeight: "800", color: colors.text },
+  sheetDone: { fontSize: 16, color: colors.mint, fontWeight: "800", minWidth: 48, textAlign: "right" },
   alarmRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -388,13 +389,13 @@ const styles = StyleSheet.create({
   alarmCaption: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#6b7280",
+    color: colors.textMuted,
     marginBottom: 4
   },
   alarmColon: {
     fontSize: 28,
     fontWeight: "800",
-    color: "#111827",
+    color: colors.text,
     marginHorizontal: 10,
     marginTop: 28
   },
@@ -421,8 +422,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center"
   },
-  wheelText: { fontSize: 22, color: "#c0c4cc", fontWeight: "600" },
-  wheelTextOn: { color: "#111827", fontWeight: "800", fontSize: 26 },
+  wheelText: { fontSize: 22, color: colors.textMuted, fontWeight: "600" },
+  wheelTextOn: { color: colors.text, fontWeight: "800", fontSize: 26 },
   sheetPreview: {
     textAlign: "center",
     marginTop: 10,

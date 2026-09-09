@@ -12,6 +12,7 @@ import { apiRequest } from "../lib/api"
 import TranslatedUgcText from "./TranslatedUgcText"
 import { useI18n } from "../i18n/I18nContext"
 import { colors } from "../screens/new_ui/tokens"
+import { IconSearch } from "../screens/new_ui/NeoIcons"
 
 function searchPath(role) {
   if (role === "caregiver") return "/caregiver/care-search"
@@ -67,15 +68,18 @@ export default function CareCircleSearch({ apiBaseUrl, token, role, onOpenResult
 
   return (
     <View style={styles.wrap}>
-      <TextInput
-        style={styles.input}
-        value={q}
-        onChangeText={setQ}
-        placeholder={t("search.placeholder")}
-        placeholderTextColor={colors.textMuted}
-        autoCorrect={false}
-        autoCapitalize="none"
-      />
+      <View style={styles.searchRow}>
+        <IconSearch size={18} />
+        <TextInput
+          style={styles.input}
+          value={q}
+          onChangeText={setQ}
+          placeholder={t("search.placeholder")}
+          placeholderTextColor={colors.textMuted}
+          autoCorrect={false}
+          autoCapitalize="none"
+        />
+      </View>
       {showPanel ? (
         <View style={styles.panel}>
           {searching ? (
@@ -133,18 +137,28 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     zIndex: 4
   },
-  input: {
+  searchRow: {
     height: 44,
-    borderWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
     borderRadius: 999,
     paddingHorizontal: 16,
+    backgroundColor: colors.card
+  },
+  input: {
+    flex: 1,
+    height: 44,
     fontSize: 15,
     color: colors.text,
-    backgroundColor: colors.card
+    padding: 0
   },
   panel: {
     marginTop: 8,
-    borderWidth: 0,
+    borderWidth: 1,
+    borderColor: colors.border,
     borderRadius: 20,
     backgroundColor: colors.card,
     maxHeight: 280,

@@ -13,6 +13,7 @@ import { WebView } from "react-native-webview"
 import { apiRequest } from "../lib/api"
 import { colors, night } from "./new_ui/tokens"
 import { GlassCircle, IconExpand } from "./new_ui/GlassCircle"
+import { NeoIcon } from "./new_ui/NeoIcons"
 import { Button } from "./new_ui/ui/kit"
 
 const HEALTH_POLL_MS = 2000   // 每 2 秒問一次影像服務目前狀態
@@ -214,10 +215,10 @@ function gapKindAt(ts, { sessions, ringSpansMs, ringStartMs, ringEndMs, now }) {
   return "offline"
 }
 
-const MINUTES_IN_VIEW = 90
 const AXIS_DAY_SPAN = 14
 const LIVE_SNAP_MS = 800
-const SCRUB_EMIT_MS = 80
+const TICK_SLOT_PX = 26
+const TICK_STEP_MS = 5 * 60 * 1000
 
 function eventDotColor(item) {
   if (item?.recordKind === "sos" || String(item?.eventId || "").startsWith("SOS")) return "#d97706"
@@ -248,41 +249,39 @@ function EventStrip({
   yesterdayLabel,
   prevDayLabel,
   nextDayLabel,
-  docked = false
+  docked = false,
+  clockLabel
 }) {
   const scrollRef = useRef(null)
   const viewWRef = useRef(0)
   const [viewW, setViewW] = useState(0)
   const draggingRef = useRef(false)
   const ignoreScrollRef = useRef(false)
-  const lastEmitRef = useRef(0)
   const end = Number(windowEndMs) > 0 ? Number(windowEndMs) : Date.now()
   const start = Number(windowStartMs) > 0 && windowStartMs < end
     ? Number(windowStartMs)
     : startOfTodayMs(end)
-  const spanMs = Math.max(60 * 1000, end - start)
-  const pxPerMin = viewW > 0 ? viewW / MINUTES_IN_VIEW : 4
-  const spanPx = (spanMs / 60000) * pxPerMin
-  const scrollPad = useMemo(() => (viewW > 0 ? { paddingHorizontal: viewW / 2 } : null), [viewW])
   const isToday = dayOffset === 0
-  const cbRef = useRef({ onScrub, onScrubEnd, onLive, start, end, pxPerMin, isToday })
-  cbRef.current = { onScrub, onScrubEnd, onLive, start, end, pxPerMin, isToday }
+  const ticks = useMemo(() => axisTickMarks(start, end), [start, end])
+  const tick0 = ticks[0]?.ts ?? start
+  const cbRef = useRef({ onScrub, onScrubEnd, onLive, start, end, tick0, isToday })
+  cbRef.current = { onScrub, onScrubEnd, onLive, start, end, tick0, isToday }
 
   const tsFromX = (x) => {
     const cur = cbRef.current
-    const raw = cur.start + (x / cur.pxPerMin) * 60000
+    const raw = cur.tick0 + (x / TICK_SLOT_PX) * TICK_STEP_MS
     return Math.min(cur.end, Math.max(cur.start, raw))
   }
 
-  const xFromTs = (ts) => ((ts - start) / 60000) * pxPerMin
+  const xFromTs = (ts) => ((ts - tick0) / TICK_STEP_MS) * TICK_SLOT_PX
 
   const scrollToTs = (ts, animated) => {
     if (!scrollRef.current || viewWRef.current <= 0) return
     ignoreScrollRef.current = true
-    scrollRef.current.scrollTo({ x: xFromTs(ts), animated: Boolean(animated) })
+    scrollRef.current.scrollTo({ x: Math.max(0, xFromTs(ts)), animated: Boolean(animated) })
     setTimeout(() => {
       ignoreScrollRef.current = false
-    }, 80)
+    }, 120)
   }
 
   const targetTs = playheadTs == null ? end : playheadTs
@@ -291,7 +290,7 @@ function EventStrip({
     if (viewW <= 0 || draggingRef.current) return undefined
     scrollToTs(targetTs, false)
     return undefined
-  }, [viewW, start, dayOffset])
+  }, [viewW, start, dayOffset, tick0])
 
   useEffect(() => {
     if (viewW <= 0 || draggingRef.current) return undefined
@@ -311,31 +310,104 @@ function EventStrip({
     cur.onScrubEnd(ts)
   }
 
-  const events = (records || []).filter((item) => {
-    const t = new Date(item.detectedAt || item.happenedAt || item.triggeredAt).getTime()
-    return Number.isFinite(t) && t >= start && t <= end
-  })
-  const playable = playableIntervals({
-    ringSpansMs,
-    ringStartMs,
-    ringEndMs,
-    from: start,
-    to: end
-  })
-  const ticks = axisTickMarks(start, end)
+  const emitScrub = (x) => {
+    if (ignoreScrollRef.current) return
+    if (!draggingRef.current) return
+    cbRef.current.onScrub(tsFromX(x))
+  }
+
   const title = dayTitle(dayOffset, todayLabel, yesterdayLabel)
   const canPrev = dayOffset > -AXIS_DAY_SPAN
   const canNext = dayOffset < 0
+  const clockText = clockLabel || formatScrubTime(targetTs)
+  const pad = viewW > 0 ? viewW / 2 : 0
 
-  return (
+  const tickRow = (
+    <View style={styles.scrubTicks}>
+      {ticks.map((tick) => (
+        <View key={tick.ts} style={styles.scrubTickCol} pointerEvents="none">
+          <View style={tick.major ? styles.scrubTickMajor : styles.scrubTickMinor} />
+          {tick.major ? (
+            <Text style={styles.scrubTickLabel} numberOfLines={1}>{tick.label}</Text>
+          ) : (
+            <View style={styles.scrubTickLabelSlot} />
+          )}
+        </View>
+      ))}
+    </View>
+  )
+
+  const scroller = (
     <View
-      style={[styles.rulerDock, docked ? styles.rulerDockInFlow : null]}
+      style={styles.scrubTrack}
       onLayout={(e) => {
         const w = e.nativeEvent.layout.width
         viewWRef.current = w
         setViewW((prev) => (prev === w ? prev : w))
       }}
     >
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        bounces={false}
+        overScrollMode="never"
+        showsHorizontalScrollIndicator={false}
+        nestedScrollEnabled
+        directionalLockEnabled
+        scrollEventThrottle={16}
+        style={styles.scrubScroll}
+        contentContainerStyle={{ paddingHorizontal: pad, alignItems: "flex-start" }}
+        onScrollBeginDrag={(e) => {
+          ignoreScrollRef.current = false
+          draggingRef.current = true
+          cbRef.current.onScrub(tsFromX(e.nativeEvent.contentOffset.x))
+        }}
+        onScroll={(e) => {
+          emitScrub(e.nativeEvent.contentOffset.x)
+        }}
+        onScrollEndDrag={(e) => {
+          const vx = Number(e.nativeEvent.velocity?.x) || 0
+          if (Math.abs(vx) < 0.08) finishScrub(e.nativeEvent.contentOffset.x)
+        }}
+        onMomentumScrollEnd={(e) => finishScrub(e.nativeEvent.contentOffset.x)}
+      >
+        {tickRow}
+      </ScrollView>
+      <View pointerEvents="none" style={styles.scrubNeedle} />
+    </View>
+  )
+
+  if (docked) {
+    return (
+      <View style={styles.scrubDock}>
+        <Pressable onPress={onLive} hitSlop={8} accessibilityLabel="回到即時">
+          <Text style={styles.scrubClock}>{clockText}</Text>
+        </Pressable>
+        <View style={styles.scrubRow}>
+          <Pressable
+            onPress={canPrev ? onDayPrev : undefined}
+            hitSlop={10}
+            style={styles.rulerDayBtn}
+            accessibilityLabel={prevDayLabel || "前一天"}
+          >
+            <NeoIcon name="chevron-left" size={18} color={canPrev ? "#8E95A3" : "rgba(142,149,163,0.28)"} />
+          </Pressable>
+          {scroller}
+          <Pressable
+            onPress={canNext ? onDayNext : undefined}
+            hitSlop={10}
+            style={styles.rulerDayBtn}
+            accessibilityLabel={nextDayLabel || "後一天"}
+          >
+            <NeoIcon name="chevron-right" size={18} color={canNext ? "#8E95A3" : "rgba(142,149,163,0.28)"} />
+          </Pressable>
+        </View>
+      </View>
+    )
+  }
+
+  return (
+    <View style={styles.rulerDock}>
       <View style={styles.rulerDayRow}>
         <Pressable
           onPress={canPrev ? onDayPrev : undefined}
@@ -343,7 +415,7 @@ function EventStrip({
           style={styles.rulerDayBtn}
           accessibilityLabel={prevDayLabel || "前一天"}
         >
-          <Text style={[styles.rulerDayArrow, canPrev ? null : styles.rulerDayMuted]}>{"\u2039"}</Text>
+          <NeoIcon name="chevron-left" size={18} color={canPrev ? "#8E95A3" : "rgba(142,149,163,0.28)"} />
         </Pressable>
         <Text style={styles.rulerDayLabel}>{title}</Text>
         <Pressable
@@ -352,89 +424,10 @@ function EventStrip({
           style={styles.rulerDayBtn}
           accessibilityLabel={nextDayLabel || "後一天"}
         >
-          <Text style={[styles.rulerDayArrow, canNext ? null : styles.rulerDayMuted]}>{"\u203a"}</Text>
+          <NeoIcon name="chevron-right" size={18} color={canNext ? "#8E95A3" : "rgba(142,149,163,0.28)"} />
         </Pressable>
       </View>
-      <ScrollView
-        ref={scrollRef}
-        horizontal
-        bounces={false}
-        overScrollMode="never"
-        showsHorizontalScrollIndicator={false}
-        scrollEventThrottle={16}
-        style={[styles.rulerScroll, docked ? styles.rulerScrollNight : null]}
-        contentContainerStyle={scrollPad}
-        onScrollBeginDrag={(e) => {
-          draggingRef.current = true
-          cbRef.current.onScrub(tsFromX(e.nativeEvent.contentOffset.x))
-        }}
-        onScroll={(e) => {
-          if (ignoreScrollRef.current) return
-          const x = e.nativeEvent.contentOffset.x
-          if (!draggingRef.current) return
-          const now = Date.now()
-          if (now - lastEmitRef.current < SCRUB_EMIT_MS) return
-          lastEmitRef.current = now
-          cbRef.current.onScrub(tsFromX(x))
-        }}
-        onScrollEndDrag={(e) => {
-          const vx = Number(e.nativeEvent.velocity?.x) || 0
-          if (Math.abs(vx) < 0.08) finishScrub(e.nativeEvent.contentOffset.x)
-        }}
-        onMomentumScrollEnd={(e) => finishScrub(e.nativeEvent.contentOffset.x)}
-      >
-        <View style={[styles.rulerInner, docked ? styles.rulerInnerNight : null, { width: Math.max(1, spanPx) }]}>
-          {docked ? <View pointerEvents="none" style={styles.rulerLine} /> : null}
-          {docked ? null : ticks.map((tick) => {
-            const left = ((tick.ts - start) / 60000) * pxPerMin
-            return (
-              <View key={tick.ts} pointerEvents="none">
-                <View
-                  style={[
-                    styles.rulerTick,
-                    tick.major ? styles.rulerTickMajor : null,
-                    { left }
-                  ]}
-                />
-                {tick.major ? (
-                  <Text style={[styles.rulerLabel, { left }]}>{tick.label}</Text>
-                ) : null}
-              </View>
-            )
-          })}
-          {playable.map((seg) => {
-            const left = ((seg.start - start) / 60000) * pxPerMin
-            const width = Math.max(2, ((seg.end - seg.start) / 60000) * pxPerMin)
-            return (
-              <View
-                key={`p-${seg.start}`}
-                pointerEvents="none"
-                style={[
-                  styles.rulerPlayable,
-                  docked ? styles.rulerPlayableNight : null,
-                  { left, width }
-                ]}
-              />
-            )
-          })}
-          {events.map((item) => {
-            const t = new Date(item.detectedAt || item.happenedAt || item.triggeredAt).getTime()
-            const left = ((t - start) / 60000) * pxPerMin
-            return (
-              <View
-                key={item._id || item.eventId || String(t)}
-                pointerEvents="none"
-                style={[
-                  styles.rulerEvent,
-                  docked ? styles.rulerEventNight : null,
-                  { left, backgroundColor: docked ? "#ECECEC" : eventDotColor(item) }
-                ]}
-              />
-            )
-          })}
-        </View>
-      </ScrollView>
-      <View pointerEvents="none" style={[styles.rulerHead, docked ? styles.rulerHeadNight : null]} />
+      {scroller}
     </View>
   )
 }
@@ -455,9 +448,6 @@ function NightDock({ overlay, chromeOn }) {
   const o = overlay
   return (
     <View style={styles.nightDock}>
-      <Pressable onPress={o.onGoLive} hitSlop={8} accessibilityLabel="回到即時">
-        <Text style={styles.nightClockFace}>{o.replayLabel}</Text>
-      </Pressable>
       {chromeOn ? (
         <View style={styles.nightDockSkip}>
           <Button variant="ghost" onPress={() => o.onSkip(-10)} accessibilityLabel={o.skipBackLabel || "倒退 10 秒"}>
@@ -489,6 +479,7 @@ function NightDock({ overlay, chromeOn }) {
         prevDayLabel={o.prevDayLabel}
         nextDayLabel={o.nextDayLabel}
         docked
+        clockLabel={o.replayLabel}
       />
     </View>
   )
@@ -564,13 +555,15 @@ function OverlayLayer({
             <Text style={styles.alertBarText}>{alertBar.text}</Text>
           </View>
         ) : null}
-        {showFullscreenBtn ? null : (
-          <View style={styles.nightFabRow} pointerEvents="box-none">
-            <GlassCircle onPress={onExitFullscreen} accessibilityLabel="離開全螢幕" size={36}>
-              <IconExpand color="#FFFFFF" />
-            </GlassCircle>
-          </View>
-        )}
+        <View style={styles.nightFabRow} pointerEvents="box-none">
+          <GlassCircle
+            onPress={showFullscreenBtn ? onFullscreen : onExitFullscreen}
+            accessibilityLabel={showFullscreenBtn ? "打橫觀看" : "離開全螢幕"}
+            size={36}
+          >
+            <IconExpand color="#FFFFFF" />
+          </GlassCircle>
+        </View>
       </>
     )
   }
@@ -1247,12 +1240,12 @@ const styles = StyleSheet.create({
   },
   nightClockFace: {
     textAlign: "center",
-    color: "rgba(255,255,255,0.72)",
-    fontSize: 13,
-    fontWeight: "500",
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "700",
     fontVariant: ["tabular-nums"],
-    letterSpacing: 0.4,
-    marginTop: 14,
+    fontFamily: "Menlo",
+    letterSpacing: 1.2,
     marginBottom: 8
   },
   nightDockCard: {
@@ -1430,9 +1423,84 @@ const styles = StyleSheet.create({
   rulerDockInFlow: {
     position: "relative",
     bottom: 0,
-    height: 28,
-    marginHorizontal: 4,
+    height: 68,
+    marginHorizontal: 0,
+    marginBottom: 0
+  },
+  scrubDock: {
+    height: 68,
+    width: "100%",
+    paddingHorizontal: 16,
+    justifyContent: "center"
+  },
+  scrubClock: {
+    color: "#FFFFFF",
+    fontFamily: "Menlo",
+    fontSize: 16,
+    fontWeight: "700",
+    letterSpacing: 1.2,
+    fontVariant: ["tabular-nums"],
+    textAlign: "center",
     marginBottom: 4
+  },
+  scrubRow: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center"
+  },
+  scrubTrack: {
+    flex: 1,
+    height: 40,
+    justifyContent: "center",
+    overflow: "visible"
+  },
+  scrubScroll: {
+    flex: 1,
+    height: 40
+  },
+  scrubTicks: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    height: 40
+  },
+  scrubTickCol: {
+    width: 26,
+    alignItems: "center",
+    overflow: "visible"
+  },
+  scrubTickMinor: {
+    width: 1,
+    height: 10,
+    backgroundColor: "rgba(255,255,255,0.2)"
+  },
+  scrubTickMajor: {
+    width: 1.5,
+    height: 16,
+    backgroundColor: "rgba(255,255,255,0.5)"
+  },
+  scrubTickLabel: {
+    marginTop: 2,
+    width: 26,
+    fontSize: 8,
+    lineHeight: 10,
+    fontFamily: "Menlo",
+    color: "#8E95A3",
+    fontVariant: ["tabular-nums"],
+    textAlign: "center"
+  },
+  scrubTickLabelSlot: {
+    height: 12
+  },
+  scrubNeedle: {
+    position: "absolute",
+    left: "50%",
+    marginLeft: -1,
+    top: 6,
+    width: 2,
+    height: 28,
+    borderRadius: 999,
+    backgroundColor: "#10B981",
+    zIndex: 8
   },
   rulerDayRow: {
     height: 22,
@@ -1473,21 +1541,21 @@ const styles = StyleSheet.create({
     height: 40
   },
   rulerScrollNight: {
-    height: 28
+    height: 40
   },
   rulerInner: {
     height: 40,
     position: "relative"
   },
   rulerInnerNight: {
-    height: 28
+    height: 40
   },
   rulerLine: {
     position: "absolute",
     left: 0,
     right: 0,
-    top: 13,
-    height: 2,
+    top: 16,
+    height: 1,
     backgroundColor: "rgba(255,255,255,0.14)"
   },
   rulerTick: {
@@ -1501,6 +1569,25 @@ const styles = StyleSheet.create({
   rulerTickMajor: {
     height: 8,
     backgroundColor: "rgba(255,255,255,0.5)"
+  },
+  rulerTickNight: {
+    top: 16,
+    height: 8,
+    backgroundColor: "rgba(255,255,255,0.2)"
+  },
+  rulerTickNightMajor: {
+    height: 14,
+    backgroundColor: "rgba(255,255,255,0.4)"
+  },
+  rulerLabelNight: {
+    position: "absolute",
+    top: 2,
+    width: 36,
+    marginLeft: -18,
+    fontSize: 9,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.45)",
+    textAlign: "center"
   },
   rulerLabel: {
     position: "absolute",
@@ -1555,12 +1642,15 @@ const styles = StyleSheet.create({
     zIndex: 6
   },
   rulerHeadNight: {
-    top: 0,
-    bottom: 0,
+    top: "50%",
+    marginTop: -12,
+    bottom: undefined,
+    height: 24,
     width: 2,
     marginLeft: -1,
-    backgroundColor: "#FFFFFF",
-    boxShadow: "0 0 10px rgba(255,255,255,0.7)"
+    borderRadius: 999,
+    backgroundColor: "#10B981",
+    boxShadow: "0 0 10px rgba(16,185,129,0.85)"
   },
   skipRow: {
     position: "absolute",

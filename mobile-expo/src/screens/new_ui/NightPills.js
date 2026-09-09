@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from "react-native"
+import { NeoIcon } from "./NeoIcons"
 
 export function NightLiveBadge({ label = "LIVE", on = true }) {
   return (
@@ -20,7 +21,8 @@ export function NightPills({ options, value, onChange }) {
             key={opt.id}
             style={({ pressed }) => [
               styles.pill,
-              active ? styles.pillOn : null,
+              active && opt.id === "activity" ? styles.pillOnActivity : null,
+              active && opt.id !== "activity" ? styles.pillOn : null,
               pressed ? styles.pressed : null
             ]}
             onPress={() => onChange(opt.id)}
@@ -28,7 +30,14 @@ export function NightPills({ options, value, onChange }) {
             accessibilityState={{ selected: active }}
             accessibilityLabel={opt.label}
           >
-            <Text style={[styles.label, active ? styles.labelOn : null]}>{opt.label}</Text>
+            {opt.id === "live" ? (
+              <NeoIcon name="radio" size={16} color={active ? "#10B981" : "#6C727A"} />
+            ) : null}
+            <Text style={[
+              styles.label,
+              active && opt.id === "activity" ? styles.labelOnActivity : null,
+              active && opt.id !== "activity" ? styles.labelOn : null
+            ]}>{opt.label}</Text>
             {count > 0 ? (
               <View style={styles.badge}>
                 <Text style={styles.badgeText}>{count > 9 ? "9+" : String(count)}</Text>
@@ -65,56 +74,65 @@ const styles = StyleSheet.create({
   track: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
     marginHorizontal: 16,
-    marginTop: 8,
-    marginBottom: 16,
+    marginTop: 4,
+    marginBottom: 12,
     padding: 4,
+    height: 46,
     borderRadius: 999,
     borderCurve: "continuous",
-    backgroundColor: "rgba(255,255,255,0.07)",
+    backgroundColor: "#12141A",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
-    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.18), 0 8px 18px rgba(0,0,0,0.22)"
+    borderColor: "rgba(255,255,255,0.05)"
   },
   pill: {
     flex: 1,
-    minHeight: 44,
+    height: "100%",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
+    gap: 6,
     borderRadius: 999,
-    borderCurve: "continuous"
+    borderCurve: "continuous",
+    borderWidth: 1,
+    borderColor: "transparent"
   },
   pillOn: {
-    backgroundColor: "rgba(255,255,255,0.10)",
-    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.18), 0 8px 18px rgba(0,0,0,0.22)"
+    backgroundColor: "#1B382B",
+    borderColor: "rgba(16,185,129,0.4)"
+  },
+  pillOnActivity: {
+    backgroundColor: "#10B981",
+    borderColor: "#10B981"
   },
   pressed: {
     opacity: 0.75
   },
   label: {
-    color: "rgba(255,255,255,0.55)",
+    color: "#6C727A",
     fontWeight: "600",
-    fontSize: 13
+    fontSize: 14
   },
   labelOn: {
+    color: "#10B981",
+    fontWeight: "700"
+  },
+  labelOnActivity: {
     color: "#FFFFFF",
-    fontWeight: "600"
+    fontWeight: "700"
   },
   badge: {
-    minWidth: 18,
+    width: 18,
     height: 18,
-    paddingHorizontal: 5,
-    borderRadius: 999,
-    backgroundColor: "#FF3B30",
+    minWidth: 18,
+    borderRadius: 9,
+    backgroundColor: "#FF4D4D",
     alignItems: "center",
     justifyContent: "center"
   },
   badgeText: {
     color: "#FFFFFF",
-    fontSize: 11,
-    fontWeight: "700"
+    fontSize: 10,
+    fontWeight: "900"
   }
 })

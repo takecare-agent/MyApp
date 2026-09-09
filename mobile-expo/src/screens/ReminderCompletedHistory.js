@@ -26,6 +26,7 @@ import TranslatedUgcText from "../components/TranslatedUgcText"
 import { usePollingRefresh } from "../lib/usePollingRefresh"
 import { useI18n } from "../i18n/I18nContext"
 import { colors } from "./new_ui/tokens"
+import { ensureFilled, screenshotCompletedReminders } from "./new_ui/screenshotFill"
 
 /**
  * 完成封存：預設乾淨列表；篩選收進底部 sheet（不攤芯片）
@@ -67,10 +68,11 @@ export default function ReminderCompletedHistory({
           const tb = getCompletionInstant(b)?.getTime() || 0
           return tb - ta
         })
-      setRecords(list)
+      setRecords(ensureFilled(list, screenshotCompletedReminders, 3))
       if (!silent) setError("")
     } catch (err) {
       if (!silent) setError(err.message || t("common.loadFailed"))
+      setRecords(ensureFilled([], screenshotCompletedReminders, 3))
     } finally {
       if (!silent) setLoading(false)
       setRefreshing(false)
@@ -313,29 +315,29 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "#fff",
+    backgroundColor: colors.bg,
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#e5e7eb"
+    borderBottomColor: colors.border
   },
-  back: { color: colors.pine, fontWeight: "700", fontSize: 16, width: 56 },
-  title: { fontSize: 17, fontWeight: "800", color: "#111827" },
+  back: { color: colors.mint, fontWeight: "700", fontSize: 16, width: 56 },
+  title: { fontSize: 17, fontWeight: "800", color: colors.text },
   filterBtn: { minWidth: 56, alignItems: "flex-end" },
-  filterBtnText: { color: colors.pine, fontWeight: "700", fontSize: 15 },
+  filterBtnText: { color: colors.mint, fontWeight: "700", fontSize: 15 },
   summaryBar: {
-    backgroundColor: "#fff",
+    backgroundColor: colors.bg,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#e5e7eb",
+    borderBottomColor: colors.border,
     flexDirection: "row",
     alignItems: "baseline",
     justifyContent: "space-between",
     gap: 12
   },
-  summaryText: { fontSize: 15, fontWeight: "700", color: "#111827", flexShrink: 1 },
-  summaryMeta: { fontSize: 12, color: "#9ca3af", fontWeight: "600" },
+  summaryText: { fontSize: 15, fontWeight: "700", color: colors.text, flexShrink: 1 },
+  summaryMeta: { fontSize: 12, color: colors.textMuted, fontWeight: "600" },
   listPad: { padding: 16, paddingBottom: 40 },
   sectionHead: {
     flexDirection: "row",
@@ -344,15 +346,16 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     marginTop: 4
   },
-  sectionTitle: { fontSize: 15, fontWeight: "800", color: "#111827" },
-  sectionCount: { fontSize: 12, fontWeight: "600", color: "#9ca3af" },
+  sectionTitle: { fontSize: 15, fontWeight: "800", color: colors.text },
+  sectionCount: { fontSize: 12, fontWeight: "600", color: colors.textMuted },
   card: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
+    backgroundColor: colors.card,
+    borderRadius: 24,
+    borderCurve: "continuous",
     padding: 14,
     marginBottom: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "#e5e7eb"
+    borderWidth: 1,
+    borderColor: colors.border
   },
   cardHeader: {
     flexDirection: "row",
@@ -366,27 +369,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4
   },
-  badgeGreen: { backgroundColor: "#f6ffed" },
-  badgeText: { color: colors.pine, fontSize: 12, fontWeight: "700" },
-  badgeGreenText: { color: colors.pine },
-  doneTag: { fontSize: 12, fontWeight: "700", color: colors.pine },
-  content: { fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 4 },
-  note: { fontSize: 13, color: "#4b5563", marginBottom: 6 },
+  badgeGreen: { backgroundColor: colors.mintSoft },
+  badgeText: { color: colors.mint, fontSize: 12, fontWeight: "700" },
+  badgeGreenText: { color: colors.mint },
+  doneTag: { fontSize: 12, fontWeight: "700", color: colors.mint },
+  content: { fontSize: 16, fontWeight: "700", color: colors.text, marginBottom: 4 },
+  note: { fontSize: 13, color: colors.textMuted, marginBottom: 6 },
   metaBlock: { gap: 2, marginTop: 4 },
-  meta: { fontSize: 12, color: "#6b7280", fontWeight: "500" },
-  empty: { textAlign: "center", marginTop: 48, color: "#9ca3af", fontSize: 15 },
-  error: { color: "#dc2626", marginHorizontal: 16, marginTop: 8 },
+  meta: { fontSize: 12, color: colors.textMuted, fontWeight: "500" },
+  empty: { textAlign: "center", marginTop: 48, color: colors.textMuted, fontSize: 15 },
+  error: { color: "#E05A47", marginHorizontal: 16, marginTop: 8 },
 
   sheetMask: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.35)"
+    backgroundColor: "rgba(0,0,0,0.55)"
   },
   sheetDismiss: { flex: 1 },
   sheet: {
-    backgroundColor: "#fff",
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
+    backgroundColor: colors.card,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     paddingBottom: 56,
     maxHeight: "88%"
   },
@@ -396,7 +399,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: "#d1d5db",
+    backgroundColor: colors.border,
     marginTop: 10,
     marginBottom: 8
   },
@@ -408,13 +411,13 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     paddingHorizontal: 16
   },
-  sheetCancel: { fontSize: 16, color: "#6b7280", fontWeight: "600", minWidth: 48 },
-  sheetTitle: { fontSize: 16, fontWeight: "800", color: "#111827" },
-  sheetDone: { fontSize: 16, color: colors.pine, fontWeight: "800", minWidth: 48, textAlign: "right" },
+  sheetCancel: { fontSize: 16, color: colors.textMuted, fontWeight: "600", minWidth: 48 },
+  sheetTitle: { fontSize: 16, fontWeight: "800", color: colors.text },
+  sheetDone: { fontSize: 16, color: colors.mint, fontWeight: "800", minWidth: 48, textAlign: "right" },
   sheetLabel: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#9ca3af",
+    color: colors.textMuted,
     marginBottom: 4,
     marginTop: 4
   },

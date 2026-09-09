@@ -1,5 +1,6 @@
 import { View, Text, Pressable, RefreshControl, ScrollView, StyleSheet } from "react-native"
 import { colors, radius, spacing, font } from "./tokens"
+import { IconList, IconCheck, IconChevronRight, IconCalendar } from "./NeoIcons"
 
 export default function NewTodoScreen({
   tab,
@@ -27,7 +28,8 @@ export default function NewTodoScreen({
             style={[styles.tab, isToday ? styles.tabActive : null]}
             onPress={() => onChangeTab && onChangeTab("today")}
           >
-            <Text style={[styles.tabText, isToday ? styles.tabTextActive : null]}>
+            <IconCalendar size={15} color={isToday ? "#FFFFFF" : colors.textMuted} />
+            <Text style={[styles.tabText, isToday ? styles.tabTextActive : null]} numberOfLines={1}>
               今日待辦
             </Text>
           </Pressable>
@@ -35,8 +37,9 @@ export default function NewTodoScreen({
             style={[styles.tab, !isToday ? styles.tabActive : null]}
             onPress={() => onChangeTab && onChangeTab("diary")}
           >
-            <Text style={[styles.tabText, !isToday ? styles.tabTextActive : null]}>
-              日常記錄
+            <IconList size={15} color={!isToday ? "#FFFFFF" : colors.textMuted} />
+            <Text style={[styles.tabText, !isToday ? styles.tabTextActive : null]} numberOfLines={1}>
+              日常紀錄
             </Text>
           </Pressable>
         </View>
@@ -47,7 +50,7 @@ export default function NewTodoScreen({
           contentContainerStyle={styles.scrollContent}
           refreshControl={
             onRefresh ? (
-              <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} tintColor={colors.pine} />
+              <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} tintColor={colors.mint} />
             ) : undefined
           }
         >
@@ -73,19 +76,18 @@ export default function NewTodoScreen({
 }
 
 function TimelineRow({ item, isLast, onDone, onPending }) {
-  const iconBg =
-    item.category === "bath"
-      ? colors.mintSoft
-      : item.category === "med"
-        ? "#FDE7DE"
-        : "#EEF3EF"
   return (
-    <View style={styles.timelineRow}>
+    <View style={[styles.timelineRow, isLast ? null : styles.timelineRowBorder]}>
       <View style={styles.timelineLeft}>
-        <View style={[styles.timelineIcon, { backgroundColor: iconBg }]}>
-          <View style={styles.timelineIconInner} />
-        </View>
-        {isLast ? null : <View style={styles.timelineConnector} />}
+        {item.done ? (
+          <View style={styles.doneCircle}>
+            <IconCheck size={13} />
+          </View>
+        ) : (
+          <View style={styles.pendingCircle}>
+            <View style={styles.pendingSquare} />
+          </View>
+        )}
       </View>
       <View style={styles.timelineBody}>
         <View style={styles.timelineHeader}>
@@ -111,7 +113,7 @@ function TimelineRow({ item, isLast, onDone, onPending }) {
                 onPress={onDone}
                 hitSlop={6}
               >
-                <View style={styles.checkMark} />
+                <IconCheck size={14} />
               </Pressable>
             </>
           ) : (
@@ -122,14 +124,14 @@ function TimelineRow({ item, isLast, onDone, onPending }) {
                 onPress={onDone}
                 hitSlop={6}
               >
-                <View style={styles.checkMark} />
+                <IconCheck size={14} />
               </Pressable>
               <Pressable
                 style={[styles.actionBtn, styles.actionBtnCancel]}
                 onPress={onPending}
                 hitSlop={6}
               >
-                <View style={styles.crossMark} />
+                <IconChevronRight size={16} />
               </Pressable>
             </>
           )}
@@ -140,35 +142,44 @@ function TimelineRow({ item, isLast, onDone, onPending }) {
 }
 
 const styles = StyleSheet.create({
-  container: { backgroundColor: colors.bg, paddingTop: spacing.xl },
+  container: { backgroundColor: colors.bg, paddingTop: spacing.md },
   flex: { flex: 1 },
-  tabsOnly: { flexGrow: 0, paddingTop: spacing.md, paddingBottom: 0 },
+  tabsOnly: { flexGrow: 0, paddingTop: spacing.sm, paddingBottom: 0 },
   containerFlush: { paddingTop: 0 },
-
   tabRow: {
     flexDirection: "row",
-    marginHorizontal: spacing.lg,
+    marginHorizontal: 16,
     backgroundColor: colors.card,
     borderRadius: radius.chip,
+    borderWidth: 1,
+    borderColor: colors.border,
     padding: 4,
-    marginBottom: spacing.md
+    marginBottom: spacing.md,
+    gap: 4
   },
   tab: {
     flex: 1,
+    flexDirection: "row",
     paddingVertical: 10,
+    paddingHorizontal: 8,
     alignItems: "center",
-    borderRadius: radius.chip
+    justifyContent: "center",
+    borderRadius: radius.chip,
+    gap: 6,
+    minWidth: 0
   },
-  tabActive: { backgroundColor: colors.mintSoft },
-  tabText: { fontSize: font.body, color: colors.textMuted },
-  tabTextActive: { color: colors.pine, fontWeight: "700" },
-
-  scrollContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl },
-
+  tabActive: { backgroundColor: "#10B981" },
+  tabText: { fontSize: 14, color: colors.textMuted, fontWeight: "600" },
+  tabTextActive: { color: "#FFFFFF", fontWeight: "700" },
+  scrollContent: { paddingHorizontal: 16, paddingBottom: spacing.xl },
   timelineCard: {
     backgroundColor: colors.card,
     borderRadius: radius.card,
-    padding: spacing.lg
+    borderCurve: "continuous",
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 16,
+    paddingVertical: 8
   },
   emptyText: {
     fontSize: font.body,
@@ -176,30 +187,41 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingVertical: spacing.xl
   },
-
-  timelineRow: { flexDirection: "row", marginBottom: spacing.md },
-  timelineLeft: { width: 44, alignItems: "center" },
-  timelineIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  timelineRow: {
+    flexDirection: "row",
+    paddingVertical: 14,
+    gap: 12
+  },
+  timelineRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border
+  },
+  timelineLeft: { width: 28, alignItems: "center", paddingTop: 2 },
+  doneCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#10B981",
     alignItems: "center",
     justifyContent: "center"
   },
-  timelineIconInner: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
-    borderWidth: 2,
-    borderColor: colors.pine
+  pendingCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    borderColor: colors.mint,
+    alignItems: "center",
+    justifyContent: "center"
   },
-  timelineConnector: {
-    width: 2,
-    flex: 1,
-    backgroundColor: colors.border,
-    marginTop: 4
+  pendingSquare: {
+    width: 9,
+    height: 9,
+    borderRadius: 2,
+    borderWidth: 1.5,
+    borderColor: colors.mint
   },
-  timelineBody: { flex: 1, marginLeft: spacing.md, paddingTop: 2 },
+  timelineBody: { flex: 1 },
   timelineHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -207,34 +229,20 @@ const styles = StyleSheet.create({
   },
   timelineTitle: { flex: 1, fontSize: font.body, color: colors.text, fontWeight: "600" },
   timelineTime: { fontSize: font.small, color: colors.textMuted, marginLeft: spacing.sm },
-  timelineActionRow: { flexDirection: "row", alignItems: "center" },
-  pendingLabel: { fontSize: font.small, color: colors.textMuted, marginRight: spacing.sm },
+  timelineActionRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  pendingLabel: { fontSize: font.small, color: colors.textMuted },
   actionBtn: {
     width: 32,
-    height: 24,
-    borderRadius: 6,
+    height: 28,
+    borderRadius: 8,
     alignItems: "center",
-    justifyContent: "center",
-    marginHorizontal: 4
+    justifyContent: "center"
   },
-  actionBtnDone: { backgroundColor: colors.pine },
-  actionBtnCancel: { backgroundColor: colors.border },
-  checkMark: {
-    width: 10,
-    height: 6,
-    borderLeftWidth: 2,
-    borderBottomWidth: 2,
-    borderColor: "#FFF",
-    transform: [{ rotate: "-45deg" }],
-    marginTop: -2
-  },
-  crossMark: {
-    width: 10,
-    height: 10,
-    borderRightWidth: 2,
-    borderTopWidth: 2,
-    borderColor: colors.textMuted,
-    transform: [{ rotate: "45deg" }]
+  actionBtnDone: { backgroundColor: "#10B981" },
+  actionBtnCancel: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border
   },
   stateBadge: {
     paddingHorizontal: spacing.sm,
@@ -242,7 +250,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.chip
   },
   stateBadgeDone: { backgroundColor: colors.mintSoft },
-  stateBadgeDoneText: { fontSize: font.small, color: colors.pine, fontWeight: "600" },
-  stateBadgeSkip: { backgroundColor: "#F3F4F6", marginRight: spacing.sm },
+  stateBadgeDoneText: { fontSize: font.small, color: colors.mint, fontWeight: "600" },
+  stateBadgeSkip: { backgroundColor: "rgba(255,255,255,0.06)", marginRight: 4 },
   stateBadgeSkipText: { fontSize: font.small, color: colors.textMuted, fontWeight: "600" }
 })

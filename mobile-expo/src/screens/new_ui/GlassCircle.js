@@ -1,9 +1,9 @@
 import { Pressable, StyleSheet, View } from "react-native"
+import { NeoIcon } from "./NeoIcons"
 
-export function GlassCircle({ onPress, accessibilityLabel, children, size = 44 }) {
+export function GlassCircle({ onPress, accessibilityLabel, children, size = 40 }) {
   const body = (
     <View style={[styles.circle, { width: size, height: size, borderRadius: size / 2 }]}>
-      <View pointerEvents="none" style={styles.shine} />
       {children}
     </View>
   )
@@ -21,22 +21,8 @@ export function GlassCircle({ onPress, accessibilityLabel, children, size = 44 }
   )
 }
 
-export function IconPlay({ color = "#FFFFFF" }) {
-  return (
-    <View
-      style={{
-        width: 0,
-        height: 0,
-        marginLeft: 2,
-        borderTopWidth: 6,
-        borderBottomWidth: 6,
-        borderLeftWidth: 10,
-        borderTopColor: "transparent",
-        borderBottomColor: "transparent",
-        borderLeftColor: color
-      }}
-    />
-  )
+export function IconPlay({ color = "#FFFFFF", size = 18 }) {
+  return <NeoIcon name="play-fill" size={size} color={color} />
 }
 
 export function IconPause({ color = "#FFFFFF" }) {
@@ -49,21 +35,7 @@ export function IconPause({ color = "#FFFFFF" }) {
 }
 
 export function IconBack({ color = "#FFFFFF" }) {
-  return (
-    <View style={{ width: 18, height: 18, alignItems: "center", justifyContent: "center" }}>
-      <View
-        style={{
-          width: 9,
-          height: 9,
-          borderLeftWidth: 1.8,
-          borderBottomWidth: 1.8,
-          borderColor: color,
-          transform: [{ rotate: "45deg" }],
-          marginLeft: 3
-        }}
-      />
-    </View>
-  )
+  return <NeoIcon name="chevron-left" size={18} color={color} />
 }
 
 export function IconDots({ color = "#FFFFFF" }) {
@@ -77,53 +49,19 @@ export function IconDots({ color = "#FFFFFF" }) {
 }
 
 export function IconExpand({ color = "#F4F1EA" }) {
-  const corner = {
-    position: "absolute",
-    width: 7,
-    height: 7,
-    borderColor: color,
-    borderWidth: 1.6
-  }
+  return <NeoIcon name="maximize-2" size={16} color={color} />
+}
+
+export function IconLive({ color = "#10B981" }) {
   return (
-    <View style={{ width: 16, height: 16 }}>
-      <View style={[corner, { top: 0, left: 0, borderRightWidth: 0, borderBottomWidth: 0 }]} />
-      <View style={[corner, { top: 0, right: 0, borderLeftWidth: 0, borderBottomWidth: 0 }]} />
-      <View style={[corner, { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0 }]} />
-      <View style={[corner, { bottom: 0, right: 0, borderLeftWidth: 0, borderTopWidth: 0 }]} />
+    <View style={styles.lamp}>
+      <View style={[styles.lampDot, { backgroundColor: color }]} />
     </View>
   )
 }
 
-export function IconReload({ color = "#F4F1EA" }) {
-  return (
-    <View style={{ width: 18, height: 18, alignItems: "center", justifyContent: "center" }}>
-      <View
-        style={{
-          width: 14,
-          height: 14,
-          borderRadius: 7,
-          borderWidth: 1.8,
-          borderColor: color,
-          borderRightColor: "transparent"
-        }}
-      />
-      <View
-        style={{
-          position: "absolute",
-          top: 1,
-          right: 2,
-          width: 0,
-          height: 0,
-          borderTopWidth: 4,
-          borderBottomWidth: 4,
-          borderLeftWidth: 5,
-          borderTopColor: "transparent",
-          borderBottomColor: "transparent",
-          borderLeftColor: color
-        }}
-      />
-    </View>
-  )
+export function IconReload({ color = "#FFFFFF" }) {
+  return <NeoIcon name="rotate-cw" size={18} color={color} />
 }
 
 const styles = StyleSheet.create({
@@ -131,20 +69,25 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "rgba(255,255,255,0.05)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.22)",
-    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.28), 0 10px 24px rgba(0,0,0,0.28)"
+    borderColor: "rgba(255,255,255,0.1)"
   },
-  shine: {
-    position: "absolute",
-    top: 0,
-    left: 6,
-    right: 6,
-    height: 10,
-    borderTopLeftRadius: 999,
-    borderTopRightRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.16)"
+  lamp: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(16,185,129,0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(16,185,129,0.3)",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  lampDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    boxShadow: "0 0 10px #10B981"
   },
   dot: {
     width: 3.5,

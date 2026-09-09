@@ -131,13 +131,12 @@ export const ROLE_LABELS = {
   caregiver: "看護"
 }
 
-/** 底欄：長輩也有設定；icon 對齊常見 App（文字符號，免額外套件） */
 export function getMainTabs(_role) {
   return [
-    { id: "home", labelKey: "tabs.home", icon: "⌂" },
-    { id: "schedule", labelKey: "tabs.schedule", icon: "▦" },
-    { id: "watch", labelKey: "tabs.watch", icon: "▣" },
-    { id: "message", labelKey: "tabs.messages", icon: "◐" },
-    { id: "settings", labelKey: "tabs.settings", icon: "⚙" }
+    { id: "home", labelKey: "tabs.home", icon: "home" },
+    { id: "schedule", labelKey: "tabs.schedule", icon: "grid" },
+    { id: "watch", labelKey: "tabs.watch", icon: "monitor" },
+    { id: "message", labelKey: "tabs.messages", icon: "message-circle" },
+    { id: "settings", labelKey: "tabs.settings", icon: "settings" }
   ]
 }

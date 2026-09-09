@@ -36,6 +36,7 @@ import { usePollingRefresh } from "../lib/usePollingRefresh"
 import { useI18n } from "../i18n/I18nContext"
 import { weekdayShortLabels } from "../i18n/dateLocale"
 import { colors } from "./new_ui/tokens"
+import { ensureFilled, screenshotOnceReminders, screenshotTodayTemplates, screenshotTodayTasks } from "./new_ui/screenshotFill"
 
 function weekdayLabel(weekdays, t, lang) {
   if (!weekdays || weekdays.length === 0) return t("reminders.everyDay")
@@ -109,13 +110,15 @@ export default function FamilyRemindersScreen({ apiBaseUrl, token }) {
         apiRequest({ apiBaseUrl, path: "/family/task-templates/today", token }),
         apiRequest({ apiBaseUrl, path: "/family/reminder-presets", token })
       ])
-      setOnceList(Array.isArray(remData?.records) ? remData.records : [])
+      setOnceList(ensureFilled(Array.isArray(remData?.records) ? remData.records : [], screenshotOnceReminders, 1))
       setTemplates(Array.isArray(tplData?.records) ? tplData.records : [])
-      setTodayTemplates(Array.isArray(todayTpl?.records) ? todayTpl.records : [])
+      setTodayTemplates(ensureFilled(Array.isArray(todayTpl?.records) ? todayTpl.records : [], screenshotTodayTemplates, 3))
       setCustomPresets(Array.isArray(presetData?.records) ? presetData.records : [])
       if (!silent) setError("")
     } catch (err) {
       if (!silent) setError(err.message || t("common.loadFailed"))
+      setOnceList(ensureFilled([], screenshotOnceReminders, 1))
+      setTodayTemplates(ensureFilled([], screenshotTodayTemplates, 3))
     } finally {
       if (!silent) setLoading(false)
       setRefreshing(false)
@@ -158,9 +161,21 @@ export default function FamilyRemindersScreen({ apiBaseUrl, token }) {
       isCompleted: Boolean(t.isCompleted),
       raw: t
     }))
-    return [...onceToday, ...repeatToday].sort((a, b) =>
+    return ensureFilled([...onceToday, ...repeatToday].sort((a, b) =>
       String(a.sortKey).localeCompare(String(b.sortKey))
-    )
+    ), () => screenshotTodayTasks().map((item) => ({
+      key: `fill-${item.id}`,
+      kind: item.kind === "template" ? "repeat" : "once",
+      category: item.category,
+      content: item.content,
+      contentKey: "",
+      sourceLang: "",
+      note: "",
+      timeLabel: item.time,
+      sortKey: item.time,
+      isCompleted: Boolean(item.isCompleted),
+      raw: item
+    })), 3)
   }, [onceList, todayTemplates])
 
   const doneToday = todayTodos.filter((t) => t.isCompleted).length
@@ -736,22 +751,22 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   tabRow: {
     flexDirection: "row",
-    backgroundColor: "#fff",
+    backgroundColor: colors.bg,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#e5e7eb"
+    borderBottomColor: colors.border
   },
   tab: { flex: 1, paddingVertical: 14, alignItems: "center" },
   tabActive: { borderBottomWidth: 2, borderBottomColor: colors.pine },
-  tabText: { fontSize: 15, color: "#6b7280", fontWeight: "600" },
-  tabTextActive: { color: colors.pine },
+  tabText: { fontSize: 15, color: colors.textMuted, fontWeight: "600" },
+  tabTextActive: { color: colors.mint },
   summary: {
-    backgroundColor: "#fff",
+    backgroundColor: colors.bg,
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#e5e7eb"
+    borderBottomColor: colors.border
   },
-  summaryMeta: { fontSize: 14, color: "#6b7280" },
+  summaryMeta: { fontSize: 14, color: colors.textMuted },
   summaryDone: { color: colors.pine, fontWeight: "800", fontSize: 17 },
   historyLink: { marginTop: 10, alignSelf: "flex-start" },
   historyLinkText: { color: colors.pine, fontWeight: "700", fontSize: 14 },
@@ -767,12 +782,13 @@ const styles = StyleSheet.create({
   addBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
   listPad: { padding: 16, paddingBottom: 32 },
   card: {
-    backgroundColor: "#fff",
-    borderRadius: 22,
+    backgroundColor: colors.card,
+    borderRadius: 24,
+    borderCurve: "continuous",
     padding: 14,
     marginBottom: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "#e5e7eb"
+    borderWidth: 1,
+    borderColor: colors.border
   },
   cardRepeat: { borderLeftWidth: 4, borderLeftColor: colors.pine },
   cardHeader: {
@@ -793,17 +809,17 @@ const styles = StyleSheet.create({
   statusBadge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
   statusDone: { backgroundColor: "#f6ffed" },
   statusPending: { backgroundColor: "#fff7e6" },
-  statusText: { fontSize: 12, fontWeight: "600", color: "#374151" },
+  statusText: { fontSize: 12, fontWeight: "600", color: colors.text },
   statusRepeat: {
-    backgroundColor: "#f0f5ff",
+    backgroundColor: colors.mintSoft,
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 4
   },
-  statusRepeatText: { fontSize: 12, fontWeight: "600", color: "#2f54eb" },
-  content: { fontSize: 17, fontWeight: "700", color: "#111827", marginBottom: 6 },
-  noteText: { fontSize: 13, color: "#4b5563", marginBottom: 6 },
-  timeText: { fontSize: 13, color: "#6b7280", marginBottom: 4 },
+  statusRepeatText: { fontSize: 12, fontWeight: "600", color: colors.mint },
+  content: { fontSize: 17, fontWeight: "700", color: colors.text, marginBottom: 6 },
+  noteText: { fontSize: 13, color: colors.textMuted, marginBottom: 6 },
+  timeText: { fontSize: 13, color: colors.textMuted, marginBottom: 4 },
   noteInput: { minHeight: 72, paddingTop: 12 },
   actionRow: { flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: 8 },
   editBtn: {
@@ -813,9 +829,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6
   },
-  editBtnGreen: { borderColor: colors.pine, backgroundColor: "#f6ffed" },
-  editBtnText: { color: colors.pine, fontWeight: "600" },
-  editBtnGreenText: { color: colors.pine },
+  editBtnGreen: { borderColor: colors.pine, backgroundColor: colors.mintSoft },
+  editBtnText: { color: colors.mint, fontWeight: "600" },
+  editBtnGreenText: { color: colors.mint },
   deleteBtn: {
     borderWidth: 1,
     borderColor: "#ff4d4f",
@@ -824,9 +840,9 @@ const styles = StyleSheet.create({
     paddingVertical: 6
   },
   deleteBtnText: { color: "#ff4d4f", fontWeight: "600" },
-  empty: { textAlign: "center", marginTop: 48, color: "#9ca3af", fontSize: 15 },
-  error: { color: "#dc2626", marginHorizontal: 16, marginTop: 8 },
-  modalRoot: { flex: 1, backgroundColor: "#fff" },
+  empty: { textAlign: "center", marginTop: 48, color: colors.textMuted, fontSize: 15 },
+  error: { color: "#E05A47", marginHorizontal: 16, marginTop: 8 },
+  modalRoot: { flex: 1, backgroundColor: colors.bg },
   modalHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -835,49 +851,50 @@ const styles = StyleSheet.create({
     paddingTop: 56,
     paddingBottom: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#e5e7eb"
+    borderBottomColor: colors.border
   },
-  modalClose: { color: colors.pine, fontWeight: "600", width: 40 },
-  modalTitle: { fontSize: 17, fontWeight: "700" },
+  modalClose: { color: colors.mint, fontWeight: "600", width: 40 },
+  modalTitle: { fontSize: 17, fontWeight: "700", color: colors.text },
   modalBody: { padding: 16, paddingBottom: 40 },
-  label: { fontSize: 14, fontWeight: "700", color: "#374151", marginBottom: 8, marginTop: 12 },
+  label: { fontSize: 14, fontWeight: "700", color: colors.textMuted, marginBottom: 8, marginTop: 12 },
   typeRow: { flexDirection: "row", gap: 10 },
   typeChip: {
     flex: 1,
     borderWidth: 1,
-    borderColor: "#d1d5db",
+    borderColor: colors.border,
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: "center",
-    backgroundColor: "#fff"
+    backgroundColor: colors.card
   },
   typeChipOn: { borderColor: colors.pine, backgroundColor: colors.mintSoft },
-  typeChipOnGreen: { borderColor: colors.pine, backgroundColor: "#f6ffed" },
-  typeChipText: { fontWeight: "700", color: "#6b7280" },
-  typeChipTextOn: { color: colors.pine },
-  typeChipTextOnGreen: { color: colors.pine },
+  typeChipOnGreen: { borderColor: colors.pine, backgroundColor: colors.mintSoft },
+  typeChipText: { fontWeight: "700", color: colors.textMuted },
+  typeChipTextOn: { color: colors.mint },
+  typeChipTextOnGreen: { color: colors.mint },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: {
     borderWidth: 1,
-    borderColor: "#d1d5db",
+    borderColor: colors.border,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: "#fff"
+    backgroundColor: colors.card
   },
   chipActive: { backgroundColor: colors.mintSoft, borderColor: colors.pine },
-  chipActiveGreen: { backgroundColor: "#f6ffed", borderColor: colors.pine },
-  chipText: { color: "#4b5563", fontSize: 13, fontWeight: "600" },
-  chipTextActive: { color: colors.pine },
-  chipTextActiveGreen: { color: colors.pine },
+  chipActiveGreen: { backgroundColor: colors.mintSoft, borderColor: colors.pine },
+  chipText: { color: colors.textMuted, fontSize: 13, fontWeight: "600" },
+  chipTextActive: { color: colors.mint },
+  chipTextActiveGreen: { color: colors.mint },
   input: {
     borderWidth: 1,
-    borderColor: "#d1d5db",
+    borderColor: colors.border,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 12,
     fontSize: 15,
-    backgroundColor: "#fff"
+    backgroundColor: colors.card,
+    color: colors.text
   },
   presetBtn: {
     marginTop: 8,

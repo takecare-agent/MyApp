@@ -1,35 +1,40 @@
 export const colors = {
-  bg: "#FBFBFA",
-  card: "#FFFFFF",
-  text: "#1A1A1A",
-  textMuted: "#6B6B6B",
-  border: "#E8E8E4",
-  pine: "#2D6A4F",
+  bg: "#0B0D0E",
+  card: "#191B22",
+  text: "#FFFFFF",
+  textMuted: "#8E95A3",
+  border: "rgba(255, 255, 255, 0.1)",
+  pine: "#859F78",
   mint: "#10B981",
-  mintSoft: "#D1FAE5",
-  clay: "#D96B43",
-  butter: "#FEF08A"
+  mintSoft: "rgba(16, 185, 129, 0.18)",
+  clay: "#FF4D4D",
+  butter: "#191B22",
+  emerald: "#10B981",
+  amber: "#F59E0B",
+  logout: "#FF5C5C",
+  bubbleMe: "#1F4A38",
+  bubbleThem: "#1E2025"
 }
 
 export const night = {
-  bg: "#070808",
-  bgElevated: "#121212",
-  card: "rgba(255,255,255,0.07)",
-  cardSoft: "rgba(255,255,255,0.10)",
+  bg: "#0B0D0E",
+  bgElevated: "#191B22",
+  card: "#191B22",
+  cardSoft: "rgba(255,255,255,0.06)",
   text: "#FFFFFF",
   textMuted: "#8E95A3",
-  border: "rgba(255,255,255,0.16)",
+  border: "rgba(255, 255, 255, 0.1)",
   live: "#10B981",
-  play: "#5F8F4E",
+  play: "#10B981",
   gold: "#FFC800",
   goldText: "#1A1400",
-  danger: "#FF5C00",
+  danger: "#FF4D4D",
   warn: "#F59E0B",
   offline: "#6B7280"
 }
 
 export const radius = {
-  card: 22,
+  card: 24,
   video: 24,
   chip: 999,
   button: 12

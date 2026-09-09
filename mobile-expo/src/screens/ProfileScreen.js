@@ -219,14 +219,14 @@ export default function ProfileScreen({ apiBaseUrl, token, role, user, onSaved }
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
+  flex: { flex: 1, backgroundColor: colors.bg },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24, backgroundColor: colors.bg },
   pad: { padding: 16, paddingBottom: 48, gap: 8 },
-  lead: { color: "#475467", lineHeight: 20, marginBottom: 8 },
-  label: { color: "#101828", fontWeight: "800", fontSize: 14, marginTop: 8 },
-  email: { color: "#667085", fontSize: 15, fontWeight: "600" },
+  lead: { color: colors.textMuted, lineHeight: 20, marginBottom: 8 },
+  label: { color: colors.text, fontWeight: "800", fontSize: 14, marginTop: 8 },
+  email: { color: colors.textMuted, fontSize: 15, fontWeight: "600" },
   derived: {
-    color: "#101828",
+    color: colors.text,
     fontSize: 16,
     fontWeight: "700",
     paddingVertical: 8
@@ -236,26 +236,26 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 48,
     borderWidth: 1,
-    borderColor: "#d0d5dd",
+    borderColor: colors.border,
     borderRadius: 12,
     borderCurve: "continuous",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#fff"
+    backgroundColor: colors.card
   },
   choiceOn: { borderColor: colors.pine, backgroundColor: colors.mintSoft },
-  choiceText: { color: "#475467", fontWeight: "700", fontSize: 15 },
-  choiceTextOn: { color: colors.pine },
+  choiceText: { color: colors.textMuted, fontWeight: "700", fontSize: 15 },
+  choiceTextOn: { color: colors.mint },
   input: {
     borderWidth: 1,
-    borderColor: "#d0d5dd",
+    borderColor: colors.border,
     borderRadius: 12,
     borderCurve: "continuous",
     paddingHorizontal: 12,
     paddingVertical: 12,
     fontSize: 16,
-    color: "#101828",
-    backgroundColor: "#fff",
+    color: colors.text,
+    backgroundColor: colors.card,
     minHeight: 48
   },
   inputTall: { minHeight: 88, textAlignVertical: "top" },

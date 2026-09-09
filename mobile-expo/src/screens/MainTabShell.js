@@ -36,12 +36,14 @@ import { isSameLocalDay, isTemplateReminderSource } from "../lib/reminderPresets
 import TranslatedUgcText from "../components/TranslatedUgcText"
 import { usePollingRefresh } from "../lib/usePollingRefresh"
 import { useI18n } from "../i18n/I18nContext"
-import { USE_MORANDI_UI, USE_NIGHT_WATCH } from "./new_ui/flag"
+import { USE_MORANDI_UI, USE_NIGHT_WATCH, USE_SCREENSHOT_FILL } from "./new_ui/flag"
 import { colors as morandi, night } from "./new_ui/tokens"
 import NewCaregiverHome from "./new_ui/NewCaregiverHome"
 import NewPatientHome from "./new_ui/NewPatientHome"
 import { NightPills } from "./new_ui/NightPills"
-import { GlassCircle, IconExpand, IconReload } from "./new_ui/GlassCircle"
+import { GlassCircle, IconLive, IconReload } from "./new_ui/GlassCircle"
+import { NeoIcon } from "./new_ui/NeoIcons"
+import { ensureFilled, fillValue, screenshotHomeReminders, screenshotBpLatest } from "./new_ui/screenshotFill"
 
 function greetingByHour() {
   const h = new Date().getHours()
@@ -76,8 +78,8 @@ function reminderTitle(record, fallback) {
 
 function TabBar({ tabs, active, onChange, badges = {}, nightSkin = false }) {
   const { t } = useI18n()
-  return (
-    <View style={[styles.tabBar, nightSkin ? styles.tabBarNight : null]}>
+    return (
+    <View style={[styles.tabBar, styles.tabBarNeo]}>
       {tabs.map(tab => {
         const selected = tab.id === active
         const label = t(tab.labelKey || tab.label || tab.id)
@@ -86,8 +88,7 @@ function TabBar({ tabs, active, onChange, badges = {}, nightSkin = false }) {
           <Pressable
             key={tab.id}
             style={[
-              styles.tabItem,
-              selected ? (nightSkin ? styles.tabItemActiveNight : styles.tabItemActive) : null
+              styles.tabItem
             ]}
             onPress={() => onChange(tab.id)}
             accessibilityRole="button"
@@ -95,23 +96,22 @@ function TabBar({ tabs, active, onChange, badges = {}, nightSkin = false }) {
             accessibilityLabel={label}
           >
             <View>
-              <Text
-                style={[
-                  styles.tabIcon,
-                  nightSkin ? styles.tabIconNight : null,
-                  selected ? (nightSkin ? styles.tabIconActiveNight : styles.tabIconActive) : null
-                ]}
-              >
-                {tab.icon || "·"}
-              </Text>
+              <View style={selected ? styles.tabIconWrapActive : styles.tabIconWrap}>
+                <NeoIcon
+                  name={tab.icon || "circle"}
+                  size={20}
+                  color={selected ? "#10B981" : "#8E95A3"}
+                />
+              </View>
               {count > 0 ? <View style={styles.tabDot} /> : null}
             </View>
             <Text
               style={[
                 styles.tabLabel,
-                nightSkin ? styles.tabLabelNight : null,
-                selected ? (nightSkin ? styles.tabLabelActiveNight : styles.tabLabelActive) : null
+                styles.tabLabelNeo,
+                selected ? styles.tabLabelActiveNeo : null
               ]}
+              numberOfLines={1}
             >
               {label}
             </Text>
@@ -142,14 +142,19 @@ function SegmentChips({ options, value, onChange }) {
 }
 
 /** 看護／家屬：activePatientEmail 僅作資料預設範圍；切換在照護圈頁，不在每 Tab 強迫切圈 */
-function SettingsRow({ title, value, onPress }) {
+function SettingsRow({ title, value, onPress, icon, iconBg }) {
   return (
     <Pressable style={styles.settingsRow} onPress={onPress}>
+      {icon ? (
+        <View style={[styles.settingsIconBox, { backgroundColor: iconBg || "rgba(16,185,129,0.22)" }]}>
+          <NeoIcon name={icon} size={18} color="#FFFFFF" />
+        </View>
+      ) : null}
       <View style={{ flex: 1 }}>
         <Text style={styles.settingsRowTitle}>{title}</Text>
         {value ? <Text style={styles.settingsRowValue}>{value}</Text> : null}
       </View>
-      <Text style={styles.settingsChevron}>›</Text>
+      <NeoIcon name="chevron-right" size={18} color="#8E95A3" />
     </Pressable>
   )
 }
@@ -219,7 +224,7 @@ function HomePanel({
       const alertData = results[3] && results[3].status === "fulfilled" ? results[3].value : null
 
       const bpRecords = Array.isArray(bpData?.records) ? bpData.records : []
-      setBpLatest(bpData?.latest || bpRecords[0] || null)
+      setBpLatest(fillValue(bpData?.latest || bpRecords[0] || null, screenshotBpLatest))
 
       const remList = Array.isArray(remData?.records)
         ? remData.records
@@ -241,13 +246,15 @@ function HomePanel({
           time: t.time,
           isCompleted: false
         }))
-      setReminders([...openOnce, ...openTpl].slice(0, 5))
+      setReminders(ensureFilled([...openOnce, ...openTpl].slice(0, 5), screenshotHomeReminders, 3))
 
       const alertList = Array.isArray(alertData?.records) ? alertData.records : []
       setPendingCount(alertList.filter(isPendingAlert).length)
       if (!silent) setLoadError("")
     } catch (e) {
       if (!silent) setLoadError(e.message || t("common.loadFailed"))
+      setReminders(ensureFilled([], screenshotHomeReminders, 3))
+      setBpLatest(fillValue(null, screenshotBpLatest))
     } finally {
       if (!silent) setLoading(false)
     }
@@ -265,12 +272,12 @@ function HomePanel({
     ? `${bpLatest.systolic ?? "-"} / ${bpLatest.diastolic ?? "-"} mmHg`
     : t("home.noBp")
   const bpTextOrEmpty = bpLatest
-    ? `${bpLatest.systolic ?? "-"} / ${bpLatest.diastolic ?? "-"} mmHg`
+    ? `${bpLatest.sys ?? bpLatest.systolic ?? "-"} / ${bpLatest.dia ?? bpLatest.diastolic ?? "-"} mmHg`
     : ""
   const homeTodos = reminders.map((item, index) => ({
     id: item._id || item.id || `r-${index}`,
     title: reminderTitle(item, t("reminders.item")),
-    done: false
+    done: Boolean(item.isCompleted)
   }))
 
   const openHealthCard = async () => {
@@ -495,7 +502,15 @@ function WatchPanel({ role, watchSeg, setWatchSeg, ...screenProps }) {
   const reloadRef = useRef(null)
   const goLiveRef = useRef(null)
   const fullscreenRef = useRef(null)
-  const alerts = useMemo(() => getAlertsFeature(role), [role])
+  const alerts = useMemo(() => {
+    const real = getAlertsFeature(role)
+    if (real) return real
+    if (!USE_SCREENSHOT_FILL) return null
+    return {
+      id: "alerts",
+      historyPath: role === "family" ? "/family/alerts/history" : "/caregiver/alerts/history"
+    }
+  }, [role])
   const [activityCount, setActivityCount] = useState(0)
   const segments = [
     { id: "live", label: t("watch.live") },
@@ -517,35 +532,41 @@ function WatchPanel({ role, watchSeg, setWatchSeg, ...screenProps }) {
     if (typeof seekRef.current === "function") seekRef.current(ts)
   }
 
+  const camera = (
+    <VisionScreen
+      {...screenProps}
+      embedded
+      onBack={undefined}
+      seekRef={seekRef}
+      reloadRef={reloadRef}
+      goLiveRef={goLiveRef}
+      fullscreenRef={fullscreenRef}
+      nightSkin={nightSkin}
+    />
+  )
+
+  const liveFeed = alerts ? (
+    <NativeFeatureScreen
+      feature={alerts}
+      role={role}
+      apiBaseUrl={screenProps.apiBaseUrl}
+      token={screenProps.token}
+      uiLang={screenProps.uiLang}
+      embedded
+      layout="liveFeed"
+      skin={nightSkin ? "night" : undefined}
+      onCountChange={setActivityCount}
+      onJumpToTime={(ts) => {
+        if (typeof seekRef.current === "function") seekRef.current(ts)
+      }}
+    />
+  ) : null
+
   const livePane = (
     <>
       {nightSkin ? null : pills}
-      <VisionScreen
-        {...screenProps}
-        embedded
-        onBack={undefined}
-        seekRef={seekRef}
-        reloadRef={reloadRef}
-        goLiveRef={goLiveRef}
-        fullscreenRef={fullscreenRef}
-        nightSkin={nightSkin}
-      />
-      {alerts ? (
-        <NativeFeatureScreen
-          feature={alerts}
-          role={role}
-          apiBaseUrl={screenProps.apiBaseUrl}
-          token={screenProps.token}
-          uiLang={screenProps.uiLang}
-          embedded
-          layout="liveFeed"
-          skin={nightSkin ? "night" : undefined}
-          onCountChange={setActivityCount}
-          onJumpToTime={(ts) => {
-            if (typeof seekRef.current === "function") seekRef.current(ts)
-          }}
-        />
-      ) : null}
+      {camera}
+      {liveFeed}
     </>
   )
 
@@ -569,6 +590,7 @@ function WatchPanel({ role, watchSeg, setWatchSeg, ...screenProps }) {
       {nightSkin ? (
         <View style={styles.watchTitleRow}>
           <GlassCircle
+            size={40}
             onPress={() => {
               if (typeof reloadRef.current === "function") reloadRef.current()
             }}
@@ -577,26 +599,25 @@ function WatchPanel({ role, watchSeg, setWatchSeg, ...screenProps }) {
             <IconReload color="#FFFFFF" />
           </GlassCircle>
           <Text style={styles.watchTitle}>{t("watch.title")}</Text>
-          <GlassCircle
+          <Pressable
             onPress={() => {
-              if (typeof fullscreenRef.current === "function") fullscreenRef.current()
+              setWatchSeg("live")
+              if (typeof goLiveRef.current === "function") goLiveRef.current()
             }}
-            accessibilityLabel={t("watch.fullscreen") || "打橫觀看"}
+            accessibilityRole="button"
+            accessibilityLabel={t("watch.goLive") || "回到即時"}
           >
-            <IconExpand color="#FFFFFF" />
-          </GlassCircle>
+            <IconLive />
+          </Pressable>
         </View>
       ) : null}
-      {nightSkin ? pills : null}
       {nightSkin ? (
         <>
-          <View
-            pointerEvents={seg === "live" ? "auto" : "none"}
-            style={seg === "live" ? styles.flex : styles.watchOffstage}
-          >
-            {livePane}
+          <View style={seg === "live" ? null : styles.watchOffstage}>{camera}</View>
+          {pills}
+          <View style={styles.flex}>
+            {seg === "live" ? liveFeed : historyPane}
           </View>
-          {seg === "activity" ? <View style={styles.flex}>{historyPane}</View> : null}
         </>
       ) : seg === "live" ? (
         <View style={styles.flex}>{livePane}</View>
@@ -752,14 +773,13 @@ function SettingsPanel({
         style={USE_MORANDI_UI ? { backgroundColor: morandi.bg } : null}
       >
       <View style={styles.settingsHero}>
-        <View style={styles.settingsAvatar}>
-          <View style={styles.settingsAvatarInner} />
+        <View style={styles.settingsAvatarRing}>
+          <View style={styles.settingsAvatar}>
+            <NeoIcon name="user" size={28} color="#FFFFFF" />
+          </View>
         </View>
         <Text style={styles.settingsRole}>{t(`roles.${role}`)}</Text>
         <Text style={styles.settingsName}>{user?.name || t(`roles.${role}`)}</Text>
-        <Pressable style={styles.settingsEdit} onPress={() => setSettingsPage("profile")} hitSlop={8}>
-          <Text style={styles.settingsEditText}>{t("settings.profile")}</Text>
-        </Pressable>
       </View>
       <Text style={styles.settingsGroupLabel}>{t("settings.profile")}</Text>
       <View style={styles.settingsCard}>
@@ -767,23 +787,31 @@ function SettingsPanel({
           title={t("settings.profile")}
           value={user?.name || t(`roles.${role}`) || t("settings.unset")}
           onPress={() => setSettingsPage("profile")}
+          icon="user"
+          iconBg="rgba(16,185,129,0.28)"
         />
         {role === "patient" ? (
           <SettingsRow
             title={t("settings.healthCard")}
             value={t("settings.healthCardHint")}
             onPress={() => setSettingsPage("health-card")}
+            icon="heart"
+            iconBg="rgba(16,185,129,0.28)"
           />
         ) : null}
         <SettingsRow
           title={t("settings.careCircle")}
           value={role === "patient" ? t("settings.careCircleHintPatient") : t("settings.careCircleHintOther")}
           onPress={() => setSettingsPage("care-circle")}
+          icon="users"
+          iconBg="rgba(59,130,246,0.28)"
         />
         <SettingsRow
           title={t("settings.uiLanguage")}
           value={langShort[uiLang] || "ZH"}
           onPress={() => setLangModalVisible(true)}
+          icon="globe"
+          iconBg="rgba(139,92,246,0.28)"
         />
       </View>
 
@@ -797,6 +825,8 @@ function SettingsPanel({
                 title={item.titleKey ? t(item.titleKey) : (item.title || "")}
                 value={item.descKey ? t(item.descKey) : (item.desc || "")}
                 onPress={() => setSettingsPage(item.id)}
+                icon={item.id === "care-log" ? "calendar" : "settings"}
+                iconBg={item.id === "care-log" ? "rgba(100,116,139,0.35)" : "rgba(139,92,246,0.28)"}
               />
             ))}
           </View>
@@ -804,6 +834,7 @@ function SettingsPanel({
       ) : null}
 
       <Pressable style={styles.logoutBtn} onPress={onLogout}>
+        <NeoIcon name="log-out" size={16} color="#FF5C5C" />
         <Text style={styles.logoutText}>{t("common.logout")}</Text>
       </Pressable>
     </ScrollView>
@@ -1016,6 +1047,7 @@ export default function MainTabShell({
 
   return (
     <View style={[styles.shell, USE_NIGHT_WATCH && tab === "watch" ? styles.shellNight : null]}>
+      {USE_MORANDI_UI ? <StatusBar barStyle="light-content" backgroundColor="#0B0D0E" /> : null}
       <View style={styles.body}>{body}</View>
       {hideTabBar ? null : (
         <TabBar
@@ -1049,7 +1081,7 @@ export default function MainTabShell({
 }
 
 const styles = StyleSheet.create({
-  shell: { flex: 1, backgroundColor: USE_MORANDI_UI ? morandi.bg : "#eef4fb" },
+  shell: { flex: 1, backgroundColor: morandi.bg },
   shellNight: { backgroundColor: night.bg },
   body: { flex: 1 },
   flex: { flex: 1 },
@@ -1057,12 +1089,37 @@ const styles = StyleSheet.create({
   tabBar: {
     flexDirection: "row",
     borderTopWidth: 1,
-    borderTopColor: USE_MORANDI_UI ? morandi.border : "#d8e6ff",
-    backgroundColor: "#fff",
-    paddingBottom: 8,
-    paddingTop: 6,
-    minHeight: 58
+    borderTopColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "#0B0D0E",
+    paddingBottom: 10,
+    paddingTop: 8,
+    minHeight: 60
   },
+  tabBarNeo: {
+    backgroundColor: "#0B0D0E"
+  },
+  tabItemActiveNeo: {
+    backgroundColor: "transparent"
+  },
+  tabIconWrap: {
+    width: 44,
+    height: 28,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  tabIconWrapActive: {
+    width: 44,
+    height: 28,
+    borderRadius: 10,
+    backgroundColor: "#1F4A38",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  tabIconNeo: { color: "#8E95A3" },
+  tabIconActiveNeo: { color: "#A8E6CF" },
+  tabLabelNeo: { color: "#8E95A3" },
+  tabLabelActiveNeo: { color: "#10B981" },
   tabBarNight: {
     backgroundColor: "#0B0D12",
     borderTopWidth: 1,
@@ -1189,13 +1246,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24
   },
   healthSheet: {
-    backgroundColor: "#fff",
-    borderRadius: USE_MORANDI_UI ? 26 : 16,
+    backgroundColor: "#16181D",
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
     padding: 18,
     gap: 8
   },
-  healthSheetTitle: { color: "#11355c", fontSize: 18, fontWeight: "900", marginBottom: 4 },
-  healthLine: { color: "#334155", fontSize: 14, fontWeight: "700", lineHeight: 22 },
+  healthSheetTitle: { color: "#FFFFFF", fontSize: 18, fontWeight: "900", marginBottom: 4 },
+  healthLine: { color: "#8E95A3", fontSize: 14, fontWeight: "700", lineHeight: 22 },
   hubTitle: { fontSize: 22, fontWeight: "900", color: "#11355c", paddingHorizontal: 16, paddingTop: 12 },
   hubBtn: {
     backgroundColor: "#fff",
@@ -1214,7 +1273,8 @@ const styles = StyleSheet.create({
     paddingBottom: 4
   },
   watchScreenNight: {
-    backgroundColor: night.bg
+    backgroundColor: night.bg,
+    experimental_backgroundImage: "radial-gradient(ellipse 120% 70% at 50% 0%, rgba(95,143,78,0.22), transparent 58%)"
   },
   watchListHidden: {
     height: 0,
@@ -1258,46 +1318,66 @@ const styles = StyleSheet.create({
     marginVertical: 8,
     padding: 4,
     borderRadius: 999,
-    backgroundColor: USE_MORANDI_UI ? "#fff" : undefined
+    backgroundColor: "#16181D",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)"
   },
   segChip: {
     flex: 1,
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 999,
-    backgroundColor: USE_MORANDI_UI ? "transparent" : "#eef2f6",
+    backgroundColor: "transparent",
     minHeight: 36,
     justifyContent: "center",
     alignItems: "center"
   },
-  segChipActive: { backgroundColor: USE_MORANDI_UI ? morandi.mintSoft : "#1f74d1" },
-  segChipText: { color: USE_MORANDI_UI ? morandi.textMuted : "#111827", fontWeight: "700", fontSize: 13 },
-  segChipTextActive: { color: USE_MORANDI_UI ? morandi.pine : "#fff" },
+  segChipActive: { backgroundColor: "#859F78" },
+  segChipText: { color: "#8E95A3", fontWeight: "700", fontSize: 13 },
+  segChipTextActive: { color: "#0D0F11" },
   subNav: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: USE_MORANDI_UI ? morandi.bg : "#fff",
-    borderBottomWidth: USE_MORANDI_UI ? 0 : 1,
-    borderBottomColor: "#eef2f6"
+    backgroundColor: "#0B0D0E",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.1)"
   },
-  subNavBack: { color: USE_MORANDI_UI ? morandi.pine : "#1f74d1", fontWeight: "800", fontSize: 15 },
-  subNavTitle: { color: USE_MORANDI_UI ? morandi.text : "#11355c", fontWeight: "900", fontSize: 16 },
+  subNavBack: { color: "#10B981", fontWeight: "800", fontSize: 15 },
+  subNavTitle: { color: "#FFFFFF", fontWeight: "900", fontSize: 16 },
   settingsHero: {
     alignItems: "center",
     paddingTop: 8,
     paddingBottom: 16,
     gap: 6
   },
+  settingsAvatarRing: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    borderWidth: 3,
+    borderColor: "#10B981",
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "0 0 16px rgba(16,185,129,0.45)"
+  },
   settingsAvatar: {
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: morandi.mintSoft,
+    backgroundColor: "#0B0D0E",
     alignItems: "center",
     justifyContent: "center"
+  },
+  settingsIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12
   },
   settingsAvatarInner: {
     width: 40,
@@ -1327,16 +1407,11 @@ const styles = StyleSheet.create({
     paddingBottom: 4
   },
   settingsCard: {
-    backgroundColor: "#fff",
-    borderRadius: USE_MORANDI_UI ? 26 : 14,
-    borderWidth: USE_MORANDI_UI ? 0 : 1,
-    borderColor: "#e4e7ec",
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOpacity: USE_MORANDI_UI ? 0.06 : 0,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: USE_MORANDI_UI ? 2 : 0
+    backgroundColor: "#16181D",
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    overflow: "hidden"
   },
   settingsRow: {
     flexDirection: "row",
@@ -1345,14 +1420,14 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     minHeight: 56,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#eef2f6"
+    borderBottomColor: "rgba(255,255,255,0.1)"
   },
   settingsRowTitle: { color: USE_MORANDI_UI ? morandi.text : "#173e67", fontSize: 16, fontWeight: "800" },
   settingsRowValue: { marginTop: 2, color: USE_MORANDI_UI ? morandi.textMuted : "#667085", fontSize: 13 },
-  settingsChevron: { color: "#98a2b3", fontSize: 22, fontWeight: "600" },
-  settingsHint: { color: "#667085", marginTop: -4, marginBottom: 4 },
+  settingsChevron: { color: "#8E95A3", fontSize: 22, fontWeight: "600" },
+  settingsHint: { color: "#8E95A3", marginTop: -4, marginBottom: 4 },
   settingsGroupLabel: {
-    color: "#667085",
+    color: "#8E95A3",
     fontSize: 12,
     fontWeight: "800",
     marginTop: 8,
@@ -1361,41 +1436,44 @@ const styles = StyleSheet.create({
   },
   logoutBtn: {
     marginTop: 8,
-    borderRadius: USE_MORANDI_UI ? 20 : 12,
+    borderRadius: 999,
     borderWidth: 1.5,
-    borderColor: USE_MORANDI_UI ? morandi.clay : "#1f74d1",
-    backgroundColor: "#fff",
+    borderColor: "#FF5C5C",
+    backgroundColor: "transparent",
     paddingVertical: 14,
-    alignItems: "center"
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 8
   },
-  logoutText: { color: USE_MORANDI_UI ? morandi.clay : "#1f74d1", fontWeight: "900", fontSize: 16 },
+  logoutText: { color: "#FF5C5C", fontWeight: "900", fontSize: 16 },
   langBtn: {
-    backgroundColor: "#e8f2ff",
+    backgroundColor: "rgba(133, 159, 120, 0.22)",
     borderRadius: 16,
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderWidth: 1,
-    borderColor: "#c0d8f5"
+    borderColor: "rgba(255,255,255,0.1)"
   },
-  langBtnText: { color: USE_MORANDI_UI ? morandi.pine : "#1f74d1", fontWeight: "900", fontSize: 12 },
+  langBtnText: { color: "#A8E6CF", fontWeight: "900", fontSize: 12 },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.35)",
+    backgroundColor: "rgba(0,0,0,0.55)",
     justifyContent: "flex-start",
     alignItems: "flex-end",
     paddingTop: 80,
     paddingRight: 16
   },
   langPicker: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
+    backgroundColor: "#16181D",
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: "#d8e6ff",
+    borderColor: "rgba(255,255,255,0.1)",
     minWidth: 160,
     overflow: "hidden"
   },
   langPickerTitle: {
-    color: "#526b88",
+    color: "#8E95A3",
     fontSize: 11,
     fontWeight: "800",
     paddingHorizontal: 16,
@@ -1409,10 +1487,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderTopWidth: 1,
-    borderTopColor: "#f0f5ff"
+    borderTopColor: "rgba(255,255,255,0.1)"
   },
-  langOptionActive: { backgroundColor: "#e8f2ff" },
-  langOptionText: { color: "#173e67", fontSize: 14, fontWeight: "700" },
-  langOptionTextActive: { color: USE_MORANDI_UI ? morandi.pine : "#1f74d1", fontWeight: "900" },
-  langOptionCheck: { color: USE_MORANDI_UI ? morandi.pine : "#1f74d1", fontWeight: "900", fontSize: 14 }
+  langOptionActive: { backgroundColor: "rgba(133, 159, 120, 0.22)" },
+  langOptionText: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
+  langOptionTextActive: { color: "#A8E6CF", fontWeight: "900" },
+  langOptionCheck: { color: "#A8E6CF", fontWeight: "900", fontSize: 14 }
 })

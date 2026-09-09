@@ -22,11 +22,13 @@ import {
   EMPTY_CARD,
   MEDICATIONS,
   cardFromApi,
+  cardHasContent,
   noneLabel,
   optionLabel,
   toggleGroup
 } from "../lib/healthCardOptions"
 import { colors } from "./new_ui/tokens"
+import { screenshotHealthCard } from "./new_ui/screenshotFill"
 
 function Chip({ on, label, onPress, muted }) {
   return (
@@ -95,7 +97,8 @@ export default function HealthCardScreen({ apiBaseUrl, token }) {
     setError("")
     try {
       const data = await patientGetHealthCard({ apiBaseUrl, token })
-      setForm(cardFromApi(data?.healthCard || {}))
+      const next = cardFromApi(data?.healthCard || {})
+      setForm(cardHasContent(next) ? next : screenshotHealthCard())
     } catch (err) {
       setError(err.message || t("health.loadFail"))
     } finally {
@@ -260,42 +263,42 @@ export default function HealthCardScreen({ apiBaseUrl, token }) {
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
+  flex: { flex: 1, backgroundColor: colors.bg },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24, backgroundColor: colors.bg },
   pad: { padding: 16, paddingBottom: 48, gap: 10 },
-  error: { color: "#b42318", fontWeight: "700" },
-  ok: { color: "#027a48", fontWeight: "700" },
-  label: { color: "#101828", fontWeight: "800", fontSize: 14, marginTop: 8 },
+  error: { color: "#E05A47", fontWeight: "700" },
+  ok: { color: colors.mint, fontWeight: "700" },
+  label: { color: colors.text, fontWeight: "800", fontSize: 14, marginTop: 8 },
   group: { gap: 6 },
-  groupTitle: { color: "#667085", fontWeight: "700", fontSize: 13 },
+  groupTitle: { color: colors.textMuted, fontWeight: "700", fontSize: 13 },
   sectionBody: { gap: 8 },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: {
     borderWidth: 1,
-    borderColor: "#d0d5dd",
+    borderColor: colors.border,
     borderRadius: 12,
     borderCurve: "continuous",
-    backgroundColor: "#fff",
+    backgroundColor: colors.card,
     paddingHorizontal: 14,
     paddingVertical: 10,
     minHeight: 44,
     justifyContent: "center"
   },
   chipOn: { borderColor: colors.pine, backgroundColor: colors.mintSoft },
-  chipMuted: { borderColor: "#e4e7ec", backgroundColor: "#f9fafb" },
-  chipText: { color: "#475467", fontWeight: "700", fontSize: 15 },
-  chipTextOn: { color: colors.pine },
-  chipTextMuted: { color: "#98a2b3", fontWeight: "700" },
+  chipMuted: { borderColor: colors.border, backgroundColor: colors.bg },
+  chipText: { color: colors.textMuted, fontWeight: "700", fontSize: 15 },
+  chipTextOn: { color: colors.mint },
+  chipTextMuted: { color: colors.textMuted, fontWeight: "700" },
   input: {
     borderWidth: 1,
-    borderColor: "#d0d5dd",
+    borderColor: colors.border,
     borderRadius: 12,
     borderCurve: "continuous",
     paddingHorizontal: 12,
     paddingVertical: 12,
     fontSize: 16,
-    color: "#101828",
-    backgroundColor: "#fff",
+    color: colors.text,
+    backgroundColor: colors.card,
     minHeight: 48
   },
   inputTall: { minHeight: 88, textAlignVertical: "top" },

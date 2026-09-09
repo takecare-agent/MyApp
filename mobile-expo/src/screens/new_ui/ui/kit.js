@@ -77,10 +77,10 @@ export function Progress({ value = 0 }) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: "rgba(255,255,255,0.07)",
+    backgroundColor: "rgba(255,255,255,0.04)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
-    borderRadius: 22,
+    borderColor: "rgba(255,255,255,0.1)",
+    borderRadius: 24,
     borderCurve: "continuous",
     overflow: "hidden"
   },
@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent"
   },
   btnSos: {
-    backgroundColor: "#FF5C00",
+    backgroundColor: "#E05A47",
     borderWidth: 0
   },
   btnPressed: {

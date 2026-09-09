@@ -16,6 +16,7 @@ import {
   optionLabel
 } from "../lib/healthCardOptions"
 import { colors } from "../screens/new_ui/tokens"
+import { fillValue, screenshotHealthCard } from "../screens/new_ui/screenshotFill"
 
 function Row({ label, value }) {
   const text = String(value || "").trim()
@@ -41,8 +42,9 @@ export default function HealthCardReadonly({
 }) {
   const { t, lang } = useI18n()
   const name = patientName || card?.patientName || t("sos.elderFallback")
-  const data = cardFromApi(card)
-  const filled = cardHasContent(card)
+  const raw = fillValue(cardHasContent(card) ? card : null, screenshotHealthCard)
+  const data = cardFromApi(raw)
+  const filled = cardHasContent(raw)
   const blood = optionLabel(findOption(BLOOD_TYPES, data.bloodType), lang)
   const langLabel = LANG_OPTIONS.find((x) => x.code === data.preferredLanguage)?.label || data.preferredLanguage
 
@@ -112,22 +114,22 @@ export default function HealthCardReadonly({
 
 const styles = StyleSheet.create({
   panel: {
-    backgroundColor: "#fff",
+    backgroundColor: "transparent",
     borderRadius: 16,
-    padding: 18,
+    padding: 0,
     gap: 8,
     maxHeight: "85%"
   },
   title: { color: colors.text, fontSize: 18, fontWeight: "900" },
-  sub: { color: "#667085", fontWeight: "700", marginBottom: 4 },
-  empty: { color: "#667085", fontWeight: "600", lineHeight: 22, marginVertical: 12 },
+  sub: { color: colors.textMuted, fontWeight: "700", marginBottom: 4 },
+  empty: { color: colors.textMuted, fontWeight: "600", lineHeight: 22, marginVertical: 12 },
   scroll: { maxHeight: 280 },
   row: { gap: 2 },
-  label: { color: "#98a2b3", fontSize: 12, fontWeight: "800" },
-  value: { color: "#101828", fontSize: 15, fontWeight: "700", lineHeight: 22 },
+  label: { color: colors.textMuted, fontSize: 12, fontWeight: "800" },
+  value: { color: colors.text, fontSize: 15, fontWeight: "700", lineHeight: 22 },
   guideToggle: { marginTop: 8, paddingVertical: 8 },
-  guideToggleText: { color: colors.pine, fontWeight: "800" },
-  guideLine: { color: "#475467", fontWeight: "600", lineHeight: 22 },
+  guideToggleText: { color: colors.mint, fontWeight: "800" },
+  guideLine: { color: colors.textMuted, fontWeight: "600", lineHeight: 22 },
   fullGuideBtn: {
     marginTop: 4,
     borderWidth: 1,

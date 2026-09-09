@@ -6,3 +6,4 @@ infer_env/
 env/
 .DS_Store
 data/playback_ring/
+cam_test_*.jpg

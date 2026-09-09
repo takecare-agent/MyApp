@@ -25,6 +25,7 @@ import {
 import { colors, night } from "./new_ui/tokens"
 import { NightSkinProvider, useNightSkin } from "./new_ui/NightSkin"
 import { IconPlay } from "./new_ui/GlassCircle"
+import { NeoIcon } from "./new_ui/NeoIcons"
 
 function formatValue(value) {
   if (value == null || value === "") return "-"
@@ -346,7 +347,7 @@ function severityDotColor(severity) {
 
 function recordHasMedia(record) {
   const list = Array.isArray(record?.evidence) ? record.evidence : []
-  return list.some(item => item && (item.urlPath || item.evidenceId))
+  return list.some(item => item && (item.urlPath || item.evidenceId || item.localUri))
 }
 
 function alertFilterBucket(record) {
@@ -1144,9 +1145,11 @@ video{width:100%;height:100%;object-fit:contain;background:#000}
 
 function evidenceThumbUrl(apiBaseUrl, evidenceList, token) {
   const list = Array.isArray(evidenceList) ? evidenceList : []
-  const snap = list.find(item => item?.mediaType === "snapshot" && (item.urlPath || item.evidenceId))
+  const snap = list.find(item => item?.mediaType === "snapshot" && (item.urlPath || item.evidenceId || item.localUri))
+  if (snap?.localUri) return snap.localUri
   if (snap?.urlPath) return evidenceFileUrl(apiBaseUrl, snap.urlPath, token)
-  const clip = list.find(item => item?.mediaType === "clip" && (item.urlPath || item.evidenceId))
+  const clip = list.find(item => item?.mediaType === "clip" && (item.urlPath || item.evidenceId || item.localUri))
+  if (clip?.localUri) return clip.localUri
   if (clip?.urlPath) return evidenceFileUrl(apiBaseUrl, `${clip.urlPath}/thumb`, token)
   return ""
 }
@@ -1183,10 +1186,12 @@ function AlertRecordCard({ record, t, alertLifecycle, readOnly, emphasize, apiBa
   const stamp = formatStampParts(getRecordTime(record))
   const plainTitle = getTypeLabel(record?.type, uiLang)
   const showMedia = !ledger
+  const isVideoEvent = isFallLikeType(record?.type) && !recordOnly
   const jumpTs = new Date(getRecordTime(record)).getTime()
-  const canJump = Boolean(onJumpToTime) && Number.isFinite(jumpTs) && showMedia
+  const canSeek = Boolean(onJumpToTime) && Number.isFinite(jumpTs)
+  const canJump = canSeek && showMedia && isVideoEvent
   const jumpToEvent = () => {
-    if (canJump) onJumpToTime(jumpTs)
+    if (canSeek) onJumpToTime(jumpTs)
   }
   const evidenceList = Array.isArray(record?.evidence) ? record.evidence : []
   const hasClip = evidenceList.some(item => item?.mediaType === "clip" && (item?.urlPath || item?.evidenceId))
@@ -1234,20 +1239,41 @@ function AlertRecordCard({ record, t, alertLifecycle, readOnly, emphasize, apiBa
     ]}
     >
       {activityRow && ledger ? (
-        <View style={styles.ledgerRow}>
-            <Text style={[styles.ledgerTime, nightOn ? styles.nightMuted : null]} numberOfLines={1}>
-              {stamp.timeShort || stamp.timeLine}
-            </Text>
-            <View style={styles.ledgerBody}>
-              <Text style={[styles.activityTitle, nightOn ? styles.nightTitle : null]} numberOfLines={1}>
-                {ledgerEventTitle(record, t, uiLang)}
+        <View style={styles.ledgerBookRow}>
+          <View style={[
+            styles.designTypeIcon,
+            isFallLikeType(record?.type) && !recordOnly ? styles.designTypeIconFall : styles.designTypeIconDaily
+          ]}>
+            <NeoIcon
+              name={isFallLikeType(record?.type) && !recordOnly ? "run-fast" : "human-male"}
+              size={14}
+              color={isFallLikeType(record?.type) && !recordOnly ? "#FF4D4D" : "#10B981"}
+            />
+          </View>
+          <Pressable
+            onPress={() => setExpanded((prev) => !prev)}
+            style={styles.ledgerBookMeta}
+            accessibilityRole="button"
+          >
+            <Text style={styles.designTypeText} numberOfLines={1}>{plainTitle}</Text>
+            <Pressable onPress={canSeek ? jumpToEvent : undefined} disabled={!canSeek}>
+              <Text style={[styles.nightSentryTime, canSeek ? styles.liveTimeLink : null]} numberOfLines={1}>
+                {stamp.timeShort || sentryTimeRange(record)}
               </Text>
-              {ledgerFollowLine(record, t, uiLang) ? (
-                <Text style={[styles.ledgerFollow, nightOn ? styles.nightMuted : null]} numberOfLines={1}>{ledgerFollowLine(record, t, uiLang)}</Text>
-              ) : null}
-              {recordOnly ? null : (
-                <Text style={[styles.activityStatus, nightOn ? styles.nightMuted : null]} numberOfLines={1}>{statusValue}</Text>
-              )}
+            </Pressable>
+          </Pressable>
+          <View style={[
+            styles.designRiskPill,
+            isResolved || recordOnly ? styles.designRiskPillOk : styles.designRiskPillHot
+          ]}>
+            <View style={[
+              styles.designRiskDot,
+              isResolved || recordOnly ? styles.designRiskDotOk : styles.designRiskDotHot
+            ]} />
+            <Text style={[
+              styles.designRiskText,
+              isResolved || recordOnly ? styles.designRiskTextOk : null
+            ]} numberOfLines={1}>{statusValue}</Text>
           </View>
         </View>
       ) : sentry ? (
@@ -1263,9 +1289,11 @@ function AlertRecordCard({ record, t, alertLifecycle, readOnly, emphasize, apiBa
             ) : (
               <View style={[styles.nightSentryThumb, styles.nightThumbEmpty]} />
             )}
-            <View style={styles.nightPlay}>
-              <IconPlay />
-            </View>
+            {isVideoEvent ? (
+              <View style={styles.nightPlay}>
+                <IconPlay size={18} />
+              </View>
+            ) : null}
           </Pressable>
           <Pressable
             onPress={() => setExpanded((prev) => !prev)}
@@ -1273,13 +1301,33 @@ function AlertRecordCard({ record, t, alertLifecycle, readOnly, emphasize, apiBa
             accessibilityRole="button"
             accessibilityLabel={detailOpen ? (t.collapseDetail || "收合") : (t.expandDetail || "詳情")}
           >
-            <View style={styles.nightTag}>
-              <Text style={styles.nightTagText}>{plainTitle}</Text>
+            <View style={styles.designTypeRow}>
+              <View style={[
+                styles.designTypeIcon,
+                isFallLikeType(record?.type) && !recordOnly ? styles.designTypeIconFall : styles.designTypeIconDaily
+              ]}>
+                <NeoIcon
+                  name={isFallLikeType(record?.type) && !recordOnly ? "run-fast" : "human-male"}
+                  size={14}
+                  color={isFallLikeType(record?.type) && !recordOnly ? "#FF4D4D" : "#10B981"}
+                />
+              </View>
+              <Text style={styles.nightTagText} numberOfLines={1}>{plainTitle}</Text>
             </View>
             <Text style={styles.nightSentryTitle} numberOfLines={1}>{sentryCardName(record, uiLang)}</Text>
-            <Text style={styles.nightSentryTime} numberOfLines={1}>
-              {sentryTimeRange(record)}
-            </Text>
+            <Pressable
+              onPress={canJump ? jumpToEvent : undefined}
+              disabled={!canJump}
+              accessibilityRole={canJump ? "button" : undefined}
+              accessibilityLabel={canJump ? (t.jumpToTime || "跳到該時段") : undefined}
+            >
+              <Text
+                style={[styles.nightSentryTime, canJump ? styles.liveTimeLink : null]}
+                numberOfLines={1}
+              >
+                {sentryTimeRange(record)}
+              </Text>
+            </Pressable>
           </Pressable>
           {unread ? <View style={styles.nightUnread} /> : null}
         </View>
@@ -1423,8 +1471,8 @@ function AlertRecordCard({ record, t, alertLifecycle, readOnly, emphasize, apiBa
                     </View>
                   )
                 }
-                if (item.mediaType === "snapshot" && uri) {
-                  const imageSrc = evidenceFileUrl(apiBaseUrl, item.urlPath, token)
+                if (item.mediaType === "snapshot" && (uri || item.localUri)) {
+                  const imageSrc = item.localUri || evidenceFileUrl(apiBaseUrl, item.urlPath, token)
                   return (
                     <Image
                       key={item.evidenceId}
@@ -1476,14 +1524,25 @@ function AlertRecordCard({ record, t, alertLifecycle, readOnly, emphasize, apiBa
         </>
       ) : null}
 
-      {canActOnAlert ? (
+      {canActOnAlert || (sentry && canJump) ? (
         <View style={styles.recordActions}>
-          {!isResolved ? (
+          {(sentry && canJump) ? (
+            <Pressable
+              style={styles.recordActionBtn}
+              onPress={jumpToEvent}
+              accessibilityRole="button"
+            >
+              <NeoIcon name="play" size={14} color="#10B981" />
+              <Text style={styles.recordActionText}>{t.watchClip || t.jumpToTime || "查看影片"}</Text>
+            </Pressable>
+          ) : null}
+          {!isResolved && canActOnAlert ? (
             <Pressable
               style={[styles.recordActionBtn, styles.recordActionBtnPrimary]}
               disabled={isBusy}
               onPress={() => alertLifecycle.onResolve(record, t.ackAlert || "已查看")}
             >
+              <NeoIcon name="edit-2" size={14} color="#10B981" />
               <Text style={[styles.recordActionText, styles.recordActionTextPrimary]}>{t.ackAlert || t.claimAlert}</Text>
             </Pressable>
           ) : null}
@@ -1497,6 +1556,7 @@ function AlertRecordCard({ record, t, alertLifecycle, readOnly, emphasize, apiBa
                 setExpanded(true)
               }}
             >
+              <NeoIcon name="edit-2" size={14} color="#FFFFFF" />
               <Text style={styles.recordActionText}>{t.editNote || "修改說明"}</Text>
             </Pressable>
           ) : null}
@@ -1535,6 +1595,8 @@ function SosRecordCard({ record, t, apiBaseUrl, token, uiLang, onResolve, resolv
   const sosTs = new Date(getRecordTime(record)).getTime()
   const canJumpSos = Number.isFinite(sosTs) && typeof onJumpToTime === "function"
 
+  const sosThumb = evidenceThumbUrl(apiBaseUrl, record?.evidence, token)
+
   if (sentry) {
     return (
       <View style={[styles.recordCard, styles.activityCard, styles.nightSentryCard]}>
@@ -1545,9 +1607,13 @@ function SosRecordCard({ record, t, apiBaseUrl, token, uiLang, onResolve, resolv
             accessibilityRole={canJumpSos ? "button" : undefined}
             accessibilityLabel={canJumpSos ? (t.jumpToTime || "跳到該時段") : undefined}
           >
-            <View style={[styles.nightSentryThumb, styles.nightThumbEmpty]} />
+            {sosThumb ? (
+              <Image source={{ uri: sosThumb }} style={styles.nightSentryThumb} resizeMode="cover" />
+            ) : (
+              <View style={[styles.nightSentryThumb, styles.nightThumbEmpty]} />
+            )}
             <View style={styles.nightPlay}>
-              <IconPlay />
+              <IconPlay size={18} />
             </View>
           </Pressable>
           <View style={styles.nightSentryMeta}>
@@ -1555,9 +1621,19 @@ function SosRecordCard({ record, t, apiBaseUrl, token, uiLang, onResolve, resolv
               <Text style={styles.nightTagText}>{sosTitle}</Text>
             </View>
             <Text style={styles.nightSentryTitle} numberOfLines={1}>{sosTitle}</Text>
-            <Text style={styles.nightSentryTime} numberOfLines={1}>
-              {sentryTimeRange(record)}
-            </Text>
+            <Pressable
+              onPress={canJumpSos ? () => onJumpToTime(sosTs) : undefined}
+              disabled={!canJumpSos}
+              accessibilityRole={canJumpSos ? "button" : undefined}
+              accessibilityLabel={canJumpSos ? (t.jumpToTime || "跳到該時段") : undefined}
+            >
+              <Text
+                style={[styles.nightSentryTime, canJumpSos ? styles.liveTimeLink : null]}
+                numberOfLines={1}
+              >
+                {sentryTimeRange(record)}
+              </Text>
+            </Pressable>
           </View>
           {canResolve ? <View style={styles.nightUnread} /> : null}
         </View>
@@ -1736,37 +1812,67 @@ function NativeRecordCard({
   )
 }
 
+function parseDateKey(key) {
+  const [y, m, d] = String(key || "").split("-").map(Number)
+  return new Date(y || 1970, (m || 1) - 1, d || 1)
+}
+
+function weekAxisDays(series) {
+  const week = weekdayShortLabels("zh") || []
+  return (Array.isArray(series) ? series : []).map((row) => {
+    const key = String(row?.date || "").slice(0, 10)
+    const d = parseDateKey(key)
+    return {
+      date: key,
+      weekLabel: week[d.getDay()] || "",
+      alertHigh: Number(row?.alertHigh) || 0,
+      recordOnly: Number(row?.recordOnly) || 0,
+      sos: Number(row?.sos) || 0
+    }
+  })
+}
+
 function WeekDots({ series, focus = "all" }) {
-  const nightOn = useNightSkin()
-  const days = Array.isArray(series) ? series.slice(-7) : []
+  const days = weekAxisDays(series)
   const showFall = focus === "all" || focus === "fall"
   const showSos = focus === "all" || focus === "sos"
   const showDaily = focus === "all" || focus === "daily"
-  return (
-    <View style={styles.weekDots}>
-      <View style={styles.weekDotsRow}>
-        {days.map((day) => {
-          const dateLabel = String(day.date || "").slice(5).replace("-", "/")
-          const high = Number(day.alertHigh) || 0
-          const daily = Number(day.recordOnly) || 0
-          const sos = Number(day.sos) || 0
-          return (
-            <View key={day.date} style={styles.weekDotCol}>
-              <View style={styles.weekDotStack}>
-                {showFall ? (high > 0 ? <View style={[styles.weekDot, styles.weekDotFall]} /> : <View style={styles.weekDotSlot} />) : null}
-                {showSos ? (sos > 0 ? <View style={[styles.weekDot, styles.weekDotSos]} /> : <View style={styles.weekDotSlot} />) : null}
-                {showDaily ? (daily > 0 ? <View style={[styles.weekDot, styles.weekDotDaily]} /> : <View style={styles.weekDotSlot} />) : null}
-              </View>
-              <Text style={[styles.weekDotDate, nightOn ? styles.nightMuted : null]}>{dateLabel}</Text>
-            </View>
-          )
-        })}
+  const wide = days.length > 8
+  const cols = days.map((day) => {
+    const dateLabel = String(day.date).length >= 10
+      ? `${String(day.date).slice(5, 7)}/${String(day.date).slice(8, 10)}`
+      : day.date
+    const hasFall = showFall && day.alertHigh > 0
+    const hasOk = (showDaily && day.recordOnly > 0) || (showSos && day.sos > 0)
+    return (
+      <View key={day.date} style={[styles.weekDotCol, wide ? styles.weekDotColWide : null]}>
+        <Text style={styles.weekDotDate} numberOfLines={1}>{dateLabel}</Text>
+        <Text style={styles.weekDotWeek} numberOfLines={1}>{`週${day.weekLabel}`}</Text>
+        <View style={styles.weekDotStack}>
+          {hasFall ? (
+            <View style={[styles.weekDot, styles.weekDotFall]} />
+          ) : hasOk ? (
+            <View style={[styles.weekDot, styles.weekDotDaily]} />
+          ) : (
+            <View style={styles.weekDotEmpty} />
+          )}
+        </View>
       </View>
-    </View>
-  )
+    )
+  })
+  if (wide) {
+    return (
+      <View style={styles.weekDots}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          {cols}
+        </ScrollView>
+      </View>
+    )
+  }
+  return <View style={styles.weekDots}>{cols}</View>
 }
 
-function CompactSelect({ value, options, onSelect }) {
+function CompactSelect({ value, options, onSelect, icon }) {
   const [open, setOpen] = useState(false)
   const nightOn = useNightSkin()
   const selected = options.find((o) => o.id === value)
@@ -1779,7 +1885,7 @@ function CompactSelect({ value, options, onSelect }) {
         accessibilityLabel={selected?.label || ""}
       >
         <Text style={[styles.dropdownValue, nightOn ? styles.nightTitle : null]} numberOfLines={1}>{selected?.label || ""}</Text>
-        <Text style={[styles.compactSelectChevron, nightOn ? styles.nightMuted : null]}>▼</Text>
+        <NeoIcon name="chevron-down" size={12} color="#8E95A3" />
       </Pressable>
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setOpen(false)}>
@@ -1921,6 +2027,7 @@ export default function NativeFeatureScreen({
       setRecords(rows)
     } catch (loadError) {
       if (!silent) setError(loadError.message)
+      setRecords([])
     } finally {
       if (!silent) setLoading(false)
     }
@@ -2538,15 +2645,10 @@ export default function NativeFeatureScreen({
               </View>
             ) : null}
 
-            {isAlertsFeature && layout === "history" && role === "caregiver" ? (
-              <Pressable onPress={() => setReportOpen(true)} hitSlop={8} style={styles.manualReportHit}>
-                <Text style={[styles.manualReportText, nightOn ? styles.nightGoldText : null]}>{t.manualReport || "手動登記"}</Text>
-              </Pressable>
-            ) : null}
-
             {isAlertsFeature && layout === "history" ? (
               <View style={styles.historyFilterBar}>
                 <CompactSelect
+                  icon="filter"
                   value={historyClass}
                   options={[
                     { id: "all", label: t.filterAll || "全部" },
@@ -2557,6 +2659,7 @@ export default function NativeFeatureScreen({
                   onSelect={setHistoryClass}
                 />
                 <CompactSelect
+                  icon="calendar"
                   value={historyRange}
                   options={[
                     { id: "week", label: t.rangeThisWeek || "本週" },
@@ -2584,6 +2687,12 @@ export default function NativeFeatureScreen({
                     }
                   }}
                 />
+                {role === "caregiver" ? (
+                  <Pressable onPress={() => setReportOpen(true)} hitSlop={8} style={styles.manualReportHit}>
+                    <NeoIcon name="edit" size={14} color="#10B981" />
+                    <Text style={styles.manualReportText}>{t.manualReport || "手動登記"}</Text>
+                  </Pressable>
+                ) : null}
               </View>
             ) : null}
 
@@ -2759,7 +2868,7 @@ export default function NativeFeatureScreen({
             ) : null}
 
             {isAlertsFeature && (layout === "stats" || layout === "history" || (alertFilter === "history" && historyStatsOpen)) && displayAlertStats?.totals ? (
-              <View style={styles.statsBlock}>
+              <View style={[styles.statsBlock, nightOn ? styles.nightStatBlock : null]}>
                 {layout === "history" ? null : (
                   <Text style={styles.statsLead}>{t.weekSummary || "本週摘要"}</Text>
                 )}
@@ -2791,26 +2900,55 @@ export default function NativeFeatureScreen({
                           accessibilityState={{ selected: on }}
                           accessibilityLabel={`${card.label} ${card.value}`}
                         >
+                          <View style={[
+                            styles.statIconWrap,
+                            card.tone === "fall" ? styles.statIconFall : null,
+                            card.tone === "sos" ? styles.statIconSos : null
+                          ]}>
+                            <NeoIcon
+                              name={card.tone === "fall" ? "run-fast" : card.tone === "sos" ? "call" : "human-male"}
+                              size={card.tone === "sos" ? 14 : 16}
+                              color={card.tone === "fall" ? "#FF4D4D" : card.tone === "sos" ? "#FFA726" : "#FFFFFF"}
+                            />
+                          </View>
+                          <Text style={[styles.statLabel, nightOn ? styles.nightMuted : null]} numberOfLines={1}>{card.label}</Text>
                           <Text style={[styles.statValue, nightOn ? styles.nightTitle : null]}>{card.value}</Text>
-                          <Text style={[styles.statLabel, nightOn ? styles.nightMuted : null]}>{card.label}</Text>
                         </Pressable>
                       )
                     })}
                   </View>
                 ) : (
                   <View style={styles.statsRow}>
-                    <View style={styles.statCard}>
-                      <Text style={styles.statValue}>{displayAlertStats.totals.alertHigh ?? 0}</Text>
-                      <Text style={styles.statLabel}>{t.statsAlert || "跌倒通報"}</Text>
-                    </View>
-                    <View style={styles.statCard}>
-                      <Text style={styles.statValue}>{displayAlertStats.totals.recordOnly ?? 0}</Text>
-                      <Text style={styles.statLabel}>{t.chipDaily || t.statsDaily || "蹲下／彎腰"}</Text>
-                    </View>
-                    <View style={styles.statCard}>
-                      <Text style={styles.statValue}>{displayAlertStats.totals.sosCount ?? 0}</Text>
-                      <Text style={styles.statLabel}>{t.statsSos || "求救"}</Text>
-                    </View>
+                    {[
+                      { id: "fall", value: displayAlertStats.totals.alertHigh ?? 0, label: t.statsAlert || "跌倒通報", tone: "fall" },
+                      { id: "daily", value: displayAlertStats.totals.recordOnly ?? 0, label: t.chipDaily || t.statsDaily || "蹲下／彎腰", tone: "daily" },
+                      { id: "sos", value: displayAlertStats.totals.sosCount ?? 0, label: t.statsSos || "求救", tone: "sos" }
+                    ].map((card) => (
+                      <View
+                        key={card.id}
+                        style={[
+                          styles.statCard,
+                          nightOn ? styles.nightStatCard : null,
+                          card.tone === "fall" ? styles.statCardFall : null,
+                          card.tone === "daily" ? styles.statCardDaily : null,
+                          card.tone === "sos" ? styles.statCardSos : null
+                        ]}
+                      >
+                        <View style={[
+                          styles.statIconWrap,
+                          card.tone === "fall" ? styles.statIconFall : null,
+                          card.tone === "sos" ? styles.statIconSos : null
+                        ]}>
+                          <NeoIcon
+                            name={card.tone === "fall" ? "run-fast" : card.tone === "sos" ? "call" : "human-male"}
+                            size={card.tone === "sos" ? 14 : 16}
+                            color={card.tone === "fall" ? "#FF4D4D" : card.tone === "sos" ? "#FFA726" : "#FFFFFF"}
+                          />
+                        </View>
+                        <Text style={[styles.statLabel, nightOn ? styles.nightMuted : null]} numberOfLines={1}>{card.label}</Text>
+                        <Text style={[styles.statValue, nightOn ? styles.nightTitle : null]}>{card.value}</Text>
+                      </View>
+                    ))}
                   </View>
                 )}
                 {Array.isArray(displayAlertStats.series) && displayAlertStats.series.length ? (
@@ -2883,7 +3021,7 @@ export default function NativeFeatureScreen({
                         onSosResolve={handleSosResolve}
                         sosResolveBusy={Boolean(sosActionBusyId)}
                         onJumpToTime={onJumpToTime}
-                        compact={sentryLayout || layout === "history"}
+                        compact={sentryLayout}
                         ledger={layout === "history"}
                       />
                     ))}
@@ -2908,12 +3046,12 @@ export default function NativeFeatureScreen({
                     onSosResolve={handleSosResolve}
                     sosResolveBusy={Boolean(sosActionBusyId)}
                     onJumpToTime={onJumpToTime}
-                    compact={sentryLayout || layout === "history"}
+                    compact={sentryLayout}
                     ledger={layout === "history"}
                   />
                 ))
             ) : layout === "stats" || sentryLayout || loading ? null : (
-              <Text style={styles.emptyText}>
+              <Text style={[styles.emptyText, nightOn ? styles.nightMuted : null]}>
                 {isSosFeature
                   ? lookupI18n(uiLang, "sos.historyEmpty", "尚無呼叫紀錄")
                   : isAlertsFeature
@@ -3013,7 +3151,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg
   },
   liveFeedScreen: {
-    flexGrow: 0,
+    flex: 1,
     backgroundColor: "transparent"
   },
   header: {
@@ -3062,9 +3200,9 @@ const styles = StyleSheet.create({
     padding: 14
   },
   formCard: {
-    backgroundColor: "#fff",
+    backgroundColor: "#191B22",
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: "rgba(255,255,255,0.1)",
     borderRadius: 12,
     padding: 14
   },
@@ -3076,17 +3214,17 @@ const styles = StyleSheet.create({
   label: {
     marginTop: 10,
     marginBottom: 5,
-    color: "#244569",
+    color: "#8E95A3",
     fontWeight: "800"
   },
   input: {
     borderWidth: 1,
-    borderColor: "#c8d8ee",
+    borderColor: "rgba(255,255,255,0.1)",
     borderRadius: 10,
-    backgroundColor: "#fbfdff",
+    backgroundColor: "#13151B",
     paddingHorizontal: 10,
     paddingVertical: 9,
-    color: colors.text
+    color: "#FFFFFF"
   },
   sosButton: {
     minHeight: 116,
@@ -3330,70 +3468,111 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600"
   },
-  weekDots: { gap: 8 },
+  weekDots: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#13151A",
+    borderRadius: 16,
+    marginVertical: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)"
+  },
+  weekDotsScroll: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#13151A",
+    borderRadius: 16,
+    marginVertical: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)",
+    gap: 8
+  },
   weekDotsTitle: { color: colors.text, fontSize: 14, fontWeight: "800" },
   weekDotsRow: { flexDirection: "row", justifyContent: "space-between" },
-  weekDotCol: { flex: 1, alignItems: "center", gap: 4 },
-  weekDotStack: { minHeight: 28, alignItems: "center", justifyContent: "flex-end", gap: 3 },
-  weekDot: { width: 8, height: 8, borderRadius: 4 },
-  weekDotSlot: { width: 8, height: 8 },
-  weekDotFall: { backgroundColor: "#b42318" },
-  weekDotSos: { backgroundColor: "#d97706" },
-  weekDotDaily: { backgroundColor: "#98a2b3" },
-  weekDotDate: { color: "#374151", fontSize: 10, fontWeight: "700" },
+  weekDotCol: { flex: 1, alignItems: "center" },
+  weekDotColWide: { flex: 0, width: 44, alignItems: "center" },
+  weekDotStack: { height: 16, alignItems: "center", justifyContent: "center" },
+  weekDot: { width: 6, height: 6, borderRadius: 3 },
+  weekDotSlot: { width: 6, height: 6 },
+  weekDotEmpty: { width: 4, height: 4, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.1)" },
+  weekDotFall: { backgroundColor: "#FF4D4D", boxShadow: "0 0 6px rgba(255,77,77,0.7)" },
+  weekDotSos: { backgroundColor: "#FFA726", boxShadow: "0 0 6px rgba(255,167,38,0.6)" },
+  weekDotDaily: { backgroundColor: "#10B981", boxShadow: "0 0 6px rgba(16,185,129,0.55)" },
+  weekDotDate: { color: "#8E95A3", fontSize: 11, fontFamily: "Menlo", fontVariant: ["tabular-nums"] },
+  weekDotWeek: { color: "#FFFFFF", fontSize: 12, fontWeight: "500", marginVertical: 4 },
   statsRow: {
     flexDirection: "row",
-    gap: 8
+    gap: 10,
+    marginBottom: 16
   },
   statCard: {
     flex: 1,
     minWidth: 0,
-    backgroundColor: "#f4f7fb",
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 8,
-    alignItems: "center",
+    minHeight: 108,
+    backgroundColor: "#191B22",
+    borderRadius: 16,
+    padding: 14,
+    justifyContent: "space-between",
     borderWidth: 1,
-    borderColor: "transparent"
+    borderColor: "rgba(255,255,255,0.1)"
+  },
+  statIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  statIconFall: {
+    backgroundColor: "rgba(255,77,77,0.2)"
+  },
+  statIconSos: {
+    backgroundColor: "rgba(255,167,38,0.2)"
   },
   statCardOn: {
-    backgroundColor: "#fff"
+    backgroundColor: "#1B382B"
   },
   statCardFall: {
-    borderLeftWidth: 3,
-    borderLeftColor: "#e11d48"
+    borderLeftWidth: 2,
+    borderLeftColor: "#FF4D4D"
   },
   statCardDaily: {
-    borderLeftWidth: 3,
-    borderLeftColor: "#98a2b3"
+    borderLeftWidth: 2,
+    borderLeftColor: "rgba(255,255,255,0.22)"
   },
   statCardSos: {
-    borderLeftWidth: 3,
-    borderLeftColor: "#d97706"
+    borderLeftWidth: 2,
+    borderLeftColor: "#FFA726"
   },
   statCardFallOn: {
-    borderColor: "#e11d48",
-    backgroundColor: "#fff1f2"
+    borderColor: "#FF4D4D",
+    backgroundColor: "rgba(255,77,77,0.12)"
   },
   statCardDailyOn: {
-    borderColor: "#98a2b3",
+    borderColor: "rgba(255,255,255,0.22)",
     backgroundColor: colors.bg
   },
   statCardSosOn: {
-    borderColor: "#d97706",
-    backgroundColor: "#fff7ed"
+    borderColor: "#F59E0B",
+    backgroundColor: "rgba(245,158,11,0.12)"
   },
   statValue: {
-    color: "#111827",
-    fontSize: 22,
-    fontWeight: "700"
+    color: "#FFFFFF",
+    fontSize: 30,
+    fontWeight: "900",
+    letterSpacing: -0.6,
+    marginTop: 4
   },
   statLabel: {
-    marginTop: 6,
-    color: "#374151",
+    marginTop: 8,
+    color: "#8E95A3",
     fontSize: 12,
     fontWeight: "600",
-    textAlign: "center"
+    textAlign: "left"
   },
   statsDelta: {
     color: "#526b88",
@@ -3526,31 +3705,34 @@ const styles = StyleSheet.create({
   },
   recordActions: {
     flexDirection: "row",
-    gap: 8,
-    marginTop: 12,
-    alignItems: "center"
+    marginTop: 10,
+    alignItems: "center",
+    gap: 8
   },
   recordActionBtn: {
     flex: 1,
+    flexDirection: "row",
+    gap: 6,
     borderWidth: 1,
-    borderColor: "#c7d8ed",
-    borderRadius: 10,
-    paddingVertical: 12,
-    minHeight: 44,
+    borderColor: "rgba(255,255,255,0.1)",
+    borderRadius: 12,
+    paddingVertical: 0,
+    height: 36,
+    minHeight: 36,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#f8fbff"
+    backgroundColor: "transparent"
   },
   recordActionBtnPrimary: {
-    backgroundColor: colors.pine,
-    borderColor: colors.pine
+    backgroundColor: "transparent",
+    borderColor: "rgba(255,255,255,0.1)"
   },
   recordActionText: {
-    color: colors.pine,
-    fontWeight: "900"
+    color: "#FFFFFF",
+    fontWeight: "600"
   },
   recordActionTextPrimary: {
-    color: "#fff"
+    color: "#FFFFFF"
   },
   alertHeaderRow: {
     flexDirection: "row",
@@ -3632,9 +3814,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10
   },
+  ledgerBookRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10
+  },
+  ledgerBookMeta: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4
+  },
   ledgerTime: {
     width: 40,
-    color: "#111827",
+    color: "#FFFFFF",
     fontSize: 12,
     fontWeight: "600",
     fontVariant: ["tabular-nums"],
@@ -3662,7 +3854,7 @@ const styles = StyleSheet.create({
     fontVariant: ["tabular-nums"]
   },
   activityTimeLink: {
-    color: colors.pine,
+    color: "#3B82F6",
     textDecorationLine: "underline"
   },
   activityDot: {
@@ -3717,25 +3909,25 @@ const styles = StyleSheet.create({
   },
   filterChip: {
     borderWidth: 1,
-    borderColor: "#c7d8ed",
+    borderColor: "rgba(255,255,255,0.1)",
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: "#fff",
+    backgroundColor: "#191B22",
     minHeight: 40,
     justifyContent: "center"
   },
   filterChipActive: {
-    backgroundColor: colors.text,
-    borderColor: colors.text
+    backgroundColor: "#1B382B",
+    borderColor: "rgba(16,185,129,0.4)"
   },
   filterChipText: {
-    color: "#111827",
+    color: "#8E95A3",
     fontWeight: "700",
     fontSize: 13
   },
   filterChipTextActive: {
-    color: "#fff"
+    color: "#10B981"
   },
   historyChipBlock: {
     gap: 8,
@@ -3751,25 +3943,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: "#edf6ff"
+    backgroundColor: "#191B22",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)"
   },
   calendarFooterBtnPrimary: {
-    backgroundColor: colors.pine
+    backgroundColor: "#10B981",
+    borderColor: "#10B981"
   },
   calendarFooterBtnText: {
-    color: colors.pine,
+    color: "#10B981",
     fontSize: 13,
     fontWeight: "800"
   },
   calendarFooterBtnTextPrimary: {
-    color: "#fff"
+    color: "#0B0D0E"
   },
   historyDayGroup: {
     gap: 8,
     marginBottom: 10
   },
   historyDayHeader: {
-    color: "#111827",
+    color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "700",
     marginTop: 6,
@@ -3788,16 +3983,18 @@ const styles = StyleSheet.create({
   historyFilterBar: {
     flexDirection: "row",
     gap: 8,
-    alignItems: "stretch"
+    alignItems: "center"
   },
   manualReportHit: {
-    alignSelf: "flex-end",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
     paddingVertical: 4,
     paddingHorizontal: 2
   },
   manualReportText: {
-    color: colors.pine,
-    fontSize: 13,
+    color: "#10B981",
+    fontSize: 12,
     fontWeight: "700"
   },
   compactSelectWrap: {
@@ -3810,16 +4007,17 @@ const styles = StyleSheet.create({
     marginLeft: 6
   },
   dropdownBtn: {
-    backgroundColor: "#fff",
+    backgroundColor: "#191B22",
     borderWidth: 1,
-    borderColor: "#c7d8ed",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    minHeight: 44,
+    borderColor: "rgba(255,255,255,0.1)",
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    minHeight: 36,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between"
+    justifyContent: "space-between",
+    gap: 6
   },
   dropdownLabel: {
     color: "#667085",
@@ -3828,23 +4026,23 @@ const styles = StyleSheet.create({
     marginBottom: 2
   },
   dropdownValue: {
-    color: "#111827",
-    fontSize: 14,
-    fontWeight: "700",
-    flex: 1
+    flex: 1,
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "400"
   },
   pickerPanel: {
-    backgroundColor: "#fff",
+    backgroundColor: "#191B22",
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: "rgba(255,255,255,0.1)",
     padding: 12,
     width: "100%",
     maxWidth: 360,
     gap: 6
   },
   pickerTitle: {
-    color: "#526b88",
+    color: "#8E95A3",
     fontSize: 12,
     fontWeight: "800",
     paddingHorizontal: 8,
@@ -3854,20 +4052,20 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    backgroundColor: "#f7fafc"
+    backgroundColor: "#13151B"
   },
   pickerOptionActive: {
-    backgroundColor: colors.mintSoft,
+    backgroundColor: "rgba(16,185,129,0.15)",
     borderWidth: 1,
-    borderColor: colors.pine
+    borderColor: "#10B981"
   },
   pickerOptionText: {
-    color: "#111827",
+    color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "700"
   },
   pickerOptionTextActive: {
-    color: colors.pine
+    color: "#10B981"
   },
   pickerOptionHint: {
     marginTop: 4,
@@ -3883,23 +4081,23 @@ const styles = StyleSheet.create({
   },
   methodChip: {
     borderWidth: 1,
-    borderColor: "#c7d8ed",
+    borderColor: "rgba(255,255,255,0.1)",
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 8,
-    backgroundColor: "#f8fbff"
+    backgroundColor: "#191B22"
   },
   methodChipActive: {
-    backgroundColor: colors.mintSoft,
-    borderColor: colors.pine
+    backgroundColor: "rgba(16,185,129,0.15)",
+    borderColor: "#10B981"
   },
   methodChipText: {
-    color: "#526b88",
+    color: "#8E95A3",
     fontWeight: "800",
     fontSize: 13
   },
   methodChipTextActive: {
-    color: colors.pine
+    color: "#10B981"
   },
   readonlyHint: {
     color: "#667085",
@@ -3956,24 +4154,24 @@ const styles = StyleSheet.create({
   },
   secondaryBtn: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: "#191B22",
     borderWidth: 1,
-    borderColor: "#c7d8ed",
+    borderColor: "rgba(16,185,129,0.4)",
     borderRadius: 10,
     paddingVertical: 11,
     alignItems: "center"
   },
   secondaryBtnCompact: {
     marginTop: 10,
-    backgroundColor: "#fff",
+    backgroundColor: "#191B22",
     borderWidth: 1,
-    borderColor: "#c7d8ed",
+    borderColor: "rgba(16,185,129,0.4)",
     borderRadius: 10,
     paddingVertical: 11,
     alignItems: "center"
   },
   secondaryBtnText: {
-    color: colors.pine,
+    color: "#10B981",
     fontWeight: "900"
   },
   message: {
@@ -3985,7 +4183,7 @@ const styles = StyleSheet.create({
     fontWeight: "800"
   },
   emptyText: {
-    color: "#374151",
+    color: "#8E95A3",
     paddingVertical: 12,
     fontSize: 14,
     fontWeight: "600"
@@ -3994,12 +4192,14 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     padding: 20,
-    backgroundColor: "rgba(15, 23, 42, 0.45)"
+    backgroundColor: "rgba(11, 13, 14, 0.72)"
   },
   modalPanel: {
-    backgroundColor: "#fff",
+    backgroundColor: "#191B22",
     borderRadius: 14,
-    padding: 18
+    padding: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)"
   },
   modalTitle: {
     color: colors.text,
@@ -4067,8 +4267,10 @@ const styles = StyleSheet.create({
     backgroundColor: night.bg
   },
   nightCard: {
-    backgroundColor: night.card,
-    borderColor: night.border
+    backgroundColor: "#191B22",
+    borderColor: "rgba(255,255,255,0.1)",
+    borderRadius: 16,
+    padding: 16
   },
   nightCardMuted: {
     backgroundColor: night.cardSoft,
@@ -4085,7 +4287,7 @@ const styles = StyleSheet.create({
     color: night.textMuted
   },
   nightTimeLink: {
-    color: night.gold,
+    color: "#10B981",
     textDecorationLine: "underline"
   },
   nightGoldText: {
@@ -4095,32 +4297,88 @@ const styles = StyleSheet.create({
     backgroundColor: night.cardSoft
   },
   nightDropdown: {
-    backgroundColor: night.card,
-    borderColor: night.border
+    backgroundColor: "#191B22",
+    borderColor: "rgba(255,255,255,0.1)"
   },
   nightPickerPanel: {
-    backgroundColor: night.card
+    backgroundColor: "#161616",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.16)"
   },
   nightPickerOptionOn: {
     backgroundColor: "rgba(255,200,0,0.12)"
   },
+  nightStatBlock: {
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderColor: "rgba(255,255,255,0.12)"
+  },
   nightStatCard: {
-    backgroundColor: night.card,
-    borderColor: night.border
+    backgroundColor: "#191B22",
+    borderColor: "rgba(255,255,255,0.1)",
+    borderRadius: 16
   },
   nightStatCardOn: {
     backgroundColor: night.cardSoft
   },
-  nightSentryCard: {
-    backgroundColor: "rgba(255,255,255,0.07)",
-    borderColor: "rgba(255,255,255,0.16)",
+  designEvent: { gap: 10 },
+  designEventTop: { flexDirection: "row", alignItems: "center", gap: 12 },
+  designThumbHit: { width: 72, height: 72, borderRadius: 14, overflow: "hidden" },
+  designThumb: { width: 72, height: 72, borderRadius: 14, backgroundColor: "#1A1C20" },
+  designEventMeta: { flex: 1, minWidth: 0, gap: 4 },
+  designEventHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  designTypeRow: { flexDirection: "row", alignItems: "center", gap: 6, maxWidth: "62%" },
+  designTypeIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  designTypeIconFall: { backgroundColor: "rgba(255,77,77,0.2)" },
+  designTypeIconDaily: { backgroundColor: "rgba(16,185,129,0.2)" },
+  designTypeText: { color: "#FFFFFF", fontSize: 11, fontWeight: "700", flexShrink: 1 },
+  designRiskPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4
+  },
+  designRiskPillHot: {
+    backgroundColor: "rgba(255,77,77,0.15)"
+  },
+  designRiskPillOk: {
+    backgroundColor: "rgba(16,185,129,0.15)"
+  },
+  designRiskDot: { width: 7, height: 7, borderRadius: 4 },
+  designRiskDotHot: { backgroundColor: "#FF4D4D" },
+  designRiskDotOk: { backgroundColor: "#10B981" },
+  designRiskText: { color: "#FF4D4D", fontSize: 12, fontWeight: "700" },
+  designRiskTextOk: { color: "#10B981" },
+  designTimeRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  designPlay: {
+    position: "absolute",
+    left: 18,
+    top: 18,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(0,0,0,0.5)",
     borderWidth: 1,
-    borderRadius: 22,
+    borderColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  nightSentryCard: {
+    backgroundColor: "#191B22",
+    borderColor: "rgba(255,255,255,0.1)",
+    borderWidth: 1,
+    borderRadius: 16,
     borderCurve: "continuous",
-    padding: 10,
+    padding: 16,
     overflow: "hidden",
-    position: "relative",
-    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.18), 0 10px 24px rgba(0,0,0,0.22)"
+    position: "relative"
   },
   nightSentryRow: {
     flexDirection: "row",
@@ -4141,17 +4399,16 @@ const styles = StyleSheet.create({
   },
   nightPlay: {
     position: "absolute",
-    left: 26,
-    top: 26,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(95,143,78,0.82)",
+    left: 28,
+    top: 28,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(0,0,0,0.5)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.22)",
+    borderColor: "rgba(255,255,255,0.2)",
     alignItems: "center",
-    justifyContent: "center",
-    boxShadow: "0 8px 18px rgba(95,143,78,0.35)"
+    justifyContent: "center"
   },
   nightSentryMeta: {
     flex: 1,
@@ -4183,6 +4440,11 @@ const styles = StyleSheet.create({
     color: "#8E95A3",
     fontSize: 12,
     fontVariant: ["tabular-nums"]
+  },
+  liveTimeLink: {
+    color: "#10B981",
+    textDecorationLine: "underline",
+    fontWeight: "700"
   },
   nightUnread: {
     position: "absolute",

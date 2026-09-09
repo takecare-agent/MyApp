@@ -15,6 +15,7 @@ import {
   stopListening
 } from "../lib/speechCare"
 import { colors } from "./new_ui/tokens"
+import { NeoIcon } from "./new_ui/NeoIcons"
 
 function call119() {
   Linking.openURL("tel:119").catch(() => {})
@@ -36,11 +37,26 @@ function TileGrid({ tiles, t, onPick }) {
           accessibilityLabel={t(tile.labelKey)}
         >
           {tile.image ? (
-            <Image source={tile.image} style={styles.tileImg} resizeMode="cover" />
+            <Image source={tile.image} style={[styles.tileImg, tile.urgent ? styles.tileImgWide : null]} resizeMode="cover" />
           ) : null}
-          <Text style={[styles.tileText, tile.urgent ? styles.tileUrgentText : null]}>
-            {t(tile.labelKey)}
-          </Text>
+          {tile.urgent ? (
+            <>
+              <View style={styles.cprBadge}>
+                <NeoIcon name="alert-circle" size={14} color="#FF4D4D" />
+                <Text style={styles.cprBadgeText} numberOfLines={1}>{t(tile.labelKey)}</Text>
+              </View>
+              <View style={styles.cprChevron}>
+                <NeoIcon name="chevron-right" size={16} color="#FF4D4D" />
+              </View>
+            </>
+          ) : (
+            <View style={styles.tileLabelRow}>
+              <Text style={styles.tileText} numberOfLines={1}>
+                {t(tile.labelKey)}
+              </Text>
+              <NeoIcon name="chevron-right" size={16} color="#FF4D4D" />
+            </View>
+          )}
         </Pressable>
       ))}
     </View>
@@ -143,8 +159,9 @@ export default function CaregiverFirstAidScreen({ onBack, embedded = false, apiB
     <View style={styles.flex}>
       {embedded || !onBack ? null : (
         <View style={styles.topBar}>
-          <Pressable onPress={goPrev} hitSlop={12} accessibilityRole="button">
-            <Text style={styles.back}>‹ {canPrev ? t("aid.prev") : t("common.back")}</Text>
+          <Pressable onPress={goPrev} hitSlop={12} accessibilityRole="button" style={styles.backRow}>
+            <NeoIcon name="chevron-left" size={18} color="#FF4D4D" />
+            <Text style={styles.back}>{canPrev ? t("aid.prev") : t("common.back")}</Text>
           </Pressable>
           <Text style={styles.topTitle}>{t("aid.title")}</Text>
           <View style={styles.topSpacer} />
@@ -163,7 +180,9 @@ export default function CaregiverFirstAidScreen({ onBack, embedded = false, apiB
               onPress={listen}
               accessibilityRole="button"
             >
-              <Text style={styles.voiceText}>{listening ? t("aid.voice.listen") : t("aid.voice.say")}</Text>
+              <NeoIcon name="mic" size={16} color="#FF4D4D" />
+              <Text style={styles.voiceText} numberOfLines={1}>{listening ? t("aid.voice.listen") : t("aid.voice.say")}</Text>
+              <NeoIcon name="chevron-right" size={16} color="#8E95A3" />
             </Pressable>
             {voiceHint ? <Text style={styles.hint}>{voiceHint}</Text> : null}
             <Text style={styles.sec}>{t("aid.sec.now")}</Text>
@@ -229,6 +248,7 @@ export default function CaregiverFirstAidScreen({ onBack, embedded = false, apiB
 
       <View style={styles.footer}>
         <Pressable style={styles.cta119} onPress={call119} accessibilityRole="button">
+          <NeoIcon name="phone" size={20} color="#FFFFFF" />
           <Text style={styles.cta119Text}>119</Text>
         </Pressable>
       </View>
@@ -244,52 +264,78 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 12,
     paddingVertical: 10,
-    backgroundColor: "#fff",
+    backgroundColor: colors.bg,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border
   },
-  back: { color: colors.pine, fontWeight: "800", fontSize: 16 },
+  backRow: { flexDirection: "row", alignItems: "center", gap: 2 },
+  back: { color: "#FF4D4D", fontWeight: "800", fontSize: 16 },
   topTitle: { color: colors.text, fontWeight: "900", fontSize: 17 },
   topSpacer: { width: 48 },
   pad: { padding: 16, paddingBottom: 24, gap: 12 },
   block: { gap: 10 },
-  sec: { color: "#667085", fontWeight: "800", fontSize: 13, marginTop: 4 },
+  sec: { color: colors.textMuted, fontWeight: "800", fontSize: 13, marginTop: 4 },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   tile: {
     width: "48%",
-    backgroundColor: "#fff",
-    borderRadius: 14,
+    backgroundColor: "#16181D",
+    borderRadius: 16,
     borderCurve: "continuous",
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: "rgba(255,255,255,0.1)",
     overflow: "hidden"
   },
-  tileWide: { width: "100%" },
-  tileImg: { width: "100%", height: 92, backgroundColor: "#e8f0fa" },
-  tileText: { color: colors.text, fontWeight: "900", fontSize: 15, paddingHorizontal: 10, paddingVertical: 8 },
-  tileUrgentText: { color: "#c62828" },
+  tileWide: { width: "100%", position: "relative" },
+  tileImg: { width: "100%", height: 92, backgroundColor: colors.card },
+  tileImgWide: { height: 148 },
+  tileLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 6
+  },
+  tileText: { flex: 1, color: colors.text, fontWeight: "800", fontSize: 14 },
+  cprBadge: {
+    position: "absolute",
+    left: 10,
+    bottom: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#3B0A0A",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5
+  },
+  cprBadgeText: { color: "#FF4D4D", fontWeight: "800", fontSize: 12 },
+  cprChevron: { position: "absolute", right: 10, bottom: 12 },
   voiceBtn: {
-    backgroundColor: colors.text,
-    borderRadius: 14,
+    backgroundColor: "#000000",
+    borderRadius: 999,
     borderCurve: "continuous",
     paddingVertical: 12,
-    alignItems: "center"
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
   },
-  voiceText: { color: "#fff", fontWeight: "800" },
-  hero: { width: "100%", height: 220, backgroundColor: "#e8f0fa", borderRadius: 14, borderCurve: "continuous" },
+  voiceText: { flex: 1, color: "#FFFFFF", fontWeight: "800" },
+  hero: { width: "100%", height: 220, backgroundColor: colors.card, borderRadius: 24, borderCurve: "continuous" },
   prompt: { color: colors.text, fontWeight: "900", fontSize: 22, lineHeight: 30 },
-  hint: { color: "#667085", fontWeight: "600" },
+  hint: { color: colors.textMuted, fontWeight: "600" },
   choices: { gap: 10 },
   choice: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
+    backgroundColor: colors.card,
+    borderRadius: 24,
     borderCurve: "continuous",
     borderWidth: 1,
     borderColor: colors.border,
     paddingVertical: 16,
     paddingHorizontal: 14
   },
-  choiceWarn: { borderColor: "#f2b8b5", backgroundColor: "#fff6f6" },
+  choiceWarn: { borderColor: "#E05A47", backgroundColor: "rgba(224,90,71,0.12)" },
   choiceText: { color: colors.text, fontWeight: "800", fontSize: 17, lineHeight: 24 },
   stepLine: { color: colors.text, fontWeight: "700", fontSize: 17, lineHeight: 26 },
   restart: { color: colors.pine, fontWeight: "800" },
@@ -297,16 +343,19 @@ const styles = StyleSheet.create({
   footer: {
     padding: 16,
     paddingBottom: 20,
-    backgroundColor: "#fff",
+    backgroundColor: colors.bg,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border
   },
   cta119: {
-    backgroundColor: "#c62828",
-    borderRadius: 14,
+    height: 56,
+    backgroundColor: "#FF4D4D",
+    borderRadius: 999,
     borderCurve: "continuous",
-    paddingVertical: 16,
-    alignItems: "center"
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8
   },
   cta119Text: { color: "#fff", fontSize: 22, fontWeight: "900" }
 })

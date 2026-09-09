@@ -1,5 +1,6 @@
 import { View, Text, Pressable, RefreshControl, ScrollView, StyleSheet } from "react-native"
 import { colors, radius, spacing, font } from "./tokens"
+import { IconPhone, IconCalendar, IconActivity, IconRefresh } from "./NeoIcons"
 
 export default function NewPatientHome({
   helloLine,
@@ -21,11 +22,11 @@ export default function NewPatientHome({
       contentContainerStyle={styles.content}
       refreshControl={
         onRefresh ? (
-          <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} tintColor={colors.pine} />
+          <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} tintColor={colors.mint} />
         ) : undefined
       }
     >
-      <View style={styles.header}>
+      <View style={[styles.card, styles.headerCard]}>
         {helloLine ? <Text style={styles.hello}>{helloLine}</Text> : null}
         <Text style={styles.kicker}>TakeCare 受顧者端</Text>
       </View>
@@ -36,12 +37,16 @@ export default function NewPatientHome({
         accessibilityRole="button"
         accessibilityLabel="呼叫"
       >
+        <IconPhone size={28} color="#FFFFFF" />
         <Text style={styles.sosTitle}>呼叫</Text>
         {sosHint ? <Text style={styles.sosHint}>{sosHint}</Text> : null}
       </Pressable>
 
       <Pressable style={styles.card} onPress={onOpenTodo}>
-        <Text style={styles.cardTitle}>今日待辦</Text>
+        <View style={styles.cardTitleRow}>
+          <IconCalendar size={18} />
+          <Text style={styles.cardTitle}>今日待辦</Text>
+        </View>
         {list.length === 0 ? (
           <Text style={styles.empty}>今日無待辦</Text>
         ) : (
@@ -53,8 +58,9 @@ export default function NewPatientHome({
         )}
       </Pressable>
 
-      <Pressable style={styles.bpCard} onPress={onOpenBp}>
+      <Pressable style={styles.card} onPress={onOpenBp}>
         <View style={styles.bpHeader}>
+          <IconActivity size={18} />
           <Text style={styles.bpTitle}>最新血壓</Text>
           <Pressable
             onPress={(e) => {
@@ -63,14 +69,10 @@ export default function NewPatientHome({
             }}
             hitSlop={12}
           >
-            <Text style={styles.bpRefresh}>重新整理</Text>
+            <IconRefresh size={18} />
           </Pressable>
         </View>
-        {bpText ? (
-          <Text style={styles.bpValue}>{bpText}</Text>
-        ) : (
-          <Text style={styles.bpEmpty}>尚無血壓資料</Text>
-        )}
+        <Text style={styles.bpValue}>{bpText ? bpText.replace(" mmHg", "") : "- / -"} mmHg</Text>
       </Pressable>
     </ScrollView>
   )
@@ -78,47 +80,35 @@ export default function NewPatientHome({
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { paddingHorizontal: spacing.lg, paddingTop: spacing.xl, paddingBottom: spacing.xl, gap: spacing.md },
-  header: { marginBottom: spacing.sm },
-  hello: { fontSize: font.h1, fontWeight: "800", color: colors.text },
-  kicker: { marginTop: 4, fontSize: font.small, color: colors.textMuted, fontWeight: "600" },
-  sosCard: {
-    backgroundColor: colors.clay,
+  content: { paddingHorizontal: 16, paddingTop: spacing.lg, paddingBottom: spacing.xl, gap: 14 },
+  card: {
+    backgroundColor: colors.card,
     borderRadius: radius.card,
+    borderCurve: "continuous",
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16
+  },
+  headerCard: { gap: 4 },
+  hello: { fontSize: font.h1, fontWeight: "800", color: colors.text },
+  kicker: { fontSize: font.small, color: colors.textMuted, fontWeight: "600" },
+  sosCard: {
+    backgroundColor: "#E05A47",
+    borderRadius: radius.card,
+    borderCurve: "continuous",
     minHeight: 148,
     alignItems: "center",
     justifyContent: "center",
     padding: spacing.lg,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3
+    gap: 8
   },
   sosTitle: { color: "#FFF", fontSize: 42, fontWeight: "800" },
-  sosHint: { marginTop: 8, color: "rgba(255,255,255,0.92)", fontSize: font.body, fontWeight: "600" },
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: radius.card,
-    padding: spacing.lg,
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2
-  },
-  cardTitle: { fontSize: font.h2, fontWeight: "700", color: colors.text, marginBottom: spacing.sm },
+  sosHint: { color: "rgba(255,255,255,0.92)", fontSize: font.body, fontWeight: "600" },
+  cardTitleRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: spacing.sm },
+  cardTitle: { fontSize: font.h2, fontWeight: "700", color: colors.text },
   todoLine: { fontSize: font.body, color: colors.text, marginTop: 6 },
   empty: { fontSize: font.body, color: colors.textMuted },
-  bpCard: {
-    backgroundColor: colors.pine,
-    borderRadius: radius.card,
-    padding: spacing.lg,
-    minHeight: 140
-  },
-  bpHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  bpTitle: { fontSize: font.h2, fontWeight: "700", color: "#FFF" },
-  bpRefresh: { fontSize: font.small, color: "rgba(255,255,255,0.85)", fontWeight: "600" },
-  bpValue: { marginTop: spacing.md, fontSize: 36, fontWeight: "800", color: "#FFF" },
-  bpEmpty: { marginTop: spacing.md, fontSize: font.body, color: "rgba(255,255,255,0.85)" }
+  bpHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
+  bpTitle: { flex: 1, fontSize: font.h2, fontWeight: "700", color: colors.text },
+  bpValue: { marginTop: spacing.md, fontSize: 32, fontWeight: "800", color: colors.mint }
 })

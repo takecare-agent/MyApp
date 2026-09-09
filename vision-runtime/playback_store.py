@@ -89,7 +89,7 @@ class PlaybackArchive:
         self._index = []
         self._lock = threading.Lock()
         self._last = 0.0
-        self._q = queue.Queue(maxsize=400)
+        self._q = queue.Queue(maxsize=8000)
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
 

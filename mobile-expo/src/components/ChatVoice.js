@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { Pressable, StyleSheet, Text, View } from "react-native"
 import { WebView } from "react-native-webview"
 import { colors } from "../screens/new_ui/tokens"
+import { NeoIcon } from "../screens/new_ui/NeoIcons"
 
 const RECORDER_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head><body>
 <script>
@@ -113,8 +114,16 @@ function pause(){document.getElementById("a").pause();}
         }}
         style={[styles.playBtn, isMe ? styles.playBtnMe : null]}
       >
+        <View style={styles.playCircle}>
+          <NeoIcon name="play" size={12} color="#FFFFFF" />
+        </View>
+        <View style={styles.waveRow}>
+          {[6, 12, 8, 14, 7, 11, 9].map((h, i) => (
+            <View key={i} style={[styles.waveBar, { height: h }]} />
+          ))}
+        </View>
         <Text style={[styles.playText, isMe ? styles.playTextMe : null]}>
-          {playing ? "■" : "▶"} {playLabel}
+          {playLabel}
         </Text>
       </Pressable>
       {caption ? (
@@ -143,12 +152,25 @@ const styles = StyleSheet.create({
   voiceBlock: { gap: 6, minWidth: 160 },
   playBtn: {
     alignSelf: "flex-start",
-    backgroundColor: "rgba(255,255,255,0.18)",
-    borderRadius: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 8
   },
-  playBtnMe: { backgroundColor: "rgba(255,255,255,0.22)" },
+  playBtnMe: { backgroundColor: "rgba(255,255,255,0.08)" },
+  playCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  waveRow: { flexDirection: "row", alignItems: "center", gap: 2, height: 16 },
+  waveBar: { width: 2, borderRadius: 1, backgroundColor: "#10B981" },
   playText: { color: colors.text, fontWeight: "800", fontSize: 13 },
   playTextMe: { color: "#fff" },
   caption: { color: "#334155", fontSize: 13, lineHeight: 18, fontWeight: "600" },

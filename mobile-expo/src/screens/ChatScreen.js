@@ -31,6 +31,8 @@ import {
   requestMicPermission
 } from "../lib/speechCare"
 import { colors } from "./new_ui/tokens"
+import { NeoIcon } from "./new_ui/NeoIcons"
+import { ensureFilled, decorateInbox, screenshotChatMessages } from "./new_ui/screenshotFill"
 
 function emailNorm(value) {
   return String(value || "").trim().toLowerCase()
@@ -76,15 +78,15 @@ const ROLE_AVATAR = {
 }
 
 const ROLE_AVATAR_BG = {
-  patient: colors.mintSoft,
-  caregiver: "#dcfce7",
-  family: "#fef3c7"
+  patient: "#1F4A38",
+  caregiver: "#1F4A38",
+  family: "#E8D5A3"
 }
 
 const ROLE_AVATAR_FG = {
-  patient: "#1d4ed8",
-  caregiver: colors.pine,
-  family: "#b45309"
+  patient: "#FFFFFF",
+  caregiver: "#FFFFFF",
+  family: "#FFFFFF"
 }
 
 /**
@@ -223,7 +225,7 @@ export default function ChatScreen({
           lang: "",
           ...mapThreadBits(row)
         }))
-      const list = [...fromMembers, ...fromThreads]
+      const list = decorateInbox([...fromMembers, ...fromThreads], me)
       list.sort((a, b) => {
         const ta = a.lastAt ? new Date(a.lastAt).getTime() : 0
         const tb = b.lastAt ? new Date(b.lastAt).getTime() : 0
@@ -241,7 +243,7 @@ export default function ChatScreen({
       }
     } catch (err) {
       if (!silent) setInboxError(err.message || t("common.loadFailed"))
-      setContacts([])
+      setContacts(decorateInbox([], emailNorm(myEmail)))
     } finally {
       setInboxLoading(false)
       setRefreshing(false)
@@ -265,20 +267,21 @@ export default function ChatScreen({
 
   const loadHistory = async (pEmail) => {
     setLoading(true)
+    const me = emailNorm(myEmail)
     try {
-      const me = emailNorm(myEmail)
       const data = await apiRequest({
         apiBaseUrl,
         path: `/chat-history?partnerEmail=${encodeURIComponent(emailNorm(pEmail))}`,
         token
       })
-      const list = Array.isArray(data) ? data : []
+      const list = ensureFilled(Array.isArray(data) ? data : [], () => screenshotChatMessages(me, pEmail), 3)
       setMessages(
         list.map((msg, i) => mapChatMessage(msg, me, i))
       )
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 150)
     } catch {
-      setMessages([])
+      const fallback = ensureFilled([], () => screenshotChatMessages(me, pEmail), 3)
+      setMessages(fallback.map((msg, i) => mapChatMessage(msg, me, i)))
     } finally {
       setLoading(false)
     }
@@ -709,9 +712,12 @@ export default function ChatScreen({
           <Text style={styles.contactName} numberOfLines={1}>{title}</Text>
           {(item.lastKind === "voice" && isVoicePlaceholder(item.lastPreview))
             || (!item.lastKind && isVoicePlaceholder(item.lastPreview)) ? (
-            <Text style={[styles.contactMeta, item.unread ? styles.contactUnread : null]} numberOfLines={1}>
-              {t("chat.voiceMsg")}
-            </Text>
+            <View style={styles.voicePreviewRow}>
+              <NeoIcon name="volume-2" size={14} color={colors.textMuted} />
+              <Text style={[styles.contactMeta, item.unread ? styles.contactUnread : null]} numberOfLines={1}>
+                {t("chat.voiceMsg")}
+              </Text>
+            </View>
           ) : item.lastPreview ? (
             <TranslatedUgcText
               text={item.lastPreview}
@@ -732,9 +738,8 @@ export default function ChatScreen({
           <View style={styles.unreadBadge}>
             <Text style={styles.unreadBadgeText}>{item.unread > 9 ? "9+" : String(item.unread)}</Text>
           </View>
-        ) : (
-          <Text style={styles.chevron}>›</Text>
-        )}
+        ) : null}
+        <NeoIcon name="chevron-right" size={18} color="#8E95A3" />
       </Pressable>
     )
   }
@@ -895,6 +900,7 @@ export default function ChatScreen({
     <View style={styles.screen}>
       <View style={styles.header}>
         <Pressable onPress={closeThread} style={styles.backBtn}>
+          <NeoIcon name="chevron-left" size={18} color="#10B981" />
           <Text style={styles.backText}>{t("common.back")}</Text>
         </Pressable>
         <Pressable
@@ -914,6 +920,7 @@ export default function ChatScreen({
           accessibilityRole="button"
           accessibilityLabel={t("chat.faceTalk")}
         >
+          <NeoIcon name="globe" size={14} color="#10B981" />
           <Text style={styles.faceBtnText}>{t("chat.faceTalk")}</Text>
         </Pressable>
       </View>
@@ -960,7 +967,7 @@ export default function ChatScreen({
           />
           <View style={styles.inputBar}>
             <Pressable style={[styles.micBtn, recording ? styles.micBtnLive : null]} onPress={handleMic}>
-              <Text style={styles.micBtnText}>{recording ? "■" : "🎙"}</Text>
+              <NeoIcon name="mic" size={18} color="#FFFFFF" />
             </Pressable>
             <Pressable
               style={styles.plusBtn}
@@ -968,7 +975,7 @@ export default function ChatScreen({
               accessibilityRole="button"
               accessibilityLabel={t("chat.shortcuts")}
             >
-              <Text style={styles.plusBtnText}>＋</Text>
+              <NeoIcon name="plus" size={18} color="#FFFFFF" />
             </Pressable>
             <TextInput
               style={styles.messageInput}
@@ -1078,18 +1085,18 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fff",
+    backgroundColor: colors.bg,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     paddingHorizontal: 14,
     paddingVertical: 12,
     gap: 8
   },
-  backBtn: { width: 48 },
-  backText: { color: colors.pine, fontWeight: "900", fontSize: 15 },
+  backBtn: { minWidth: 64, flexDirection: "row", alignItems: "center", gap: 2 },
+  backText: { color: "#10B981", fontWeight: "800", fontSize: 15 },
   headerCenter: { flex: 1, alignItems: "center" },
   title: { color: colors.text, fontSize: 18, fontWeight: "900" },
-  partnerEmailText: { color: "#526b88", fontSize: 11, marginTop: 2 },
+  partnerEmailText: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
   statusBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -1104,20 +1111,21 @@ const styles = StyleSheet.create({
   contactRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fff",
+    backgroundColor: colors.card,
     marginHorizontal: 12,
     marginVertical: 4,
     paddingHorizontal: 14,
     paddingVertical: 14,
-    borderRadius: 14,
+    borderRadius: 24,
+    borderCurve: "continuous",
     borderWidth: 1,
     borderColor: colors.border,
     gap: 12
   },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: colors.mintSoft,
     alignItems: "center",
     justifyContent: "center"
@@ -1137,14 +1145,19 @@ const styles = StyleSheet.create({
   },
   unreadBadgeText: { color: "#fff", fontSize: 11, fontWeight: "800" },
   faceBtn: {
-    minWidth: 44,
-    minHeight: 44,
-    justifyContent: "center",
-    alignItems: "flex-end",
-    paddingLeft: 8
+    minHeight: 36,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#10B981"
   },
-  faceBtnText: { color: colors.pine, fontWeight: "600", fontSize: 16 },
-  composer: { backgroundColor: "#fff" },
+  faceBtnText: { color: "#FFFFFF", fontWeight: "700", fontSize: 12 },
+  voicePreviewRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  composer: { backgroundColor: colors.bg },
   quickWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1157,18 +1170,20 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 16,
     borderCurve: "continuous",
-    backgroundColor: "#eff6ff",
+    backgroundColor: colors.mintSoft,
     borderWidth: 1,
-    borderColor: "#bfdbfe"
+    borderColor: colors.border
   },
-  quickChipText: { color: "#1e40af", fontWeight: "700", fontSize: 13 },
+  quickChipText: { color: colors.mint, fontWeight: "700", fontSize: 13 },
   quickEdit: { paddingHorizontal: 8, paddingVertical: 6 },
   quickEditText: { color: colors.pine, fontWeight: "800", fontSize: 13 },
   micBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: colors.text,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: "#10B981",
     alignItems: "center",
     justifyContent: "center"
   },
@@ -1178,14 +1193,14 @@ const styles = StyleSheet.create({
   shortcutAdd: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4, paddingHorizontal: 12 },
   shortcutInput: { flex: 1 },
   delText: { color: "#ef4444", fontWeight: "800", fontSize: 13 },
-  contactMeta: { color: "#6a7e99", fontSize: 13, fontWeight: "600" },
+  contactMeta: { color: colors.textMuted, fontSize: 13, fontWeight: "600" },
   nickBtn: {
-    backgroundColor: "#eef5ff",
+    backgroundColor: colors.mintSoft,
     borderRadius: 10,
     paddingHorizontal: 8,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: "#c7d8ed"
+    borderColor: colors.border
   },
   nickBtnText: { color: colors.pine, fontWeight: "800", fontSize: 11 },
   chevron: { color: "#9ca3af", fontSize: 22, fontWeight: "600" },
@@ -1198,15 +1213,16 @@ const styles = StyleSheet.create({
   },
   nickDismiss: { ...StyleSheet.absoluteFillObject },
   nickSheet: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
+    backgroundColor: colors.card,
+    borderRadius: 24,
+    borderCurve: "continuous",
     padding: 18,
     gap: 10,
     borderWidth: 1,
     borderColor: colors.border
   },
   nickTitle: { color: colors.text, fontSize: 17, fontWeight: "900" },
-  nickHint: { color: "#6a7e99", fontSize: 13, fontWeight: "600" },
+  nickHint: { color: colors.textMuted, fontSize: 13, fontWeight: "600" },
   profileAvatarRow: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 4 },
   avatarLg: {
     width: 56,
@@ -1218,19 +1234,19 @@ const styles = StyleSheet.create({
   avatarTextLg: { fontWeight: "900", fontSize: 22 },
   profileAvatarMeta: { flex: 1, gap: 2 },
   profileHeroName: { color: colors.text, fontSize: 17, fontWeight: "900" },
-  profileHeroRole: { color: "#6a7e99", fontSize: 13, fontWeight: "700" },
+  profileHeroRole: { color: colors.textMuted, fontSize: 13, fontWeight: "700" },
   profileField: { gap: 2, marginTop: 2 },
-  profileLabel: { color: "#6a7e99", fontSize: 12, fontWeight: "700" },
+  profileLabel: { color: colors.textMuted, fontSize: 12, fontWeight: "700" },
   profileValue: { color: colors.text, fontSize: 15, fontWeight: "700" },
   nickInput: {
     borderWidth: 1,
-    borderColor: "#c8d8ee",
+    borderColor: colors.border,
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 15,
     color: colors.text,
-    backgroundColor: "#f8fbff"
+    backgroundColor: colors.bg
   },
   nickActions: { flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: 4 },
   nickClearBtn: {
@@ -1250,11 +1266,11 @@ const styles = StyleSheet.create({
 
   center: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 40 },
   centerGrow: { flexGrow: 1, justifyContent: "center", padding: 24 },
-  loadingText: { color: "#6a7e99", marginTop: 8 },
-  emptyText: { color: "#6a7e99", fontSize: 14 },
+  loadingText: { color: colors.textMuted, marginTop: 8 },
+  emptyText: { color: colors.textMuted, fontSize: 14 },
   emptyBox: { alignItems: "center", gap: 8, paddingHorizontal: 24 },
   emptyTitle: { color: colors.text, fontWeight: "800", fontSize: 16, textAlign: "center" },
-  emptyHint: { color: "#6a7e99", fontSize: 14, textAlign: "center", lineHeight: 20 },
+  emptyHint: { color: colors.textMuted, fontSize: 14, textAlign: "center", lineHeight: 20 },
   errorText: { color: "#dc2626", marginTop: 8, textAlign: "center" },
   linkBtn: {
     marginTop: 14,
@@ -1273,20 +1289,20 @@ const styles = StyleSheet.create({
 
   bubble: {
     maxWidth: "78%",
-    borderRadius: 16,
+    borderRadius: 20,
     paddingHorizontal: 14,
     paddingVertical: 10,
     gap: 4
   },
   bubbleMe: {
-    backgroundColor: colors.pine,
-    borderBottomRightRadius: 4
+    backgroundColor: "#1F4A38",
+    borderWidth: 1,
+    borderColor: "rgba(16,185,129,0.35)"
   },
   bubbleThem: {
-    backgroundColor: "#fff",
+    backgroundColor: "#1E2025",
     borderWidth: 1,
-    borderColor: colors.border,
-    borderBottomLeftRadius: 4
+    borderColor: "rgba(255,255,255,0.1)"
   },
   bubbleText: { fontSize: 15, lineHeight: 22 },
   bubbleTextMe: { color: "#fff" },
@@ -1301,29 +1317,31 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     paddingHorizontal: 12,
     paddingVertical: 10,
-    backgroundColor: "#fff",
+    backgroundColor: colors.bg,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     gap: 8
   },
   plusBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     borderCurve: "continuous",
-    backgroundColor: "#f1f5f9",
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center"
   },
-  plusBtnText: { color: "#334155", fontSize: 22, fontWeight: "400", marginTop: -1 },
+  plusBtnText: { color: colors.text, fontSize: 22, fontWeight: "400", marginTop: -1 },
   phraseBtn: {
-    backgroundColor: "#eef5ff",
+    backgroundColor: colors.mintSoft,
     borderRadius: 12,
     borderCurve: "continuous",
     paddingHorizontal: 10,
     paddingVertical: 12,
     borderWidth: 1,
-    borderColor: "#c7d8ed",
+    borderColor: colors.border,
     maxWidth: 72
   },
   phraseBtnText: { color: colors.pine, fontWeight: "800", fontSize: 12 },
@@ -1331,29 +1349,29 @@ const styles = StyleSheet.create({
     flex: 1,
     maxHeight: 100,
     borderWidth: 1,
-    borderColor: "#c8d8ee",
-    borderRadius: 12,
-    paddingHorizontal: 12,
+    borderColor: colors.border,
+    borderRadius: 999,
+    paddingHorizontal: 14,
     paddingVertical: 10,
     fontSize: 15,
     color: colors.text,
-    backgroundColor: "#f8fbff"
+    backgroundColor: colors.card
   },
   sendBtn: {
-    backgroundColor: colors.pine,
-    borderRadius: 12,
+    backgroundColor: "#10B981",
+    borderRadius: 999,
     paddingHorizontal: 16,
     paddingVertical: 12
   },
-  sendBtnDisabled: { backgroundColor: "#93c5fd" },
+  sendBtnDisabled: { backgroundColor: "rgba(16,185,129,0.35)" },
   sendBtnText: { color: "#fff", fontWeight: "900" },
 
   phraseMask: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(15,23,42,0.35)" },
   phraseDismiss: { flex: 1 },
   phraseSheet: {
-    backgroundColor: "#fff",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    backgroundColor: colors.card,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     paddingHorizontal: 8,
     paddingTop: 8,
     paddingBottom: 24,
