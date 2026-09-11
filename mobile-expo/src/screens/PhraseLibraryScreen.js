@@ -12,7 +12,7 @@ import {
 } from "react-native"
 import { apiRequest } from "../lib/api"
 import { useI18n } from "../i18n/I18nContext"
-import { LANG_OPTIONS } from "../i18n/languages"
+import { LangPickField } from "../components/LangListPicker"
 import {
   bindUtteranceHandlers,
   destroyVoice,
@@ -25,6 +25,7 @@ import {
   stopSpeaking
 } from "../lib/speechCare"
 import { colors } from "./new_ui/tokens"
+import { ensureFilled, screenshotPhrases } from "./new_ui/screenshotFill"
 
 import { chatPresetKeysForRole } from "../lib/chatPresets"
 
@@ -75,9 +76,9 @@ export default function PhraseLibraryScreen({
     setLoading(true)
     try {
       const data = await apiRequest({ apiBaseUrl, path: "/custom-phrases", token })
-      setPhrases(Array.isArray(data) ? data : [])
+      setPhrases(ensureFilled(Array.isArray(data) ? data : [], screenshotPhrases, 3))
     } catch {
-      setPhrases([])
+      setPhrases(ensureFilled([], screenshotPhrases, 3))
     } finally {
       setLoading(false)
     }
@@ -275,27 +276,6 @@ export default function PhraseLibraryScreen({
     }
   }
 
-  const LangChips = ({ value, onChange }) => (
-    <View style={styles.langRow}>
-      {LANG_OPTIONS.map((item) => (
-        <Pressable
-          key={item.code}
-          style={[styles.langChip, value === item.code ? styles.langChipActive : null]}
-          onPress={() => onChange(item.code)}
-        >
-          <Text
-            style={[
-              styles.langChipText,
-              value === item.code ? styles.langChipTextActive : null
-            ]}
-          >
-            {item.short}
-          </Text>
-        </Pressable>
-      ))}
-    </View>
-  )
-
   return (
     <View style={styles.screen}>
       {!embedded && onBack ? (
@@ -304,23 +284,21 @@ export default function PhraseLibraryScreen({
         </Pressable>
       ) : null}
 
-      <ScrollView contentContainerStyle={styles.pad} keyboardShouldPersistTaps="handled">
+      <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.pad} keyboardShouldPersistTaps="handled">
         {embedded ? null : <Text style={styles.title}>{t("phrase.title")}</Text>}
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>{t("phrase.faceTitle")}</Text>
 
-          <Text style={styles.label}>{t("phrase.speakLang")}</Text>
-          <LangChips value={speakLang} onChange={setSpeakLang} />
-          <Text style={styles.label}>{t("phrase.hearLang")}</Text>
-          <LangChips value={translateTarget} onChange={setTranslateTarget} />
+          <LangPickField label={t("phrase.speakLang")} value={speakLang} onChange={setSpeakLang} />
+          <LangPickField label={t("phrase.hearLang")} value={translateTarget} onChange={setTranslateTarget} />
 
           <TextInput
             style={styles.textArea}
             value={translateInput}
             onChangeText={setTranslateInput}
             placeholder={t("phrase.inputPh")}
-            placeholderTextColor="#9ca3af"
+            placeholderTextColor={colors.textMuted}
             multiline
             numberOfLines={3}
           />
@@ -392,7 +370,7 @@ export default function PhraseLibraryScreen({
             </Pressable>
           </View>
           {loading ? (
-            <ActivityIndicator color={colors.pine} style={{ marginVertical: 16 }} />
+            <ActivityIndicator color={colors.mint} style={styles.loader} />
           ) : phrases.length === 0 ? (
             <Text style={styles.empty}>{t("phrase.emptyCustom")}</Text>
           ) : (
@@ -417,7 +395,7 @@ export default function PhraseLibraryScreen({
                 value={newText}
                 onChangeText={setNewText}
                 placeholder={t("phrase.addPh")}
-                placeholderTextColor="#9ca3af"
+                placeholderTextColor={colors.textMuted}
               />
               <Pressable
                 style={[styles.primary, saving || !newText.trim() ? styles.disabled : null]}
@@ -439,117 +417,117 @@ export default function PhraseLibraryScreen({
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   backRow: { paddingHorizontal: 14, paddingTop: 10 },
-  back: { color: colors.pine, fontWeight: "800" },
+  back: { color: colors.mint, fontWeight: "800" },
   pad: { padding: 16, paddingBottom: 40, gap: 12 },
   title: { fontSize: 22, fontWeight: "800", color: colors.text },
-  hint: { color: "#6a7e99", lineHeight: 20, fontSize: 13 },
+  hint: { color: colors.textMuted, lineHeight: 20, fontSize: 13 },
   card: {
-    backgroundColor: "#fff",
+    backgroundColor: colors.card,
     borderRadius: 14,
+    borderCurve: "continuous",
     borderWidth: 1,
     borderColor: colors.border,
     padding: 14,
     gap: 10
   },
   cardTitle: { fontSize: 15, fontWeight: "800", color: colors.text },
-  label: { color: "#244569", fontWeight: "700", fontSize: 13 },
   input: {
     borderWidth: 1,
-    borderColor: "#c8d8ee",
+    borderColor: colors.border,
     borderRadius: 12,
+    borderCurve: "continuous",
     paddingHorizontal: 12,
     paddingVertical: 10,
     color: colors.text,
+    backgroundColor: colors.bg,
     fontWeight: "600"
   },
   textArea: {
     borderWidth: 1,
-    borderColor: "#c8d8ee",
+    borderColor: colors.border,
     borderRadius: 12,
+    borderCurve: "continuous",
     paddingHorizontal: 12,
     paddingVertical: 10,
     color: colors.text,
+    backgroundColor: colors.bg,
     fontWeight: "600",
     minHeight: 72,
     textAlignVertical: "top"
   },
-  langRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  langChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#c7d8ed",
-    backgroundColor: "#fff"
-  },
-  langChipActive: { backgroundColor: colors.pine, borderColor: colors.pine },
-  langChipText: { color: "#3a5678", fontWeight: "700", fontSize: 13 },
-  langChipTextActive: { color: "#fff" },
   actionRow: { flexDirection: "row", gap: 8 },
   flexBtn: { flex: 1 },
   micBtn: {
-    backgroundColor: colors.text,
+    backgroundColor: colors.card,
     borderRadius: 12,
+    borderCurve: "continuous",
     paddingVertical: 12,
     paddingHorizontal: 14,
     alignItems: "center",
-    justifyContent: "center"
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.border
   },
-  micBtnLive: { backgroundColor: "#b91c1c" },
-  micBtnText: { color: "#fff", fontWeight: "800" },
-  voiceStatus: { color: "#b91c1c", fontWeight: "700", fontSize: 13 },
+  micBtnLive: { backgroundColor: colors.clay, borderColor: colors.clay },
+  micBtnText: { color: colors.text, fontWeight: "800" },
+  voiceStatus: { color: colors.clay, fontWeight: "700", fontSize: 13 },
   primary: {
-    backgroundColor: colors.pine,
+    backgroundColor: colors.mint,
     borderRadius: 12,
+    borderCurve: "continuous",
     paddingVertical: 12,
     alignItems: "center"
   },
   disabled: { opacity: 0.55 },
-  primaryText: { color: "#fff", fontWeight: "800" },
+  primaryText: { color: colors.bg, fontWeight: "800" },
   secondary: {
     borderWidth: 1,
-    borderColor: colors.pine,
+    borderColor: colors.mint,
     borderRadius: 12,
+    borderCurve: "continuous",
     paddingVertical: 10,
     paddingHorizontal: 14,
-    alignItems: "center"
+    alignItems: "center",
+    backgroundColor: colors.card
   },
-  secondaryText: { color: colors.pine, fontWeight: "800" },
+  secondaryText: { color: colors.mint, fontWeight: "800" },
   resultBox: {
-    backgroundColor: "#f0fdf4",
+    backgroundColor: colors.mintSoft,
     borderRadius: 12,
+    borderCurve: "continuous",
     borderWidth: 1,
-    borderColor: "#bbf7d0",
+    borderColor: colors.border,
     padding: 12,
     gap: 8
   },
-  resultLabel: { color: "#166534", fontWeight: "800", fontSize: 12 },
-  resultText: { color: "#14532d", fontWeight: "700", fontSize: 16, lineHeight: 24 },
+  resultLabel: { color: colors.mint, fontWeight: "800", fontSize: 12 },
+  resultText: { color: colors.text, fontWeight: "700", fontSize: 16, lineHeight: 24 },
   resultActions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  msg: { color: "#067647", fontWeight: "700" },
+  msg: { color: colors.mint, fontWeight: "700" },
   rowBetween: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  link: { color: colors.pine, fontWeight: "700" },
-  empty: { color: "#9ca3af", paddingVertical: 8 },
+  link: { color: colors.mint, fontWeight: "700" },
+  empty: { color: colors.textMuted, paddingVertical: 8 },
   chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   quickChip: {
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: "#eff6ff",
+    backgroundColor: colors.mintSoft,
     borderWidth: 1,
-    borderColor: "#bfdbfe"
+    borderColor: colors.border
   },
-  quickChipText: { color: "#1e40af", fontWeight: "700", fontSize: 13 },
+  quickChipText: { color: colors.mint, fontWeight: "700", fontSize: 13 },
   item: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingVertical: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "#eef2f7",
+    borderTopColor: colors.border,
     gap: 10
   },
   itemFlex: { flex: 1 },
   itemText: { flex: 1, color: colors.text, fontWeight: "700", fontSize: 15 },
-  del: { color: "#ef4444", fontWeight: "800" }
+  del: { color: colors.clay, fontWeight: "800" },
+  loader: { marginVertical: 16 }
 })

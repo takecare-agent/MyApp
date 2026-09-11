@@ -64,15 +64,21 @@ async function listCirclesForMember(CareCircleMember, User, memberEmail) {
 
 async function listMembersForPatient(CareCircleMember, User, patientEmail) {
   const email = normalizeEmail(patientEmail)
-  const patient = await User.findOne({ email, role: "patient" }).select("email name role lang").lean()
+  const patient = await User.findOne({ email, role: "patient" }).select("email name role lang avatarData").lean()
   const members = []
   if (patient) {
-    members.push({ email: patient.email, name: patient.name || "", role: "patient", lang: patient.lang || "zh" })
+    members.push({
+      email: patient.email,
+      name: patient.name || "",
+      role: "patient",
+      lang: patient.lang || "zh",
+      avatarData: patient.avatarData || ""
+    })
   }
   const rows = await CareCircleMember.find({ patientEmail: email }).lean()
   if (rows.length) {
     const emails = rows.map(r => r.memberEmail)
-    const users = await User.find({ email: { $in: emails } }).select("email name role lang").lean()
+    const users = await User.find({ email: { $in: emails } }).select("email name role lang avatarData").lean()
     const byEmail = Object.fromEntries(users.map(u => [normalizeEmail(u.email), u]))
     for (const row of rows) {
       const u = byEmail[row.memberEmail]
@@ -80,7 +86,8 @@ async function listMembersForPatient(CareCircleMember, User, patientEmail) {
         email: row.memberEmail,
         name: u?.name || "",
         role: row.roleInCircle || u?.role || "family",
-        lang: u?.lang || "zh"
+        lang: u?.lang || "zh",
+        avatarData: u?.avatarData || ""
       })
     }
   } else {
@@ -89,10 +96,16 @@ async function listMembersForPatient(CareCircleMember, User, patientEmail) {
       role: { $in: ["family", "caregiver"] },
       linkedPatientEmail: email
     })
-      .select("email name role lang")
+      .select("email name role lang avatarData")
       .lean()
     for (const item of legacy) {
-      members.push({ email: item.email, name: item.name || "", role: item.role, lang: item.lang || "zh" })
+      members.push({
+        email: item.email,
+        name: item.name || "",
+        role: item.role,
+        lang: item.lang || "zh",
+        avatarData: item.avatarData || ""
+      })
     }
   }
   return members

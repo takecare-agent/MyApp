@@ -12,14 +12,13 @@ import {
   View
 } from "react-native"
 import ComboboxField from "../components/ComboboxField"
-import DropdownField from "../components/DropdownField"
 import TranslatedUgcText from "../components/TranslatedUgcText"
 import CareCircleSearch from "../components/CareCircleSearch"
 import { apiRequest } from "../lib/api"
 import { formatCareDailyAt } from "../lib/careDailyPresets"
 import {
+  CARE_DAILY_CAT_DEFS,
   careDailyCatLabel,
-  careDailyCategoryOptions,
   careDailyContentPresetOptions,
   toCareDailyCatCode
 } from "../lib/contentLabels"
@@ -28,8 +27,7 @@ import { usePollingRefresh } from "../lib/usePollingRefresh"
 import { useI18n } from "../i18n/I18nContext"
 import { colors } from "./new_ui/tokens"
 import { NeoIcon } from "./new_ui/NeoIcons"
-import { USE_SCREENSHOT_FILL } from "./new_ui/flag"
-import { ensureFilled, screenshotDailyRecords, screenshotDailyDraft } from "./new_ui/screenshotFill"
+import { ensureFilled, screenshotDailyRecords } from "./new_ui/screenshotFill"
 
 function listPath(role) {
   if (role === "caregiver") return "/caregiver/care-daily-records"
@@ -39,6 +37,10 @@ function listPath(role) {
 
 function writeBase(role) {
   return role === "patient" ? "/patient/care-daily-records" : "/caregiver/care-daily-records"
+}
+
+function presetBase(role) {
+  return role === "patient" ? "/patient/care-daily-presets" : "/caregiver/care-daily-presets"
 }
 
 function emptyObs() {
@@ -73,21 +75,78 @@ export default function CareDailyRecordsScreen({
   const [note, setNote] = useState("")
   const [obs, setObs] = useState(emptyObs)
   const [editingId, setEditingId] = useState("")
+  const [presets, setPresets] = useState([])
+  const [addingPreset, setAddingPreset] = useState(false)
+  const [removingPreset, setRemovingPreset] = useState(false)
 
-  const contentOptions = useMemo(
-    () => careDailyContentPresetOptions(category, t).map((p) => p.value),
-    [category, t]
-  )
+  const catFieldValue = careDailyCatLabel(category, t)
+
+  const catOptions = useMemo(() => {
+    const hidden = new Set(
+      presets.filter((p) => p.source === "care-daily-cat-hidden").map((p) => p.content)
+    )
+    const customRows = presets.filter((p) => p.source === "care-daily-cat")
+    const customValues = new Set(customRows.map((p) => p.content))
+    const builtin = CARE_DAILY_CAT_DEFS
+      .map((d) => ({
+        value: careDailyCatLabel(d.code, t),
+        kind: "builtin",
+        deletable: true,
+        scope: "cat"
+      }))
+      .filter((o) => !hidden.has(o.value) && !customValues.has(o.value))
+    const customs = customRows.map((p) => ({
+      value: p.content,
+      id: p._id,
+      kind: "custom",
+      deletable: true,
+      scope: "cat"
+    }))
+    return [...builtin, ...customs]
+  }, [presets, t])
+
+  const contentOptions = useMemo(() => {
+    const key = `daily:${toCareDailyCatCode(category)}`
+    const hidden = new Set(
+      presets
+        .filter((p) => p.source === "care-daily-hidden" && p.category === key)
+        .map((p) => p.content)
+    )
+    const customRows = presets.filter(
+      (p) => p.source === "care-daily-custom" && p.category === key
+    )
+    const customValues = new Set(customRows.map((p) => p.content))
+    const builtIn = careDailyContentPresetOptions(category, t)
+      .map((p) => p.value)
+      .filter((c) => !hidden.has(c) && !customValues.has(c))
+      .map((c) => ({ value: c, kind: "builtin", deletable: true, scope: "content" }))
+    const customs = customRows.map((p) => ({
+      value: p.content,
+      id: p._id,
+      kind: "custom",
+      deletable: true,
+      scope: "content"
+    }))
+    return [...builtIn, ...customs]
+  }, [category, presets, t])
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setError("")
     try {
-      const data = await apiRequest({
-        apiBaseUrl,
-        path: `${listPath(role)}?limit=80`,
-        token
-      })
+      const reqs = [
+        apiRequest({
+          apiBaseUrl,
+          path: `${listPath(role)}?limit=80`,
+          token
+        })
+      ]
+      if (role === "caregiver" || role === "patient") {
+        reqs.push(apiRequest({ apiBaseUrl, path: presetBase(role), token }))
+      }
+      const [data, presetData] = await Promise.all(reqs)
       setRecords(ensureFilled(Array.isArray(data?.records) ? data.records : [], screenshotDailyRecords, 2))
+      setPresets(Array.isArray(presetData?.records) ? presetData.records : [])
+      if (!silent) setError("")
     } catch (err) {
       if (!silent) setError(err.message || t("common.loadFailed"))
       setRecords(ensureFilled([], screenshotDailyRecords, 2))
@@ -101,15 +160,6 @@ export default function CareDailyRecordsScreen({
     setLoading(true)
     load()
   }, [load])
-
-  useEffect(() => {
-    if (!USE_SCREENSHOT_FILL || !canWrite) return
-    const draft = screenshotDailyDraft()
-    setCategory(draft.category)
-    setContent(draft.content)
-    setNote(draft.note)
-    setObs(draft.obs)
-  }, [canWrite])
 
   usePollingRefresh(load, { intervalMs: 8000 })
 
@@ -209,6 +259,80 @@ export default function CareDailyRecordsScreen({
         }
       }
     ])
+  }
+
+  const applyCategoryText = (text) => {
+    const v = String(text || "").trim()
+    const hit = CARE_DAILY_CAT_DEFS.find(
+      (d) => careDailyCatLabel(d.code, t) === v || d.code === v || d.zh === v
+    )
+    const next = hit ? hit.code : v
+    if (next !== category) setContent("")
+    setCategory(next || (role === "patient" ? "mood" : "meal"))
+  }
+
+  const handleAddPreset = async (scope) => {
+    const text = String(scope === "cat" ? catFieldValue : content).trim()
+    if (!text) {
+      Alert.alert(t("common.hint"), t("reminders.needContentField"))
+      return
+    }
+    setAddingPreset(true)
+    try {
+      await apiRequest({
+        apiBaseUrl,
+        path: presetBase(role),
+        method: "POST",
+        token,
+        body: {
+          scope,
+          category,
+          content: text
+        }
+      })
+      await load({ silent: true })
+    } catch (err) {
+      Alert.alert(t("common.error"), err.message || t("reminders.addPresetFail"))
+    } finally {
+      setAddingPreset(false)
+    }
+  }
+
+  const handleRemovePreset = async (opt) => {
+    const scope = opt.scope === "cat" ? "cat" : "content"
+    setRemovingPreset(true)
+    try {
+      if (opt.kind === "custom" && opt.id) {
+        await apiRequest({
+          apiBaseUrl,
+          path: `${presetBase(role)}/${encodeURIComponent(opt.id)}`,
+          method: "DELETE",
+          token
+        })
+      } else {
+        await apiRequest({
+          apiBaseUrl,
+          path: presetBase(role),
+          method: "POST",
+          token,
+          body: {
+            scope,
+            category,
+            content: opt.value,
+            hidden: true
+          }
+        })
+      }
+      if (scope === "cat" && catFieldValue === opt.value) {
+        applyCategoryText(role === "patient" ? "mood" : "meal")
+      }
+      if (scope === "content" && content === opt.value) setContent("")
+      await load({ silent: true })
+    } catch (err) {
+      Alert.alert(t("common.error"), err.message || t("reminders.removePresetFail"))
+    } finally {
+      setRemovingPreset(false)
+    }
   }
 
   const renderItem = ({ item }) => (
@@ -334,15 +458,18 @@ export default function CareDailyRecordsScreen({
             </Pressable>
           ) : null}
           <View style={styles.formCard}>
-          <DropdownField
+          <ComboboxField
             label={t("reminders.category")}
             leftIcon="tag"
-            value={toCareDailyCatCode(category)}
-            options={careDailyCategoryOptions(t)}
-            onSelect={(c) => {
-              setCategory(c)
-              setContent("")
-            }}
+            value={catFieldValue}
+            onChangeText={applyCategoryText}
+            options={catOptions}
+            placeholder=""
+            emptyText={t("reminders.emptyPreset")}
+            onAddCurrent={canWrite ? () => handleAddPreset("cat") : undefined}
+            onRemoveOption={canWrite ? handleRemovePreset : undefined}
+            adding={addingPreset}
+            removing={removingPreset}
           />
           <ComboboxField
             label={t("reminders.content")}
@@ -350,8 +477,12 @@ export default function CareDailyRecordsScreen({
             value={content}
             onChangeText={setContent}
             options={contentOptions}
-            placeholder={t("reminders.contentPlaceholder")}
+            placeholder=""
             emptyText={t("reminders.emptyPreset")}
+            onAddCurrent={canWrite ? () => handleAddPreset("content") : undefined}
+            onRemoveOption={canWrite ? handleRemovePreset : undefined}
+            adding={addingPreset}
+            removing={removingPreset}
           />
           <Text style={styles.label}>{t("reminders.noteOptional")}</Text>
           <View style={styles.noteRow}>
@@ -360,8 +491,6 @@ export default function CareDailyRecordsScreen({
               style={styles.noteInput}
               value={note}
               onChangeText={setNote}
-              placeholder={t("daily.notePlaceholder")}
-              placeholderTextColor={colors.textMuted}
               multiline
               textAlignVertical="top"
             />
@@ -383,8 +512,6 @@ export default function CareDailyRecordsScreen({
             style={styles.obsInput}
             value={obs.sleep}
             onChangeText={(v) => setObs((prev) => ({ ...prev, sleep: v }))}
-            placeholder={t("daily.sleepPh")}
-            placeholderTextColor={colors.textMuted}
           />
           <View style={styles.obsLabelRow}>
             <NeoIcon name="activity" size={16} glow />
@@ -394,8 +521,6 @@ export default function CareDailyRecordsScreen({
             style={styles.obsInput}
             value={obs.bloodPressure}
             onChangeText={(v) => setObs((prev) => ({ ...prev, bloodPressure: v }))}
-            placeholder={t("daily.bpPh")}
-            placeholderTextColor={colors.textMuted}
           />
           <View style={styles.obsLabelRow}>
             <NeoIcon name="heart" size={16} glow />
@@ -405,8 +530,6 @@ export default function CareDailyRecordsScreen({
             style={styles.obsInput}
             value={obs.heartRate}
             onChangeText={(v) => setObs((prev) => ({ ...prev, heartRate: v }))}
-            placeholder={t("daily.hrPh")}
-            placeholderTextColor={colors.textMuted}
             keyboardType="numeric"
           />
           <View style={styles.obsLabelRow}>
@@ -417,8 +540,6 @@ export default function CareDailyRecordsScreen({
             style={styles.obsInput}
             value={obs.temperature}
             onChangeText={(v) => setObs((prev) => ({ ...prev, temperature: v }))}
-            placeholder={t("daily.tempPh")}
-            placeholderTextColor={colors.textMuted}
             keyboardType="decimal-pad"
           />
           </View>

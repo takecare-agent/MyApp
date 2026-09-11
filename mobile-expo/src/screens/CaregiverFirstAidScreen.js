@@ -1,74 +1,43 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useState } from "react"
 import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import AidTeachMedia from "../components/AidTeachMedia"
+import CprLoopAnim from "../components/CprLoopAnim"
+import HeimlichLoopAnim from "../components/HeimlichLoopAnim"
 import CprMetronome from "../components/CprMetronome"
 import { useI18n } from "../i18n/I18nContext"
-import { apiRequest } from "../lib/api"
-import { AID_HOME_CALL, AID_HOME_NOW, AID_ROOT, AID_TREE } from "../lib/firstAidTree"
-import { AID_ROUTE_TO_NODE, matchAidVoice } from "../lib/firstAidVoice"
-import {
-  bindUtteranceHandlers,
-  destroyVoice,
-  isVoiceAvailable,
-  requestMicPermission,
-  startListening,
-  stopListening
-} from "../lib/speechCare"
+import { AID_ROOT, AID_TREE } from "../lib/firstAidTree"
 import { colors } from "./new_ui/tokens"
 import { NeoIcon } from "./new_ui/NeoIcons"
+
+const TILE_IMG = {
+  cpr: require("../assets/emergency/cpr.png"),
+  choking: require("../assets/emergency/choke.png"),
+  fall: require("../assets/emergency/fall.png"),
+  stroke: require("../assets/emergency/stroke.png")
+}
+
+const HOME_CARDS = [
+  { id: "cpr", quadrant: "cpr", labelKey: "aid.home.cpr", next: "leaf_cpr", chevron: "#FF4D4D" },
+  { id: "choke", quadrant: "choking", labelKey: "aid.home.choke", next: "q2a", chevron: "#FFA726" },
+  { id: "fall", quadrant: "fall", labelKey: "aid.home.fall", next: "leaf_fall", chevron: "#FF4D4D" },
+  { id: "fast", quadrant: "stroke", labelKey: "aid.home.fast", next: "leaf_fast", chevron: "#10B981" }
+]
 
 function call119() {
   Linking.openURL("tel:119").catch(() => {})
 }
 
-function TileGrid({ tiles, t, onPick }) {
+function EmergencyIconCard({ quadrant }) {
   return (
-    <View style={styles.grid}>
-      {tiles.map((tile) => (
-        <Pressable
-          key={tile.id}
-          style={({ pressed }) => [
-            styles.tile,
-            tile.urgent ? styles.tileWide : null,
-            pressed ? styles.pressed : null
-          ]}
-          onPress={() => onPick(tile.next)}
-          accessibilityRole="button"
-          accessibilityLabel={t(tile.labelKey)}
-        >
-          {tile.image ? (
-            <Image source={tile.image} style={[styles.tileImg, tile.urgent ? styles.tileImgWide : null]} resizeMode="cover" />
-          ) : null}
-          {tile.urgent ? (
-            <>
-              <View style={styles.cprBadge}>
-                <NeoIcon name="alert-circle" size={14} color="#FF4D4D" />
-                <Text style={styles.cprBadgeText} numberOfLines={1}>{t(tile.labelKey)}</Text>
-              </View>
-              <View style={styles.cprChevron}>
-                <NeoIcon name="chevron-right" size={16} color="#FF4D4D" />
-              </View>
-            </>
-          ) : (
-            <View style={styles.tileLabelRow}>
-              <Text style={styles.tileText} numberOfLines={1}>
-                {t(tile.labelKey)}
-              </Text>
-              <NeoIcon name="chevron-right" size={16} color="#FF4D4D" />
-            </View>
-          )}
-        </Pressable>
-      ))}
+    <View style={styles.iconMask}>
+      <Image source={TILE_IMG[quadrant]} style={styles.iconImg} resizeMode="cover" />
     </View>
   )
 }
 
-export default function CaregiverFirstAidScreen({ onBack, embedded = false, apiBaseUrl, token }) {
-  const { t, lang } = useI18n()
+export default function CaregiverFirstAidScreen({ onBack, embedded = false }) {
+  const { t } = useI18n()
   const [stack, setStack] = useState([AID_ROOT])
-  const [listening, setListening] = useState(false)
-  const [voiceHint, setVoiceHint] = useState("")
-  const sessionRef = useRef(null)
   const nodeId = stack[stack.length - 1] || AID_ROOT
   const node = AID_TREE[nodeId] || null
   const atHome = nodeId === AID_ROOT
@@ -79,46 +48,6 @@ export default function CaregiverFirstAidScreen({ onBack, embedded = false, apiB
     setStack((prev) => [...prev, nextId])
   }, [])
 
-  useEffect(() => {
-    const routeUtterance = async (raw) => {
-      setListening(false)
-      if (!raw) {
-        setVoiceHint(t("aid.voice.miss"))
-        return
-      }
-      let next = null
-      if (apiBaseUrl && token) {
-        try {
-          const data = await apiRequest({
-            apiBaseUrl,
-            path: "/aid-route",
-            method: "POST",
-            token,
-            body: { text: raw }
-          })
-          next = AID_ROUTE_TO_NODE[data?.route] || null
-        } catch {
-          next = null
-        }
-      }
-      if (!next) next = matchAidVoice(raw)
-      if (next) goTo(next)
-      else setVoiceHint(t("aid.voice.miss"))
-    }
-    sessionRef.current = bindUtteranceHandlers({
-      onComplete: routeUtterance,
-      onError: () => {
-        setListening(false)
-        setVoiceHint(t("aid.voice.miss"))
-      }
-    })
-    return () => {
-      stopListening()
-      destroyVoice()
-      sessionRef.current = null
-    }
-  }, [apiBaseUrl, goTo, t, token])
-
   const goPrev = useCallback(() => {
     if (stack.length <= 1) {
       onBack?.()
@@ -126,34 +55,6 @@ export default function CaregiverFirstAidScreen({ onBack, embedded = false, apiB
     }
     setStack((prev) => prev.slice(0, -1))
   }, [onBack, stack.length])
-
-  const listen = useCallback(async () => {
-    if (listening) {
-      await stopListening()
-      setListening(false)
-      setTimeout(() => sessionRef.current?.completeNow?.(), 300)
-      return
-    }
-    const available = await isVoiceAvailable()
-    if (!available) {
-      setVoiceHint(t("aid.voice.miss"))
-      return
-    }
-    const ok = await requestMicPermission()
-    if (!ok) {
-      setVoiceHint(t("aid.voice.miss"))
-      return
-    }
-    setVoiceHint("")
-    sessionRef.current?.reset?.()
-    setListening(true)
-    try {
-      await startListening(lang)
-    } catch {
-      setListening(false)
-      setVoiceHint(t("aid.voice.miss"))
-    }
-  }, [lang, listening, t])
 
   return (
     <View style={styles.flex}>
@@ -172,30 +73,42 @@ export default function CaregiverFirstAidScreen({ onBack, embedded = false, apiB
         contentContainerStyle={styles.pad}
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
+        scrollEnabled={!node?.hasMetronome}
       >
         {atHome ? (
           <View style={styles.block}>
+            <View style={styles.grid}>
+              {HOME_CARDS.map((card) => (
+                <Pressable
+                  key={card.id}
+                  style={({ pressed }) => [styles.tile, pressed ? styles.pressed : null]}
+                  onPress={() => goTo(card.next)}
+                  accessibilityRole="button"
+                  accessibilityLabel={t(card.labelKey)}
+                >
+                  <EmergencyIconCard quadrant={card.quadrant} />
+                  <View style={styles.tileLabelRow}>
+                    <Text style={styles.tileText} numberOfLines={2}>
+                      {t(card.labelKey)}
+                    </Text>
+                    <NeoIcon name="chevron-right" size={16} color={card.chevron} />
+                  </View>
+                </Pressable>
+              ))}
+            </View>
             <Pressable
-              style={({ pressed }) => [styles.voiceBtn, pressed ? styles.pressed : null]}
-              onPress={listen}
-              accessibilityRole="button"
+              style={({ pressed }) => [styles.moreBtn, pressed ? styles.pressed : null]}
+              onPress={() => goTo("q0")}
             >
-              <NeoIcon name="mic" size={16} color="#FF4D4D" />
-              <Text style={styles.voiceText} numberOfLines={1}>{listening ? t("aid.voice.listen") : t("aid.voice.say")}</Text>
+              <Text style={styles.moreText}>{t("aid.home.more")}</Text>
               <NeoIcon name="chevron-right" size={16} color="#8E95A3" />
             </Pressable>
-            {voiceHint ? <Text style={styles.hint}>{voiceHint}</Text> : null}
-            <Text style={styles.sec}>{t("aid.sec.now")}</Text>
-            <TileGrid tiles={AID_HOME_NOW} t={t} onPick={goTo} />
-            <Text style={styles.sec}>{t("aid.sec.call")}</Text>
-            <TileGrid tiles={AID_HOME_CALL} t={t} onPick={goTo} />
           </View>
         ) : null}
 
-        {!atHome && node?.videoId ? <AidTeachMedia videoId={node.videoId} t={t} /> : null}
-        {!atHome && !node?.videoId && node?.image ? (
-          <Image source={node.image} style={styles.hero} resizeMode="contain" />
-        ) : null}
+        {!atHome && node?.loopAnim === "cpr" ? <CprLoopAnim /> : null}
+        {!atHome && node?.loopAnim === "heimlich" ? <HeimlichLoopAnim /> : null}
+        {!atHome && !node?.loopAnim && node?.videoId ? <AidTeachMedia videoId={node.videoId} t={t} /> : null}
 
         {node?.type === "q" ? (
           <View style={styles.block}>
@@ -219,8 +132,13 @@ export default function CaregiverFirstAidScreen({ onBack, embedded = false, apiB
         {node?.type === "leaf" ? (
           <View style={styles.block}>
             <Text style={styles.prompt}>{t(node.titleKey)}</Text>
-            {(node.bodyKeys || []).map((key) => (
-              <Text key={key} style={styles.stepLine}>{t(key)}</Text>
+            {(node.bodyKeys || []).map((key, index) => (
+              <View key={key} style={styles.stepRow}>
+                <View style={styles.stepNum}>
+                  <Text style={styles.stepNumText}>{String(index + 1)}</Text>
+                </View>
+                <Text style={styles.stepLine}>{t(key)}</Text>
+              </View>
             ))}
             {node.hasMetronome ? <CprMetronome t={t} enabled /> : null}
             {node.poisonTel ? (
@@ -248,7 +166,6 @@ export default function CaregiverFirstAidScreen({ onBack, embedded = false, apiB
 
       <View style={styles.footer}>
         <Pressable style={styles.cta119} onPress={call119} accessibilityRole="button">
-          <NeoIcon name="phone" size={20} color="#FFFFFF" />
           <Text style={styles.cta119Text}>119</Text>
         </Pressable>
       </View>
@@ -272,10 +189,14 @@ const styles = StyleSheet.create({
   back: { color: "#FF4D4D", fontWeight: "800", fontSize: 16 },
   topTitle: { color: colors.text, fontWeight: "900", fontSize: 17 },
   topSpacer: { width: 48 },
-  pad: { padding: 16, paddingBottom: 24, gap: 12 },
+  pad: { padding: 12, paddingBottom: 12, gap: 8 },
   block: { gap: 10 },
-  sec: { color: colors.textMuted, fontWeight: "800", fontSize: 13, marginTop: 4 },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  grid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    rowGap: 14
+  },
   tile: {
     width: "48%",
     backgroundColor: "#16181D",
@@ -283,47 +204,45 @@ const styles = StyleSheet.create({
     borderCurve: "continuous",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.1)",
+    padding: 10,
     overflow: "hidden"
   },
-  tileWide: { width: "100%", position: "relative" },
-  tileImg: { width: "100%", height: 92, backgroundColor: colors.card },
-  tileImgWide: { height: 148 },
+  iconMask: {
+    width: "100%",
+    height: 110,
+    borderRadius: 16,
+    borderCurve: "continuous",
+    overflow: "hidden",
+    backgroundColor: "#16181D"
+  },
+  iconImg: {
+    width: "100%",
+    height: "100%"
+  },
   tileLabelRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    marginTop: 8,
+    paddingHorizontal: 4,
     gap: 6
   },
-  tileText: { flex: 1, color: colors.text, fontWeight: "800", fontSize: 14 },
-  cprBadge: {
-    position: "absolute",
-    left: 10,
-    bottom: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "#3B0A0A",
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5
-  },
-  cprBadgeText: { color: "#FF4D4D", fontWeight: "800", fontSize: 12 },
-  cprChevron: { position: "absolute", right: 10, bottom: 12 },
-  voiceBtn: {
-    backgroundColor: "#000000",
-    borderRadius: 999,
+  tileText: { flex: 1, color: "#FFFFFF", fontWeight: "700", fontSize: 14 },
+  moreBtn: {
+    minHeight: 44,
+    borderRadius: 12,
     borderCurve: "continuous",
-    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "#16181D",
     paddingHorizontal: 14,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8
+    justifyContent: "space-between"
   },
-  voiceText: { flex: 1, color: "#FFFFFF", fontWeight: "800" },
-  hero: { width: "100%", height: 220, backgroundColor: colors.card, borderRadius: 24, borderCurve: "continuous" },
-  prompt: { color: colors.text, fontWeight: "900", fontSize: 22, lineHeight: 30 },
+  moreText: { color: "#FFFFFF", fontWeight: "700", fontSize: 14 },
+  hero: { width: "100%", height: 128, backgroundColor: colors.card, borderRadius: 16, borderCurve: "continuous" },
+  prompt: { color: "#FFFFFF", fontWeight: "900", fontSize: 20, lineHeight: 26, marginBottom: 6 },
   hint: { color: colors.textMuted, fontWeight: "600" },
   choices: { gap: 10 },
   choice: {
@@ -337,7 +256,18 @@ const styles = StyleSheet.create({
   },
   choiceWarn: { borderColor: "#E05A47", backgroundColor: "rgba(224,90,71,0.12)" },
   choiceText: { color: colors.text, fontWeight: "800", fontSize: 17, lineHeight: 24 },
-  stepLine: { color: colors.text, fontWeight: "700", fontSize: 17, lineHeight: 26 },
+  stepRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+  stepNum: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#FF4D4D",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 2
+  },
+  stepNumText: { color: "#FFFFFF", fontWeight: "700", fontSize: 12 },
+  stepLine: { flex: 1, color: "#FFFFFF", fontWeight: "700", fontSize: 14, lineHeight: 24 },
   restart: { color: colors.pine, fontWeight: "800" },
   pressed: { opacity: 0.7 },
   footer: {
@@ -350,12 +280,10 @@ const styles = StyleSheet.create({
   cta119: {
     height: 56,
     backgroundColor: "#FF4D4D",
-    borderRadius: 999,
+    borderRadius: 16,
     borderCurve: "continuous",
     alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 8
+    justifyContent: "center"
   },
-  cta119Text: { color: "#fff", fontSize: 22, fontWeight: "900" }
+  cta119Text: { color: "#fff", fontSize: 20, fontWeight: "900" }
 })

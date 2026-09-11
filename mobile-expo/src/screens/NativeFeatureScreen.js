@@ -13,33 +13,35 @@ import {
 import { WebView } from "react-native-webview"
 import { apiRequest, caregiverSosResolve } from "../lib/api"
 import MonthCalendar, { shiftMonth as shiftMonthKey } from "../components/MonthCalendar"
-import { weekdayShortLabels } from "../i18n/dateLocale"
+import { formatDateTime, weekdayShortLabels } from "../i18n/dateLocale"
 import TranslatedUgcText from "../components/TranslatedUgcText"
 import AbnormalReportScreen from "./AbnormalReportScreen"
 import { catalogs } from "../i18n/catalogs"
 import { catalogPatch } from "../i18n/catalogPatch"
+import { catalogSkin } from "../i18n/catalogSkin"
 import {
   loadSosPhone,
   saveSosPhone
 } from "../lib/storage"
 import { colors, night } from "./new_ui/tokens"
+import { ensureFilled, screenshotWatchRecords } from "./new_ui/screenshotFill"
 import { NightSkinProvider, useNightSkin } from "./new_ui/NightSkin"
 import { IconPlay } from "./new_ui/GlassCircle"
 import { NeoIcon } from "./new_ui/NeoIcons"
 
-function formatValue(value) {
+function formatValue(value, lang = "zh") {
   if (value == null || value === "") return "-"
-  if (value instanceof Date) return value.toLocaleString("zh-TW", { hour12: false })
-  if (Array.isArray(value)) return value.map(formatValue).join(" / ")
+  if (value instanceof Date) return formatDateTime(value, lang)
+  if (Array.isArray(value)) return value.map((entry) => formatValue(entry, lang)).join(" / ")
   if (typeof value === "object") {
     return Object.entries(value)
       .filter(([key]) => !["_id", "__v", "userId", "patientUserId", "reporterUserId", "claimedByUserId", "resolvedByUserId"].includes(key))
-      .map(([key, entryValue]) => `${key}: ${formatValue(entryValue)}`)
+      .map(([key, entryValue]) => `${key}: ${formatValue(entryValue, lang)}`)
       .join("\n")
   }
   if (typeof value === "string" && /\d{4}-\d{2}-\d{2}T/.test(value)) {
     const date = new Date(value)
-    if (!Number.isNaN(date.getTime())) return date.toLocaleString("zh-TW", { hour12: false })
+    if (!Number.isNaN(date.getTime())) return formatDateTime(date, lang)
   }
   return String(value)
 }
@@ -126,7 +128,7 @@ const TYPE_I18N = {
 
 function lookupI18n(lang, key, fallback) {
   const code = lang || "zh"
-  const table = (l) => ({ ...(catalogs[l] || {}), ...(catalogPatch[l] || {}) })
+  const table = (l) => ({ ...(catalogs[l] || {}), ...(catalogPatch[l] || {}), ...(catalogSkin[l] || {}) })
   return table(code)[key] ?? table("zh")[key] ?? table("en")[key] ?? fallback ?? key
 }
 
@@ -272,6 +274,29 @@ function getTypeLabel(type, lang) {
   return String(type)
 }
 
+function isManualAlertSource(record) {
+  const src = String(record?.source || "").toLowerCase()
+  return src.includes("manual")
+}
+
+function isCameraAlertSource(record) {
+  if (record?.recordKind === "vision-event") return true
+  const src = String(record?.source || "").toLowerCase()
+  return src.includes("vision")
+}
+
+function getSourcedTypeLabel(record, lang) {
+  const base = getTypeLabel(record?.type, lang)
+  if (isSosRecord(record) || !isFallLikeType(record?.type)) return base
+  if (isManualAlertSource(record)) {
+    return `${base}（${lookupI18n(lang, "alert.sourceManual", "手動")}）`
+  }
+  if (isCameraAlertSource(record)) {
+    return `${base}（${lookupI18n(lang, "alert.sourceCamera", "鏡頭")}）`
+  }
+  return base
+}
+
 function getSeverityLabel(severity, lang) {
   if (!severity) return "—"
   return lookupI18n(lang, `alert.severity.${severity}`, String(severity))
@@ -317,7 +342,7 @@ function getDisplaySeverity(record) {
 }
 
 function getAlertTitle(record, lang) {
-  const typeLabel = getTypeLabel(record?.type, lang)
+  const typeLabel = getSourcedTypeLabel(record, lang)
   if (isRecordOnlyEvent(record) && (isFallLikeType(record?.type) || record?.severity === "High" || record?.severity === "Critical")) {
     return `${typeLabel}（${lookupI18n(lang, "alert.notEscalatedParen", "未達通報")}）`
   }
@@ -831,6 +856,7 @@ const UI_TEXT = {
     filterTimeLabel: "Waktu",
     filterClassLabel: "Jenis",
     pickFilter: "Filter",
+    manualReport: "Catat manual",
     statsAlert: "Dilaporkan", statsDaily: "Rutin", statsResolved: "Selesai",
     statsAvg: "Rata-rata", statsDelta: "vs sebelumnya", statsMinutes: "mnt",
     statsBarTitle: "Minggu ini: merah = dilaporkan | abu = rutin",
@@ -920,6 +946,7 @@ const UI_TEXT = {
     filterTimeLabel: "Thời gian",
     filterClassLabel: "Loại",
     pickFilter: "Bộ lọc",
+    manualReport: "Ghi tay",
     statsAlert: "Ngã", statsDaily: "Động tác thường", statsResolved: "Đã xem",
     statsAvg: "Xử lý TB", statsDelta: "so với trước", statsMinutes: "phút",
     statsBarTitle: "Số lần mỗi ngày",
@@ -1009,6 +1036,7 @@ const UI_TEXT = {
     filterTimeLabel: "Oras",
     filterClassLabel: "Uri",
     pickFilter: "Filter",
+    manualReport: "I-log mismo",
     statsAlert: "Naiulat", statsDaily: "Pang-araw-araw", statsResolved: "Tapos",
     statsAvg: "Avg.", statsDelta: "vs dati", statsMinutes: "min",
     statsBarTitle: "Linggong ito: pula = naiulat | abo = pang-araw-araw",
@@ -1098,6 +1126,7 @@ const UI_TEXT = {
     filterTimeLabel: "เวลา",
     filterClassLabel: "ประเภท",
     pickFilter: "ตัวกรอง",
+    manualReport: "บันทึกมือ",
     statsAlert: "แจ้งแล้ว", statsDaily: "ประจำวัน", statsResolved: "จัดการแล้ว",
     statsAvg: "เฉลี่ย", statsDelta: "เทียบก่อน", statsMinutes: "นาที",
     statsBarTitle: "สัปดาห์นี้: แดง = แจ้ง | เทา = ประจำวัน",
@@ -1184,7 +1213,7 @@ function AlertRecordCard({ record, t, alertLifecycle, readOnly, emphasize, apiBa
     : (t.notEscalated || "未達通報")
   const relative = formatRelativeTime(getRecordTime(record), uiLang)
   const stamp = formatStampParts(getRecordTime(record))
-  const plainTitle = getTypeLabel(record?.type, uiLang)
+  const plainTitle = getSourcedTypeLabel(record, uiLang)
   const showMedia = !ledger
   const isVideoEvent = isFallLikeType(record?.type) && !recordOnly
   const jumpTs = new Date(getRecordTime(record)).getTime()
@@ -1777,7 +1806,7 @@ function NativeRecordCard({
   return (
     <View style={styles.recordCard}>
       <Text style={styles.recordTitle}>{getRecordTitle(record, index, t)}</Text>
-      {time ? <Text style={styles.recordTime}>{formatValue(time)}</Text> : null}
+      {time ? <Text style={styles.recordTime}>{formatValue(time, uiLang)}</Text> : null}
       {isReminderRecord(record) ? (
         <View style={styles.fieldRow}>
           <Text style={styles.fieldKey}>{t.fieldStatus || "狀態"}</Text>
@@ -1789,7 +1818,7 @@ function NativeRecordCard({
       {entries.map(([key, value]) => (
         <View key={key} style={styles.fieldRow}>
           <Text style={styles.fieldKey}>{key}</Text>
-          <Text style={styles.fieldValue}>{formatValue(value)}</Text>
+          <Text style={styles.fieldValue}>{formatValue(value, uiLang)}</Text>
         </View>
       ))}
       {canCompleteReminder ? (
@@ -1817,8 +1846,8 @@ function parseDateKey(key) {
   return new Date(y || 1970, (m || 1) - 1, d || 1)
 }
 
-function weekAxisDays(series) {
-  const week = weekdayShortLabels("zh") || []
+function weekAxisDays(series, lang = "zh") {
+  const week = weekdayShortLabels(lang) || []
   return (Array.isArray(series) ? series : []).map((row) => {
     const key = String(row?.date || "").slice(0, 10)
     const d = parseDateKey(key)
@@ -1832,22 +1861,22 @@ function weekAxisDays(series) {
   })
 }
 
-function WeekDots({ series, focus = "all" }) {
-  const days = weekAxisDays(series)
+function WeekDots({ series, focus = "all", lang = "zh", weekPrefix = "" }) {
+  const days = weekAxisDays(series, lang)
   const showFall = focus === "all" || focus === "fall"
   const showSos = focus === "all" || focus === "sos"
   const showDaily = focus === "all" || focus === "daily"
   const wide = days.length > 8
   const cols = days.map((day) => {
     const dateLabel = String(day.date).length >= 10
-      ? `${String(day.date).slice(5, 7)}/${String(day.date).slice(8, 10)}`
+      ? `${Number(String(day.date).slice(5, 7))}/${Number(String(day.date).slice(8, 10))}`
       : day.date
     const hasFall = showFall && day.alertHigh > 0
     const hasOk = (showDaily && day.recordOnly > 0) || (showSos && day.sos > 0)
     return (
       <View key={day.date} style={[styles.weekDotCol, wide ? styles.weekDotColWide : null]}>
-        <Text style={styles.weekDotDate} numberOfLines={1}>{dateLabel}</Text>
-        <Text style={styles.weekDotWeek} numberOfLines={1}>{`週${day.weekLabel}`}</Text>
+        <Text style={styles.weekDotDate} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{dateLabel}</Text>
+        <Text style={styles.weekDotWeek} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{`${weekPrefix}${day.weekLabel}`}</Text>
         <View style={styles.weekDotStack}>
           {hasFall ? (
             <View style={[styles.weekDot, styles.weekDotFall]} />
@@ -2024,14 +2053,19 @@ export default function NativeFeatureScreen({
           /* SOS 併入失敗仍顯示跌倒／日常 */
         }
       }
+      if (isAlertsPath && layout !== "liveFeed" && layout !== "sentryList") {
+        rows = ensureFilled(rows, screenshotWatchRecords, 4)
+      }
       setRecords(rows)
     } catch (loadError) {
       if (!silent) setError(loadError.message)
-      setRecords([])
+      setRecords(isAlertsFeature && layout !== "liveFeed" && layout !== "sentryList"
+        ? ensureFilled([], screenshotWatchRecords, 4)
+        : [])
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [apiBaseUrl, feature, isPlannedFeature, role, token])
+  }, [apiBaseUrl, feature, isAlertsFeature, isPlannedFeature, layout, role, token])
 
   useEffect(() => {
     if (isPlannedFeature) {
@@ -2952,7 +2986,12 @@ export default function NativeFeatureScreen({
                   </View>
                 )}
                 {Array.isArray(displayAlertStats.series) && displayAlertStats.series.length ? (
-                  <WeekDots series={displayAlertStats.series} focus={layout === "history" ? historyClass : "all"} />
+                  <WeekDots
+                    series={displayAlertStats.series}
+                    focus={layout === "history" ? historyClass : "all"}
+                    lang={langKey}
+                    weekPrefix={lookupI18n(langKey, "time.weekPrefix", "")}
+                  />
                 ) : null}
                 {layout !== "history" && !sentryLayout && Array.isArray(displayAlertStats.series) && displayAlertStats.series.length ? (
                   <View style={styles.barChart}>
@@ -3472,13 +3511,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 16,
+    paddingHorizontal: 10,
     paddingVertical: 12,
     backgroundColor: "#13151A",
     borderRadius: 16,
     marginVertical: 12,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)"
+    borderColor: "rgba(255,255,255,0.05)",
+    overflow: "hidden"
   },
   weekDotsScroll: {
     paddingHorizontal: 16,
@@ -3492,7 +3532,7 @@ const styles = StyleSheet.create({
   },
   weekDotsTitle: { color: colors.text, fontSize: 14, fontWeight: "800" },
   weekDotsRow: { flexDirection: "row", justifyContent: "space-between" },
-  weekDotCol: { flex: 1, alignItems: "center" },
+  weekDotCol: { flex: 1, minWidth: 0, alignItems: "center", overflow: "hidden", paddingHorizontal: 1 },
   weekDotColWide: { flex: 0, width: 44, alignItems: "center" },
   weekDotStack: { height: 16, alignItems: "center", justifyContent: "center" },
   weekDot: { width: 6, height: 6, borderRadius: 3 },
@@ -3501,8 +3541,8 @@ const styles = StyleSheet.create({
   weekDotFall: { backgroundColor: "#FF4D4D", boxShadow: "0 0 6px rgba(255,77,77,0.7)" },
   weekDotSos: { backgroundColor: "#FFA726", boxShadow: "0 0 6px rgba(255,167,38,0.6)" },
   weekDotDaily: { backgroundColor: "#10B981", boxShadow: "0 0 6px rgba(16,185,129,0.55)" },
-  weekDotDate: { color: "#8E95A3", fontSize: 11, fontFamily: "Menlo", fontVariant: ["tabular-nums"] },
-  weekDotWeek: { color: "#FFFFFF", fontSize: 12, fontWeight: "500", marginVertical: 4 },
+  weekDotDate: { color: "#8E95A3", fontSize: 10, fontVariant: ["tabular-nums"] },
+  weekDotWeek: { color: "#FFFFFF", fontSize: 11, fontWeight: "600", marginVertical: 4 },
   statsRow: {
     flexDirection: "row",
     gap: 10,

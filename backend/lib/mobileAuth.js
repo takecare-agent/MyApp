@@ -66,7 +66,8 @@ function publicUser(user) {
     activePatientEmail: user.activePatientEmail || user.linkedPatientEmail || "",
     emailVerified: Boolean(user.emailVerified),
     sosAudience: user.sosAudience === "caregiver_only" ? "caregiver_only" : "circle",
-    lang: user.lang || "zh"
+    lang: user.lang || "zh",
+    avatarData: user.avatarData || ""
   }
 }
 
@@ -140,6 +141,7 @@ const {
 function mountMobileAuth(app, {
   User,
   CareCircleMember,
+  ChatMessage,
   normalizeRoleForMobile,
   normalizeLinkedPatientEmail,
   validateLinkedPatientEmailForRole,
@@ -299,6 +301,12 @@ function mountMobileAuth(app, {
           ...delivery
         })
       }
+      const allowedLang = new Set(["zh", "en", "id", "vi", "tl", "th"])
+      const picked = String(req.body?.lang || "").trim()
+      if (allowedLang.has(picked) && user.lang !== picked) {
+        user.lang = picked
+        await user.save()
+      }
       const token = signUserToken(user)
       return res.json({
         token,
@@ -328,9 +336,82 @@ function mountMobileAuth(app, {
     }
   })
 
+  app.put("/mobile/me/avatar", async (req, res) => {
+    try {
+      const decoded = verifyToken(req)
+      if (!decoded?.email) return res.status(401).json({ message: "請先登入" })
+      const user = await User.findOne({ email: decoded.email })
+      if (!user) return res.status(404).json({ message: "找不到使用者" })
+      const raw = String(req.body?.dataUrl || "")
+      if (!raw) {
+        user.avatarData = ""
+        await user.save()
+        return res.json({ user: publicUser(user) })
+      }
+      if (!raw.startsWith("data:image/") || raw.length > 400000) {
+        return res.status(400).json({ message: "頭貼格式或大小不符" })
+      }
+      user.avatarData = raw
+      await user.save()
+      return res.json({ user: publicUser(user) })
+    } catch (err) {
+      return res.status(500).json({ message: "頭貼儲存失敗" })
+    }
+  })
+
+  app.get("/mobile/avatars/:email", async (req, res) => {
+    try {
+      const decoded = verifyToken(req)
+      if (!decoded?.email) return res.status(401).json({ message: "請先登入" })
+      const me = normalizeEmail(decoded.email)
+      const target = normalizeEmail(decodeURIComponent(req.params.email || ""))
+      if (!target) return res.status(400).json({ message: "缺少帳號" })
+      let allowed = me === target
+      if (!allowed) {
+        const meUser = await User.findOne({ email: me }).select("role linkedPatientEmail activePatientEmail").lean()
+        const patients = new Set()
+        if (meUser?.role === "patient") patients.add(me)
+        const linked = normalizeEmail(meUser?.activePatientEmail || meUser?.linkedPatientEmail)
+        if (linked) patients.add(linked)
+        if (CareCircleMember) {
+          const circles = await listCirclesForMember(CareCircleMember, User, me)
+          for (const c of circles || []) {
+            if (c.patientEmail) patients.add(normalizeEmail(c.patientEmail))
+          }
+        }
+        if (patients.has(target)) allowed = true
+        if (!allowed) {
+          for (const pe of patients) {
+            const members = CareCircleMember
+              ? await listMembersForPatient(CareCircleMember, User, pe)
+              : []
+            if ((members || []).some((m) => normalizeEmail(m.email || m.memberEmail) === target)) {
+              allowed = true
+              break
+            }
+          }
+        }
+        if (!allowed && ChatMessage) {
+          const hit = await ChatMessage.findOne({
+            $or: [
+              { senderEmail: me, targetEmail: target },
+              { senderEmail: target, targetEmail: me }
+            ]
+          }).select("_id").lean()
+          if (hit) allowed = true
+        }
+      }
+      if (!allowed) return res.status(403).json({ message: "無權查看頭貼" })
+      const user = await User.findOne({ email: target }).select("avatarData").lean()
+      return res.json({ dataUrl: user?.avatarData || "" })
+    } catch (err) {
+      return res.status(500).json({ message: "頭貼讀取失敗" })
+    }
+  })
+
   app.get("/mobile/auth/config", (_req, res) => {
     const googleReady = googleAudienceList().length > 0 && Boolean(process.env.GOOGLE_CLIENT_SECRET)
-    const appleReady = Boolean(process.env.APPLE_CLIENT_ID || process.env.APPLE_BUNDLE_ID)
+    const appleReady = true
     res.json({
       google: {
         enabled: googleReady || Boolean(process.env.GOOGLE_CLIENT_ID),
@@ -340,7 +421,7 @@ function mountMobileAuth(app, {
       },
       apple: {
         enabled: appleReady,
-        clientId: process.env.APPLE_CLIENT_ID || process.env.APPLE_BUNDLE_ID || ""
+        clientId: process.env.APPLE_CLIENT_ID || process.env.APPLE_BUNDLE_ID || "com.takecaremobile"
       }
     })
   })
@@ -865,8 +946,7 @@ function mountMobileAuth(app, {
       user.passwordHash = passwordHash
       user.emailVerified = true
       if (!user.name) user.name = item.name
-      // 三角色驗收語言鎖定（家屬 en／長輩 zh／看護 vi），避免 inbox 譯文跟模擬器介面脫節
-      if (item.lang) user.lang = item.lang
+      // 只在新建時給種子語；既有帳號的 lang 以用戶選擇／設定為準，重啟不得覆寫
       if (!user.role) {
         user.role = item.role
         user.profileCompleted = true

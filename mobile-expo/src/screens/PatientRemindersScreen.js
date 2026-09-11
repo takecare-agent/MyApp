@@ -16,7 +16,6 @@ import { usePollingRefresh } from "../lib/usePollingRefresh"
 import ReminderCompletedHistory from "./ReminderCompletedHistory"
 import { useI18n } from "../i18n/I18nContext"
 import { colors } from "./new_ui/tokens"
-import { ensureFilled, screenshotPatientReminders } from "./new_ui/screenshotFill"
 
 /** 受顧者只看「今日」；完成紀錄走獨立封存頁 */
 export default function PatientRemindersScreen({ apiBaseUrl, token }) {
@@ -35,12 +34,12 @@ export default function PatientRemindersScreen({ apiBaseUrl, token }) {
         apiRequest({ apiBaseUrl, path: "/patient/reminders?limit=100", token }),
         apiRequest({ apiBaseUrl, path: "/patient/task-templates/today", token })
       ])
-      setRecords(ensureFilled(Array.isArray(data?.records) ? data.records : [], screenshotPatientReminders, 3))
+      setRecords(Array.isArray(data?.records) ? data.records : [])
       setTemplatesToday(Array.isArray(tpl?.records) ? tpl.records : [])
       if (!silent) setError("")
     } catch (err) {
       if (!silent) setError(err.message || t("common.loadFailed"))
-      setRecords(ensureFilled([], screenshotPatientReminders, 3))
+      setRecords([])
     } finally {
       if (!silent) setLoading(false)
       setRefreshing(false)
@@ -56,8 +55,10 @@ export default function PatientRemindersScreen({ apiBaseUrl, token }) {
 
   const todayList = useMemo(() => {
     const once = records
-      .filter((r) => !isTemplateReminderSource(r.source) && isSameLocalDay(r.time))
-    const tplCards = templatesToday.map((t) => ({
+      .filter((r) => !isTemplateReminderSource(r.source) && isSameLocalDay(r.time) && !r.isCompleted)
+    const tplCards = templatesToday
+      .filter((t) => !t.isCompleted)
+      .map((t) => ({
       _id: `tpl-${t._id}`,
       category: t.category,
       content: t.content,
@@ -68,7 +69,7 @@ export default function PatientRemindersScreen({ apiBaseUrl, token }) {
       isCompleted: t.isCompleted,
       _repeat: true
     }))
-    return ensureFilled([...once, ...tplCards].sort((a, b) => new Date(a.time) - new Date(b.time)), screenshotPatientReminders, 3)
+    return [...once, ...tplCards].sort((a, b) => new Date(a.time) - new Date(b.time))
   }, [records, templatesToday])
 
   const renderItem = ({ item }) => {
@@ -159,26 +160,27 @@ export default function PatientRemindersScreen({ apiBaseUrl, token }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   header: {
-    backgroundColor: "#fff",
+    backgroundColor: colors.bg,
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#e5e7eb",
+    borderBottomColor: colors.border,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between"
   },
-  headerMeta: { fontSize: 14, color: "#6b7280", fontWeight: "600" },
+  headerMeta: { fontSize: 14, color: colors.textMuted, fontWeight: "600" },
   historyLink: {},
-  historyLinkText: { color: colors.pine, fontWeight: "700", fontSize: 14 },
+  historyLinkText: { color: colors.mint, fontWeight: "700", fontSize: 14 },
   listPad: { padding: 16, paddingBottom: 32, paddingTop: 12 },
   card: {
-    backgroundColor: "#fff",
+    backgroundColor: colors.card,
     borderRadius: 22,
+    borderCurve: "continuous",
     padding: 14,
     marginBottom: 12,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "#e5e7eb"
+    borderColor: colors.border
   },
   cardHeader: {
     flexDirection: "row",
@@ -192,20 +194,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4
   },
-  badgeRepeat: { backgroundColor: "#f6ffed" },
-  badgeText: { color: colors.pine, fontSize: 12, fontWeight: "700" },
-  badgeRepeatText: { color: colors.pine },
+  badgeRepeat: { backgroundColor: colors.mintSoft },
+  badgeText: { color: colors.mint, fontSize: 12, fontWeight: "700" },
+  badgeRepeatText: { color: colors.mint },
   statusBadge: {
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 4
   },
-  statusDone: { backgroundColor: "#f6ffed" },
-  statusPending: { backgroundColor: "#fff7e6" },
-  statusText: { fontSize: 12, fontWeight: "600", color: "#374151" },
-  content: { fontSize: 17, fontWeight: "700", color: "#111827", marginBottom: 6 },
-  noteText: { fontSize: 13, color: "#4b5563", marginBottom: 6 },
-  timeText: { fontSize: 13, color: "#6b7280" },
-  empty: { textAlign: "center", marginTop: 48, color: "#9ca3af", fontSize: 15 },
-  error: { color: "#dc2626", marginHorizontal: 16, marginTop: 8 }
+  statusDone: { backgroundColor: colors.mintSoft },
+  statusPending: { backgroundColor: "rgba(245,158,11,0.18)" },
+  statusText: { fontSize: 12, fontWeight: "600", color: colors.textMuted },
+  content: { fontSize: 17, fontWeight: "700", color: colors.text, marginBottom: 6 },
+  noteText: { fontSize: 13, color: colors.textMuted, marginBottom: 6 },
+  timeText: { fontSize: 13, color: colors.textMuted },
+  empty: { textAlign: "center", marginTop: 48, color: colors.textMuted, fontSize: 15 },
+  error: { color: colors.clay, marginHorizontal: 16, marginTop: 8 }
 })

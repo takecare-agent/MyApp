@@ -9,8 +9,40 @@ import {
 } from "react-native"
 import { apiRequest } from "../lib/api"
 import { useI18n } from "../i18n/I18nContext"
+import { NeoIcon } from "../screens/new_ui/NeoIcons"
 
 const COUNTDOWN_SEC = 10
+const PRESET_ICONS = {
+  needHelp: "sos-help",
+  fell: "sos-fell",
+  comeQuick: "sos-run"
+}
+
+function SosCountdownRing({ seconds, total, secLabel }) {
+  const pct = total > 0 ? Math.max(0, Math.min(1, seconds / total)) : 0
+  const deg = Math.round(pct * 360)
+  const spin = -90 + pct * 360
+  return (
+    <View style={styles.ringWrap}>
+      <View style={styles.ringHalo} />
+      <View style={styles.ringTrack} />
+      <View
+        style={[
+          styles.ringSweep,
+          {
+            experimental_backgroundImage: `conic-gradient(from -90deg, #FF3B3B ${deg}deg, #2A2D32 0deg)`
+          }
+        ]}
+      />
+      <View style={[styles.ringGlow, { transform: [{ rotate: `${spin}deg` }] }]} />
+      <View style={styles.ringCore} />
+      <View style={styles.ringCenter}>
+        <Text style={styles.ringNum}>{seconds}</Text>
+        <Text style={styles.ringSec}>{secLabel}</Text>
+      </View>
+    </View>
+  )
+}
 
 /**
  * 長輩首頁 SOS：一按開取消窗。
@@ -45,6 +77,24 @@ export default function PatientSosModal({ visible, apiBaseUrl, token, onClose })
     setPhase("idle")
     setSeconds(COUNTDOWN_SEC)
     setError("")
+  }
+
+  const startCountdown = () => {
+    clearTimer()
+    setPhase("countdown")
+    setSeconds(COUNTDOWN_SEC)
+    setError("")
+    sendingRef.current = false
+    dispatchedRef.current = false
+    timerRef.current = setInterval(() => {
+      setSeconds((prev) => {
+        if (prev <= 1) {
+          clearTimer()
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
   }
 
   const handleClose = () => {
@@ -88,23 +138,7 @@ export default function PatientSosModal({ visible, apiBaseUrl, token, onClose })
       reset()
       return undefined
     }
-
-    setPhase("countdown")
-    setSeconds(COUNTDOWN_SEC)
-    setError("")
-    sendingRef.current = false
-
-    clearTimer()
-    timerRef.current = setInterval(() => {
-      setSeconds((prev) => {
-        if (prev <= 1) {
-          clearTimer()
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
-
+    startCountdown()
     return () => clearTimer()
   }, [visible])
 
@@ -127,24 +161,7 @@ export default function PatientSosModal({ visible, apiBaseUrl, token, onClose })
   }
 
   const handleRetry = () => {
-    setError("")
-    setPhase("countdown")
-    setSeconds(COUNTDOWN_SEC)
-    sendingRef.current = false
-    dispatchedRef.current = false
-    locationPromiseRef.current = requestLocationPermission(permLabels).then((ok) =>
-      ok ? getCurrentPosition(true, permLabels) : null
-    )
-    clearTimer()
-    timerRef.current = setInterval(() => {
-      setSeconds((prev) => {
-        if (prev <= 1) {
-          clearTimer()
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
+    startCountdown()
   }
 
   const showCountdown = phase === "countdown"
@@ -163,8 +180,12 @@ export default function PatientSosModal({ visible, apiBaseUrl, token, onClose })
         <View style={styles.panel}>
           {showCountdown ? (
             <>
-              <Text style={styles.countdown}>{seconds}</Text>
-              <View style={styles.presetRow}>
+              <SosCountdownRing
+                seconds={seconds}
+                total={COUNTDOWN_SEC}
+                secLabel={t("sos.sec")}
+              />
+              <View style={styles.presetCol}>
                 {presets.map((preset) => (
                   <Pressable
                     key={preset.key}
@@ -173,6 +194,7 @@ export default function PatientSosModal({ visible, apiBaseUrl, token, onClose })
                     accessibilityRole="button"
                     accessibilityLabel={preset.text}
                   >
+                    <NeoIcon name={PRESET_ICONS[preset.key]} size={36} tint={false} />
                     <Text style={styles.presetBtnText}>{preset.text}</Text>
                   </Pressable>
                 ))}
@@ -189,31 +211,31 @@ export default function PatientSosModal({ visible, apiBaseUrl, token, onClose })
           ) : null}
 
           {showSending ? (
-            <>
-              <ActivityIndicator color="#b91c1c" style={{ marginVertical: 28 }} />
-            </>
+            <View style={styles.centerBlock}>
+              <ActivityIndicator color="#FF4D4D" style={{ marginVertical: 28 }} />
+            </View>
           ) : null}
 
           {showSent ? (
-            <>
+            <View style={styles.centerBlock}>
               <Text style={styles.title}>{t("sos.sent")}</Text>
               <Pressable style={styles.primaryBtn} onPress={handleClose}>
                 <Text style={styles.primaryBtnText}>{t("sos.close")}</Text>
               </Pressable>
-            </>
+            </View>
           ) : null}
 
           {showError ? (
-            <>
+            <View style={styles.centerBlock}>
               <Text style={styles.title}>{t("sos.sendFail")}</Text>
-              <Text style={styles.errorText}>{error}</Text>
+              {error ? <Text style={styles.errorText}>{error}</Text> : null}
               <Pressable style={styles.primaryBtn} onPress={handleRetry}>
                 <Text style={styles.primaryBtnText}>{t("sos.retry")}</Text>
               </Pressable>
-              <Pressable style={styles.secondaryBtn} onPress={handleClose}>
-                <Text style={styles.secondaryBtnText}>{t("sos.close")}</Text>
+              <Pressable style={styles.cancelBtn} onPress={handleClose}>
+                <Text style={styles.cancelBtnText}>{t("sos.close")}</Text>
               </Pressable>
-            </>
+            </View>
           ) : null}
         </View>
       </View>
@@ -226,92 +248,140 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(127, 29, 29, 0.45)",
-    padding: 24
+    backgroundColor: "rgba(48, 8, 12, 0.62)",
+    padding: 22
   },
   panel: {
     width: "100%",
     maxWidth: 360,
-    backgroundColor: "#fff",
-    borderRadius: 18,
-    padding: 22,
-    gap: 10,
-    borderCurve: "continuous"
+    backgroundColor: "#16181D",
+    borderRadius: 28,
+    borderCurve: "continuous",
+    paddingHorizontal: 16,
+    paddingTop: 22,
+    paddingBottom: 16,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)"
+  },
+  centerBlock: {
+    gap: 12,
+    paddingVertical: 8
   },
   title: {
     fontSize: 22,
     fontWeight: "800",
-    color: "#7f1d1d",
+    color: "#FFFFFF",
     textAlign: "center"
   },
-  countdown: {
-    fontSize: 64,
+  ringWrap: {
+    alignSelf: "center",
+    width: 128,
+    height: 128,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 6
+  },
+  ringHalo: {
+    position: "absolute",
+    width: 128,
+    height: 128,
+    borderRadius: 64,
+    backgroundColor: "rgba(255, 61, 61, 0.08)"
+  },
+  ringSweep: {
+    position: "absolute",
+    width: 112,
+    height: 112,
+    borderRadius: 56
+  },
+  ringTrack: {
+    position: "absolute",
+    width: 112,
+    height: 112,
+    borderRadius: 56,
+    borderWidth: 8,
+    borderColor: "#2A2D32"
+  },
+  ringGlow: {
+    position: "absolute",
+    width: 112,
+    height: 112,
+    borderRadius: 56,
+    borderWidth: 8,
+    borderColor: "transparent",
+    borderTopColor: "#FF3B3B",
+    borderRightColor: "rgba(255, 77, 77, 0.55)",
+    boxShadow: "0 0 18px rgba(255, 59, 59, 0.7)"
+  },
+  ringCore: {
+    position: "absolute",
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    backgroundColor: "#16181D"
+  },
+  ringCenter: { alignItems: "center" },
+  ringNum: {
+    fontSize: 42,
     fontWeight: "800",
-    color: "#b91c1c",
-    textAlign: "center",
-    marginVertical: 8
+    color: "#FF4D4D",
+    lineHeight: 46
   },
-  presetRow: {
-    gap: 10,
-    marginTop: 4
+  ringSec: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#FF4D4D",
+    marginTop: -2
   },
+  presetCol: { gap: 10 },
   presetBtn: {
-    borderWidth: 2,
-    borderColor: "#fecaca",
-    backgroundColor: "#fef2f2",
-    borderRadius: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    backgroundColor: "#12141A",
+    borderRadius: 18,
     borderCurve: "continuous",
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    alignItems: "center"
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    paddingVertical: 12,
+    paddingHorizontal: 12
   },
   presetBtnText: {
-    fontSize: 20,
+    flex: 1,
+    fontSize: 18,
     fontWeight: "700",
-    color: "#7f1d1d"
+    color: "#FFFFFF"
   },
   cancelBtn: {
-    backgroundColor: "#0f172a",
-    borderRadius: 14,
+    backgroundColor: "#12141A",
+    borderRadius: 18,
     borderCurve: "continuous",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
     paddingVertical: 16,
     alignItems: "center",
-    marginTop: 6
+    marginTop: 2
   },
   cancelBtnText: {
-    color: "#fff",
-    fontSize: 18,
+    color: "#FFFFFF",
+    fontSize: 17,
     fontWeight: "700"
   },
   primaryBtn: {
-    backgroundColor: "#D96B43",
-    borderRadius: 20,
+    backgroundColor: "#FF3B3B",
+    borderRadius: 18,
     borderCurve: "continuous",
     paddingVertical: 14,
-    alignItems: "center",
-    marginTop: 4
+    alignItems: "center"
   },
   primaryBtnText: {
     color: "#fff",
     fontSize: 16,
     fontWeight: "700"
   },
-  secondaryBtn: {
-    borderWidth: 1,
-    borderColor: "#cbd5e1",
-    borderRadius: 12,
-    borderCurve: "continuous",
-    paddingVertical: 14,
-    alignItems: "center",
-    marginTop: 4
-  },
-  secondaryBtnText: {
-    color: "#334155",
-    fontSize: 16,
-    fontWeight: "600"
-  },
   errorText: {
-    color: "#b91c1c",
+    color: "#FF8A8A",
     textAlign: "center",
     fontSize: 14
   }

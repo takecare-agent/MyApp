@@ -4,7 +4,7 @@ export const LANG_OPTIONS = [
   { code: "en", label: "English", short: "EN" },
   { code: "id", label: "Bahasa Indonesia", short: "ID" },
   { code: "vi", label: "Tiếng Việt", short: "VI" },
-  { code: "tl", label: "Filipino", short: "TL" },
+  { code: "tl", label: "Filipino", short: "FIL" },
   { code: "th", label: "ภาษาไทย", short: "TH" }
 ]
 

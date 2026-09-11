@@ -83,12 +83,12 @@ export function mobileRegister({ apiBaseUrl, email, name, password, lang }) {
   })
 }
 
-export function mobileLogin({ apiBaseUrl, email, password }) {
+export function mobileLogin({ apiBaseUrl, email, password, lang }) {
   return apiRequest({
     apiBaseUrl,
     path: "/mobile/login",
     method: "POST",
-    body: { email, password }
+    body: { email, password, ...(lang ? { lang } : {}) }
   })
 }
 

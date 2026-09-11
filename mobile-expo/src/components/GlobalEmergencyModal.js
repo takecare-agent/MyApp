@@ -1,19 +1,12 @@
+import { useEffect, useState } from "react"
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native"
 import { useI18n } from "../i18n/I18nContext"
+import { formatDateTime } from "../i18n/dateLocale"
+import { NeoIcon } from "../screens/new_ui/NeoIcons"
+import { AvatarMark } from "./AvatarMark"
 import TranslatedUgcText from "./TranslatedUgcText"
+import HealthCardReadonly from "./HealthCardReadonly"
 
-function formatSosTime(value) {
-  if (!value) return "-"
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return String(value)
-  return date.toLocaleString(undefined, { hour12: false })
-}
-
-/**
- * 照護圈緊急卡（當下事件，不是歷程）：
- * 看護＝119 → 已處理；家屬＝119 → 提醒看護 → 關閉。可看健康資訊。
- * 居家產品不做即時 GPS／地圖。
- */
 export default function GlobalEmergencyModal({
   visible,
   record,
@@ -23,83 +16,134 @@ export default function GlobalEmergencyModal({
   actionMsgKey,
   apiBaseUrl,
   token,
+  healthCard,
+  healthLoading,
+  healthError,
   onResolve,
   onRemind,
   onOpen119,
   onOpenHealth,
+  onOpenFullGuide,
   onDismiss
 }) {
-  const { t } = useI18n()
-  if (!visible || !record) return null
-
-  const status = record.status
+  const { t, lang } = useI18n()
+  const [page, setPage] = useState("sos")
+  const open = Boolean(visible && record)
+  const status = record?.status
   const isCaregiver = role === "caregiver"
   const isFamily = role === "family"
   const openSos = status === "active" || status === "handling"
   const hint =
     (actionMsgKey ? t(actionMsgKey) : "") ||
     String(actionMsg || "").trim()
+  const locationLabel = String(record?.locationLabel || "").trim()
+  const elderName = record?.patientName || t("sos.elderFallback")
+
+  useEffect(() => {
+    if (!open) setPage("sos")
+  }, [open])
 
   return (
-    <Modal animationType="slide" transparent visible onRequestClose={onDismiss}>
+    <Modal animationType="fade" transparent visible={open} onRequestClose={onDismiss}>
       <View style={styles.backdrop}>
         <View style={styles.panel}>
-          <Text style={styles.status}>{t("sos.cardStatusNew")}</Text>
-          <TranslatedUgcText
-            text={record.message || t("sos.needHelp")}
-            sourceLang={record.sourceLang}
-            messageKey={record.messageKey}
-            apiBaseUrl={apiBaseUrl}
-            token={token}
-            style={styles.message}
-          />
-          <Text style={styles.name}>
-            {record.patientName || t("sos.elderFallback")}
-            {" · "}
-            {formatSosTime(record.triggeredAt)}
-          </Text>
-
-          {hint ? <Text style={styles.hint}>{hint}</Text> : null}
-
-          <View style={styles.actions}>
-            <Pressable style={styles.cta119} onPress={() => onOpen119?.()}>
-              <Text style={styles.cta119Text}>119</Text>
-            </Pressable>
-
-            {isCaregiver && openSos ? (
-              <Pressable
-                style={[styles.ctaPrimary, busy && styles.disabled]}
-                onPress={onResolve}
-                disabled={busy}
-              >
-                <Text style={styles.ctaPrimaryText}>
-                  {busy ? t("sos.busy") : t("sos.markHandled")}
+          {page === "health" ? (
+            <HealthCardReadonly
+              card={healthCard}
+              patientName={healthCard?.patientName || elderName}
+              loading={healthLoading}
+              error={healthError}
+              onClose={() => setPage("sos")}
+              onOpenFullGuide={() => {
+                setPage("sos")
+                onOpenFullGuide?.()
+              }}
+            />
+          ) : (
+            <>
+              <View style={styles.statusPill}>
+                <View style={styles.statusDot} />
+                <Text style={styles.statusText}>{t("sos.cardStatusNew")}</Text>
+              </View>
+              <TranslatedUgcText
+                text={record?.message || t("sos.needHelp")}
+                sourceLang={record?.sourceLang}
+                messageKey={record?.messageKey}
+                apiBaseUrl={apiBaseUrl}
+                token={token}
+                style={styles.message}
+              />
+              <View style={styles.metaRow}>
+                <AvatarMark
+                  email={record?.patientEmail}
+                  size={28}
+                  apiBaseUrl={apiBaseUrl}
+                  token={token}
+                  inModal
+                />
+                <Text style={styles.metaText} numberOfLines={2}>
+                  {elderName}
+                  {" · "}
+                  {formatDateTime(record?.triggeredAt, lang)}
                 </Text>
-              </Pressable>
-            ) : null}
-
-            {isFamily && openSos ? (
-              <Pressable
-                style={[styles.ctaGhost, busy && styles.disabled]}
-                onPress={onRemind}
-                disabled={busy}
-              >
-                <Text style={styles.ctaGhostText}>
-                  {busy ? t("sos.busy") : t("sos.remindCaregiver")}
-                </Text>
-              </Pressable>
-            ) : null}
-
-            <Pressable style={styles.ctaGhost} onPress={onOpenHealth}>
-              <Text style={styles.ctaGhostText}>{t("sos.healthInfo")}</Text>
-            </Pressable>
-          </View>
-
-          {isFamily ? (
-            <Pressable style={styles.dismissBtn} onPress={onDismiss}>
-              <Text style={styles.dismissText}>{t("sos.closeCard")}</Text>
-            </Pressable>
-          ) : null}
+                {locationLabel ? (
+                  <View style={styles.locPill}>
+                    <NeoIcon name="home" size={12} color="#8E95A3" />
+                    <Text style={styles.locText} numberOfLines={1}>
+                      {locationLabel}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+              {hint ? <Text style={styles.hint}>{hint}</Text> : null}
+              <View style={styles.actions}>
+                <Pressable style={styles.cta119} onPress={() => onOpen119?.()}>
+                  <NeoIcon name="call" size={22} color="#FFFFFF" />
+                  <Text style={styles.cta119Text}>119</Text>
+                </Pressable>
+                {isCaregiver && openSos ? (
+                  <Pressable
+                    style={[styles.ctaHandled, busy ? styles.disabled : null]}
+                    onPress={onResolve}
+                    disabled={busy}
+                  >
+                    <View style={styles.checkCircle}>
+                      <NeoIcon name="check" size={14} color="#10B981" />
+                    </View>
+                    <Text style={styles.ctaHandledText}>
+                      {busy ? t("sos.busy") : t("sos.markHandled")}
+                    </Text>
+                  </Pressable>
+                ) : null}
+                {isFamily && openSos ? (
+                  <Pressable
+                    style={[styles.ctaHandled, busy ? styles.disabled : null]}
+                    onPress={onRemind}
+                    disabled={busy}
+                  >
+                    <Text style={styles.ctaHandledText}>
+                      {busy ? t("sos.busy") : t("sos.remindCaregiver")}
+                    </Text>
+                  </Pressable>
+                ) : null}
+                <Pressable
+                  style={styles.ctaHealth}
+                  onPress={() => {
+                    setPage("health")
+                    onOpenHealth?.()
+                  }}
+                >
+                  <Text style={styles.ctaHealthText}>{t("sos.healthInfo")}</Text>
+                  <NeoIcon name="chevron-right" size={16} color="#FFFFFF" />
+                </Pressable>
+              </View>
+              {!openSos || isFamily ? (
+                <Pressable style={styles.dismissBtn} onPress={onDismiss}>
+                  <Text style={styles.dismissText}>{t("sos.closeCard")}</Text>
+                </Pressable>
+              ) : null}
+            </>
+          )}
         </View>
       </View>
     </Modal>
@@ -109,36 +153,82 @@ export default function GlobalEmergencyModal({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.55)",
-    justifyContent: "flex-end"
+    backgroundColor: "rgba(8, 10, 12, 0.55)",
+    justifyContent: "flex-end",
+    paddingHorizontal: 12,
+    paddingBottom: 18
   },
   panel: {
-    backgroundColor: "#fff",
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 28,
-    gap: 10
+    backgroundColor: "#16181D",
+    borderRadius: 28,
+    borderCurve: "continuous",
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 20,
+    gap: 12,
+    maxHeight: "88%",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)"
   },
-  status: {
-    fontSize: 22,
+  statusPill: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(255, 61, 61, 0.12)",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#FF3B3B"
+  },
+  statusText: {
+    fontSize: 12,
     fontWeight: "800",
-    color: "#b91c1c"
+    color: "#FF5C5C"
   },
   message: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#0f172a",
-    lineHeight: 28
+    fontSize: 28,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    lineHeight: 36
   },
-  name: {
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  metaText: {
+    flex: 1,
     fontSize: 13,
-    color: "#64748b"
+    color: "#8E95A3",
+    fontWeight: "600"
+  },
+  locPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#12141A",
+    borderRadius: 999,
+    borderCurve: "continuous",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    maxWidth: 120
+  },
+  locText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#C5CAD3"
   },
   hint: {
     fontSize: 13,
-    color: "#0369a1",
+    color: "#10B981",
     fontWeight: "600"
   },
   actions: {
@@ -146,58 +236,71 @@ const styles = StyleSheet.create({
     marginTop: 4
   },
   cta119: {
-    backgroundColor: "#dc2626",
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center"
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    backgroundColor: "#FF3B3B",
+    borderRadius: 18,
+    borderCurve: "continuous",
+    paddingVertical: 16,
+    boxShadow: "0 8px 24px rgba(255, 59, 59, 0.35)"
   },
   cta119Text: {
     color: "#fff",
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: "800"
   },
-  ctaPrimary: {
-    backgroundColor: "#1d4ed8",
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center"
+  ctaHandled: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    backgroundColor: "#12141A",
+    borderRadius: 18,
+    borderCurve: "continuous",
+    borderWidth: 1.5,
+    borderColor: "#10B981",
+    paddingVertical: 14
   },
-  ctaPrimaryText: {
-    color: "#fff",
+  checkCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    borderColor: "#10B981",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  ctaHandledText: {
+    color: "#FFFFFF",
     fontSize: 17,
     fontWeight: "700"
   },
-  ctaGhost: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "#cbd5e1",
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center"
+  ctaHealth: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#12141A",
+    borderRadius: 18,
+    borderCurve: "continuous",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.16)",
+    paddingVertical: 14,
+    paddingHorizontal: 16
   },
-  ctaGhostText: {
-    color: "#334155",
-    fontSize: 15,
-    fontWeight: "600"
-  },
-  badge: {
-    backgroundColor: "#fef3c7",
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12
-  },
-  badgeText: {
-    color: "#92400e",
-    fontWeight: "700",
-    fontSize: 14,
-    textAlign: "center"
+  ctaHealthText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "700"
   },
   dismissBtn: {
-    marginTop: 6,
+    marginTop: 2,
     alignItems: "center",
     paddingVertical: 8
   },
   dismissText: {
-    color: "#94a3b8",
+    color: "#8E95A3",
     fontSize: 14,
     fontWeight: "600"
   },

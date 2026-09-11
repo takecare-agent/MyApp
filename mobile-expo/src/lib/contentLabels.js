@@ -114,7 +114,7 @@ export function toReminderCatCode(raw) {
 }
 
 export function toCareDailyCatCode(raw) {
-  return findByCodeOrZh(CARE_DAILY_CAT_DEFS, raw)?.code || "other"
+  return findByCodeOrZh(CARE_DAILY_CAT_DEFS, raw)?.code || String(raw || "").trim() || "other"
 }
 
 /** 寫入 DB：優先存 code（新資料）；舊中文仍可讀 */
@@ -134,10 +134,11 @@ export function reminderCatLabel(raw, t) {
 }
 
 export function careDailyCatLabel(raw, t) {
-  const code = toCareDailyCatCode(raw)
-  const key = `cat.daily.${code}`
+  const found = findByCodeOrZh(CARE_DAILY_CAT_DEFS, raw)
+  if (!found) return String(raw || "")
+  const key = `cat.daily.${found.code}`
   const label = t(key)
-  return label === key ? String(raw || "") : label
+  return label === key ? found.zh : label
 }
 
 export function reminderPresetLabel(catRaw, presetCodeOrZh, t) {

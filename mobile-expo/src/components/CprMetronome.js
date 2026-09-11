@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react"
-import { Pressable, StyleSheet, Text, View } from "react-native"
+import { Pressable, StyleSheet, Text, Vibration, View } from "react-native"
 import { WebView } from "react-native-webview"
-import { colors } from "../screens/new_ui/tokens"
+import { NeoIcon } from "../screens/new_ui/NeoIcons"
 
-/** S2：100–120／分。紅十字節拍器常用 110。聲音為主，不用震動。 */
 export const CPR_BPM = 110
+const TICK_COUNT = 36
+const TICKS = Array.from({ length: TICK_COUNT }, (_, i) => i)
 
 const HTML = `<!DOCTYPE html><html><body>
 <script>
@@ -46,12 +47,23 @@ export default function CprMetronome({ t, enabled }) {
     const id = setInterval(() => {
       setPulse((p) => (p === 0 ? 1 : 0))
       setCount((c) => (c >= 30 ? 1 : c + 1))
+      Vibration.vibrate(40)
     }, Math.round(60000 / CPR_BPM))
     return () => {
       clearInterval(id)
+      Vibration.cancel()
       webRef.current?.injectJavaScript("window.__cprStop&&window.__cprStop();true;")
     }
   }, [running])
+
+  const toggle = () => {
+    if (running) {
+      setRunning(false)
+      return
+    }
+    setCount(0)
+    setRunning(true)
+  }
 
   if (!enabled) return null
 
@@ -64,56 +76,111 @@ export default function CprMetronome({ t, enabled }) {
         mediaPlaybackRequiresUserAction={false}
         allowsInlineMediaPlayback
       />
-      <View style={[styles.beat, pulse ? styles.beatOn : null]}>
-        <Text style={styles.count}>{count > 0 ? String(count) : "—"}</Text>
-        <Text style={styles.bpm}>{t("aid.metro.rate")}</Text>
+      <View style={[styles.halo, pulse ? styles.haloOn : null]}>
+        <View style={styles.ring}>
+          {TICKS.map((i) => (
+            <View
+              key={i}
+              pointerEvents="none"
+              style={[styles.tickArm, { transform: [{ rotate: `${(360 / TICK_COUNT) * i}deg` }] }]}
+            >
+              <View style={styles.tick} />
+            </View>
+          ))}
+          <Pressable
+            style={styles.disc}
+            onPress={toggle}
+            accessibilityRole="button"
+            accessibilityLabel={running ? t("aid.metro.stop") : t("aid.metro.start")}
+          >
+            <Text style={styles.bpmNum}>{String(CPR_BPM)}</Text>
+            <Text style={styles.bpmUnit}>/ min</Text>
+          </Pressable>
+        </View>
       </View>
-      <Pressable
-        style={({ pressed }) => [styles.btn, running ? styles.btnStop : null, pressed ? styles.pressed : null]}
-        onPress={() => {
-          if (running) {
-            setRunning(false)
-            return
-          }
-          setCount(0)
-          setRunning(true)
-        }}
-        accessibilityRole="button"
-        accessibilityLabel={running ? t("aid.metro.stop") : t("aid.metro.start")}
-      >
-        <Text style={styles.btnText}>{running ? t("aid.metro.stop") : t("aid.metro.start")}</Text>
+      <View style={styles.countPill}>
+        <NeoIcon name="activity" size={14} color="#FF4D4D" />
+        <Text style={styles.countText}>{`${count} / 30`}</Text>
+      </View>
+      <Pressable onPress={toggle} accessibilityRole="button">
+        <Text style={[styles.ctrl, running ? styles.ctrlStop : null]}>
+          {running ? t("aid.metro.stop") : t("aid.metro.start")}
+        </Text>
       </Pressable>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  box: { gap: 10, alignItems: "center" },
+  box: { gap: 8, alignItems: "center", paddingTop: 4 },
   web: { width: 1, height: 1, opacity: 0 },
-  beat: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    borderCurve: "continuous",
-    backgroundColor: "#fff",
-    borderWidth: 4,
-    borderColor: colors.border,
+  halo: {
+    padding: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,77,77,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,77,77,0.4)",
+    shadowColor: "#FF4D4D",
+    shadowOpacity: 0.45,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 0 }
+  },
+  haloOn: { backgroundColor: "rgba(255,77,77,0.22)" },
+  ring: {
+    width: 132,
+    height: 132,
     alignItems: "center",
     justifyContent: "center"
   },
-  beatOn: { transform: [{ scale: 1.06 }], borderColor: "#c62828" },
-  count: { color: colors.text, fontWeight: "900", fontSize: 44 },
-  bpm: { color: "#667085", fontWeight: "700" },
-  btn: {
-    backgroundColor: colors.text,
-    borderRadius: 14,
-    borderCurve: "continuous",
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    minWidth: 220,
+  tickArm: {
+    position: "absolute",
+    width: 132,
+    height: 132,
     alignItems: "center"
   },
-  btnStop: { backgroundColor: "#c62828" },
-  btnText: { color: "#fff", fontWeight: "900", fontSize: 16 },
-  pressed: { opacity: 0.75 }
+  tick: {
+    width: 2,
+    height: 7,
+    borderRadius: 1,
+    backgroundColor: "rgba(255,77,77,0.7)",
+    marginTop: 2
+  },
+  disc: {
+    width: 104,
+    height: 104,
+    borderRadius: 52,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  bpmNum: {
+    color: "#000000",
+    fontSize: 28,
+    fontWeight: "900",
+    fontVariant: ["tabular-nums"]
+  },
+  bpmUnit: {
+    color: "#000000",
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 2
+  },
+  countPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#16181D",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 16
+  },
+  countText: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+    fontVariant: ["tabular-nums"]
+  },
+  ctrl: { color: "#10B981", fontWeight: "700", fontSize: 13, paddingVertical: 2 },
+  ctrlStop: { color: "#FF4D4D" }
 })

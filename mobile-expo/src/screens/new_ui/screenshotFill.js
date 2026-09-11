@@ -87,7 +87,23 @@ export function screenshotWatchRecords() {
       handlerName: "王看護",
       resolvedNote: "已查看",
       claimedByUserId: "fill-caregiver",
-      evidence: snap("fill-ev-fall-today", FALL_URI)
+      evidence: snap("fill-ev-fall-today", FALL_URI),
+      source: "vision-model"
+    },
+    {
+      _id: "fill-fall-manual",
+      eventId: "AB-FILL-MANUAL",
+      type: "fall",
+      severity: "High",
+      status: "Done",
+      alertBuilt: true,
+      source: "caregiver-manual",
+      happenedAt: atDays(0, 13, 5),
+      endedAt: atDays(0, 13, 8),
+      handlerName: "王看護",
+      resolvedNote: "已查看",
+      claimedByUserId: "fill-caregiver",
+      evidence: []
     },
     {
       _id: "fill-sos-today",
@@ -342,26 +358,24 @@ export function screenshotBpLatest() {
 }
 
 export function screenshotBpRecords() {
-  const days = [0, 1, 2, 3, 4, 5, 6]
   const rows = []
-  days.forEach((d) => {
+  const push = (d, hour, minute, sys, dia, pulse) => {
     rows.push({
-      _id: `fill-bp-am-${d}`,
-      sys: d === 2 ? 148 : 126 + (d % 3),
-      dia: d === 2 ? 92 : 76 + (d % 2),
-      pulse: 70 + d,
-      mood: d === 2 ? "頭暈" : "平靜",
-      measuredAt: atDays(d, 8, 10 + d)
+      _id: `fill-bp-${d}-${hour}-${minute}`,
+      sys,
+      dia,
+      pulse,
+      measuredAt: atDays(d, hour, minute)
     })
-    rows.push({
-      _id: `fill-bp-pm-${d}`,
-      sys: 122 + (d % 4),
-      dia: 74 + (d % 3),
-      pulse: 68 + (d % 5),
-      mood: "平靜",
-      measuredAt: atDays(d, 19, 20)
-    })
-  })
+  }
+  for (let d = 0; d <= 180; d += 3) {
+    const drift = Math.round(d / 22)
+    push(d, 8, 8 + (d % 6), 124 + (d % 5) + drift, 76 + (d % 3), 70 + (d % 8))
+    push(d, 19, 18 + (d % 5), 120 + (d % 4) + Math.floor(drift / 2), 74 + (d % 2), 68 + (d % 6))
+  }
+  for (let d = 1; d <= 90; d += 5) {
+    push(d, 12, 30, 128 + (d % 6), 78 + (d % 4), 72 + (d % 5))
+  }
   return rows
 }
 
@@ -496,6 +510,14 @@ export function screenshotInbox(myEmail) {
       lastSourceLang: "zh",
       lastPhraseKey: ""
     }))
+}
+
+export function screenshotPhrases() {
+  return [
+    { id: "fill-ph-1", text: "我吃過藥了" },
+    { id: "fill-ph-2", text: "請慢一點，我跟上" },
+    { id: "fill-ph-3", text: "晚上記得量血壓" }
+  ]
 }
 
 export function screenshotChatMessages(myEmail, partnerEmail) {

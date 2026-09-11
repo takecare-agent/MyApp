@@ -44,21 +44,22 @@ async function verifyGoogleIdToken(idToken) {
 }
 
 async function verifyAppleIdentityToken(identityToken) {
-  const audience = process.env.APPLE_CLIENT_ID || process.env.APPLE_BUNDLE_ID
-  if (!audience) {
-    const err = new Error("尚未設定 APPLE_CLIENT_ID（Bundle ID 或 Services ID）")
-    err.status = 503
-    throw err
-  }
+  const audiences = [
+    process.env.APPLE_CLIENT_ID,
+    process.env.APPLE_BUNDLE_ID,
+    "com.takecaremobile"
+  ].filter(Boolean)
   const { payload } = await jwtVerify(String(identityToken || ""), appleJwks, {
     issuer: "https://appleid.apple.com",
-    audience
+    audience: audiences,
+    clockTolerance: 60
   })
   const email = payload.email ? String(payload.email).trim().toLowerCase() : ""
+  const sub = String(payload.sub || "")
   return {
     provider: "apple",
-    sub: String(payload.sub || ""),
-    email,
+    sub,
+    email: email || (sub ? `apple.${sub}@privaterelay.appleid.com` : ""),
     name: ""
   }
 }
@@ -82,7 +83,7 @@ async function upsertSocialUser(User, profile, { fullName } = {}) {
 
   if (!user) {
     if (!profile.email) {
-      const err = new Error("此 Apple 帳號未提供 Email，請改用信箱註冊或使用曾授權過 Email 的 Apple 登入")
+      const err = new Error("此 Apple 帳號未提供 Email，且找不到既有帳號")
       err.status = 400
       throw err
     }

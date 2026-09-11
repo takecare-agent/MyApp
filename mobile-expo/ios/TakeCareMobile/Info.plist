@@ -48,6 +48,8 @@
 	<string>TakeCare uses the camera for care monitoring when you allow it.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>TakeCare uses location only if you start an emergency from this device.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>TakeCare 用相簿更換頭貼。</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>TakeCare uses the microphone for chat voice input and interpreter.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

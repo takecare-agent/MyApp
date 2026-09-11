@@ -69,3 +69,12 @@ export function resolveCarePresetKey({ text, contentKey } = {}) {
   if (!s) return null
   return getReverseMap().get(s) || null
 }
+
+export function carePresetLabel({ text, contentKey, t, fallback = "" } = {}) {
+  const key = resolveCarePresetKey({ text, contentKey })
+  if (key && typeof t === "function") {
+    const label = t(key)
+    if (label && label !== key) return label
+  }
+  return String(text || fallback || "")
+}

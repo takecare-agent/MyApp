@@ -3,18 +3,12 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Modal,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View
 } from "react-native"
-import DateTimeField from "../components/DateTimeField"
-import DropdownField from "../components/DropdownField"
-import ComboboxField from "../components/ComboboxField"
 import CareCircleSearch from "../components/CareCircleSearch"
 import CareDailyRecordsScreen from "./CareDailyRecordsScreen"
 import ReminderCompletedHistory from "./ReminderCompletedHistory"
@@ -26,17 +20,19 @@ import {
   isSameLocalDay,
   toReminderCatCode
 } from "../lib/reminderPresets"
-import {
-  reminderCatLabel,
-  reminderCategoryOptions,
-  reminderContentPresetOptions
-} from "../lib/contentLabels"
-import { resolveCarePresetKey } from "../lib/presetResolve"
+import { reminderCatLabel, reminderContentPresetOptions } from "../lib/contentLabels"
+import { resolveCarePresetKey, carePresetLabel } from "../lib/presetResolve"
 import { usePollingRefresh } from "../lib/usePollingRefresh"
 import { useI18n } from "../i18n/I18nContext"
 import { weekdayShortLabels } from "../i18n/dateLocale"
 import { colors } from "./new_ui/tokens"
 import { ensureFilled, screenshotOnceReminders, screenshotTodayTemplates, screenshotTodayTasks } from "./new_ui/screenshotFill"
+import NewTodoScreen from "./new_ui/NewTodoScreen"
+import AddCareTaskModal from "./new_ui/AddCareTaskModal"
+import MarDoseSheet from "./new_ui/MarDoseSheet"
+import { AvatarMark } from "../components/AvatarMark"
+import { NeoIcon } from "./new_ui/NeoIcons"
+import { formatGivenAt } from "../lib/marGroups"
 
 function weekdayLabel(weekdays, t, lang) {
   if (!weekdays || weekdays.length === 0) return t("reminders.everyDay")
@@ -44,7 +40,7 @@ function weekdayLabel(weekdays, t, lang) {
   return weekdays.map((d) => labels[d]).join(lang === "zh" ? "、" : ", ")
 }
 
-function emptyForm(kind = "once") {
+function emptyForm(kind = "repeat") {
   const now = new Date()
   now.setSeconds(0, 0)
   return {
@@ -53,7 +49,8 @@ function emptyForm(kind = "once") {
     contentText: "",
     note: "",
     scheduledAt: now,
-    weekdays: []
+    weekdays: [],
+    extraTimes: []
   }
 }
 
@@ -64,7 +61,8 @@ function formFromOnce(item) {
     contentText: item.content || "",
     note: item.note || "",
     scheduledAt: item.time ? new Date(item.time) : new Date(),
-    weekdays: []
+    weekdays: [],
+    extraTimes: [],
   }
 }
 
@@ -74,17 +72,21 @@ function formFromRepeat(item) {
     const [h, m] = item.time.split(":")
     scheduledAt.setHours(Number(h) || 0, Number(m) || 0, 0, 0)
   }
+  const extras = []
+  if (typeof item.time === "string" && item.time.includes(":")) extras.push(item.time)
+  if (Array.isArray(item.times)) extras.push(...item.times)
   return {
     kind: "repeat",
     category: toReminderCatCode(item.category || "med"),
     contentText: item.content || "",
     note: item.note || "",
     scheduledAt,
-    weekdays: Array.isArray(item.weekdays) ? item.weekdays : []
+    weekdays: Array.isArray(item.weekdays) ? item.weekdays : [],
+    extraTimes: [...new Set(extras.filter(Boolean))],
   }
 }
 
-export default function FamilyRemindersScreen({ apiBaseUrl, token }) {
+export default function FamilyRemindersScreen({ apiBaseUrl, token, user }) {
   const { t, lang } = useI18n()
   const [page, setPage] = useState("today") // today | manage | careDaily | doneHistory
   const [onceList, setOnceList] = useState([])
@@ -94,6 +96,7 @@ export default function FamilyRemindersScreen({ apiBaseUrl, token }) {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState("")
   const [modalOpen, setModalOpen] = useState(false)
+  const [marOpen, setMarOpen] = useState(null)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(() => emptyForm("once"))
   const [saving, setSaving] = useState(false)
@@ -149,7 +152,7 @@ export default function FamilyRemindersScreen({ apiBaseUrl, token }) {
         raw: r
       }))
     const repeatToday = todayTemplates.map((t) => ({
-      key: `tpl-${t._id}`,
+      key: `tpl-${t._id}-${t.slot || t.time || ""}`,
       kind: "repeat",
       category: t.category,
       content: t.content,
@@ -159,6 +162,8 @@ export default function FamilyRemindersScreen({ apiBaseUrl, token }) {
       timeLabel: t.time || "--:--",
       sortKey: t.time || "99:99",
       isCompleted: Boolean(t.isCompleted),
+      createdByRole: t.createdByRole || "",
+      createdByName: t.createdByName || "",
       raw: t
     }))
     return ensureFilled([...onceToday, ...repeatToday].sort((a, b) =>
@@ -206,7 +211,7 @@ export default function FamilyRemindersScreen({ apiBaseUrl, token }) {
 
   const openCreate = () => {
     setEditing(null)
-    setForm(emptyForm("once"))
+    setForm(emptyForm("repeat"))
     setModalOpen(true)
   }
 
@@ -276,21 +281,23 @@ export default function FamilyRemindersScreen({ apiBaseUrl, token }) {
     }
   }
 
-  const handleSave = async () => {
-    const content = String(form.contentText || "").trim()
+  const handleSave = async (payload) => {
+    const content = String(payload?.content || "").trim()
     if (!content) {
-      Alert.alert(t("common.hint"), t("reminders.needContent"))
+      Alert.alert(t("common.hint"), t("mar.needTitle"))
       return
     }
     setSaving(true)
     try {
-      const note = String(form.note || "").trim()
-      if (form.kind === "repeat") {
+      const note = String(payload.note || form.note || "").trim()
+      if (payload.kind === "repeat") {
+        const extraTimes = Array.isArray(payload.extraTimes) ? payload.extraTimes.filter(Boolean) : []
         const body = {
-          category: toReminderCatCode(form.category),
+          category: payload.category || toReminderCatCode(form.category),
           content,
           contentKey: resolveCarePresetKey({ text: content }) || "",
-          time: formatHHmm(form.scheduledAt),
+          time: extraTimes[0] || formatHHmm(payload.scheduledAt || form.scheduledAt),
+          times: extraTimes.slice(1),
           weekdays: form.weekdays || [],
           note,
           sourceLang: lang
@@ -313,14 +320,14 @@ export default function FamilyRemindersScreen({ apiBaseUrl, token }) {
           })
         }
       } else {
-        const when = form.scheduledAt instanceof Date ? form.scheduledAt : new Date()
+        const when = payload.scheduledAt instanceof Date ? payload.scheduledAt : new Date()
         if (Number.isNaN(when.getTime())) {
           Alert.alert(t("common.hint"), t("reminders.invalidTime"))
           setSaving(false)
           return
         }
         const body = {
-          category: toReminderCatCode(form.category),
+          category: payload.category || toReminderCatCode(form.category),
           content,
           contentKey: resolveCarePresetKey({ text: content }) || "",
           time: when.toISOString(),
@@ -346,6 +353,7 @@ export default function FamilyRemindersScreen({ apiBaseUrl, token }) {
         }
       }
       setModalOpen(false)
+      setEditing(null)
       await load({ silent: true })
     } catch (err) {
       Alert.alert(t("common.error"), err.message || t("common.saveFailed"))
@@ -534,6 +542,16 @@ export default function FamilyRemindersScreen({ apiBaseUrl, token }) {
         />
       ) : (
       <>
+      <View style={styles.pageHead}>
+        <View style={styles.pageHeadText}>
+          <Text style={styles.pageTitle}>{t("hub.todoTitle")}</Text>
+          <Text style={styles.pageSub}>{t("hub.todoSub")}</Text>
+        </View>
+        <Pressable style={styles.headAdd} onPress={openCreate} hitSlop={8}>
+          <NeoIcon name="plus" size={18} color="#10B981" />
+        </Pressable>
+        <AvatarMark email={user?.email} size={36} apiBaseUrl={apiBaseUrl} token={token} />
+      </View>
       <CareCircleSearch
         apiBaseUrl={apiBaseUrl}
         token={token}
@@ -582,22 +600,68 @@ export default function FamilyRemindersScreen({ apiBaseUrl, token }) {
           {loading ? (
             <ActivityIndicator color={colors.pine} style={{ marginTop: 28 }} />
           ) : (
-            <FlatList
-              data={todayTodos}
-              keyExtractor={(item) => item.key}
-              renderItem={renderTodayItem}
-              refreshControl={
-                <RefreshControl
-                  refreshing={refreshing}
-                  onRefresh={() => {
-                    setRefreshing(true)
-                    load()
-                  }}
-                  tintColor={colors.pine}
-                />
-              }
-              contentContainerStyle={styles.listPad}
-              ListEmptyComponent={<Text style={styles.empty}>{t("reminders.emptyToday")}</Text>}
+            <NewTodoScreen
+              tab="today"
+              hideTabs
+              todos={todayTodos.map((item) => ({
+                id: item.key,
+                title: carePresetLabel({
+                  text: item.content,
+                  contentKey: item.contentKey || item.raw?.contentKey,
+                  t,
+                  fallback: t("reminders.item")
+                }),
+                content: item.content || "",
+                contentKey: item.contentKey || item.raw?.contentKey || "",
+                time: item.sortKey || item.timeLabel,
+                done: Boolean(item.isCompleted),
+                isCompleted: Boolean(item.isCompleted),
+                kind: item.kind === "repeat" ? "template" : "reminder",
+                templateId: item.kind === "repeat" ? String(item.raw?._id || "") : undefined,
+                slot: item.raw?.slot || item.sortKey,
+                category: toReminderCatCode(item.category),
+                createdByRole: item.createdByRole || item.raw?.createdByRole || "",
+                createdByName: item.createdByName || item.raw?.createdByName || "",
+                completedClock: formatGivenAt(item.raw?.givenAt || item.raw?.completedAt),
+                givenAt: item.raw?.givenAt || null,
+                marNote: item.raw?.marNote || item.note || "",
+                marStatus: item.raw?.marStatus || "",
+                reportExtra: item.raw?.reportExtra || {}
+              }))}
+              refreshing={refreshing}
+              onRefresh={() => {
+                setRefreshing(true)
+                load()
+              }}
+              onOpenSlot={(slot, group) => {
+                setMarOpen({
+                  task: {
+                    ...slot,
+                    title: carePresetLabel({
+                      text: group?.title || slot.title || slot.content,
+                      contentKey: slot.contentKey || group?.contentKey,
+                      t
+                    }),
+                    contentKey: slot.contentKey || group?.contentKey || "",
+                    done: slot.done
+                  },
+                  slotLabel: slot.slotKey && slot.slotKey !== "once" ? t(`mar.${slot.slotKey}`) : ""
+                })
+              }}
+              onOpenSingle={(item) => {
+                setMarOpen({
+                  task: {
+                    ...item,
+                    title: carePresetLabel({
+                      text: item.title || item.content,
+                      contentKey: item.contentKey,
+                      t
+                    }),
+                    done: item.done
+                  },
+                  slotLabel: ""
+                })
+              }}
             />
           )}
         </View>
@@ -632,114 +696,29 @@ export default function FamilyRemindersScreen({ apiBaseUrl, token }) {
         </View>
       )}
 
-      <Modal visible={modalOpen} animationType="slide" onRequestClose={() => setModalOpen(false)}>
-        <View style={styles.modalRoot}>
-          <View style={styles.modalHeader}>
-            <Pressable onPress={() => setModalOpen(false)}>
-              <Text style={styles.modalClose}>{t("common.close")}</Text>
-            </Pressable>
-            <Text style={styles.modalTitle}>{editing ? t("reminders.edit") : t("reminders.create")}</Text>
-            <View style={{ width: 40 }} />
-          </View>
-
-          <ScrollView contentContainerStyle={styles.modalBody} keyboardShouldPersistTaps="handled">
-            <Text style={styles.label}>{t("reminders.type")}</Text>
-            <View style={styles.typeRow}>
-              <Pressable
-                style={[styles.typeChip, form.kind === "once" ? styles.typeChipOn : null]}
-                onPress={() => setForm((prev) => ({ ...prev, kind: "once" }))}
-                disabled={Boolean(editing)}
-              >
-                <Text style={[styles.typeChipText, form.kind === "once" ? styles.typeChipTextOn : null]}>
-                  {t("reminders.once")}
-                </Text>
-              </Pressable>
-              <Pressable
-                style={[styles.typeChip, form.kind === "repeat" ? styles.typeChipOnGreen : null]}
-                onPress={() => setForm((prev) => ({ ...prev, kind: "repeat" }))}
-                disabled={Boolean(editing)}
-              >
-                <Text style={[styles.typeChipText, form.kind === "repeat" ? styles.typeChipTextOnGreen : null]}>
-                  {t("reminders.repeat")}
-                </Text>
-              </Pressable>
-            </View>
-
-            <DropdownField
-              label={t("reminders.category")}
-              value={toReminderCatCode(form.category)}
-              options={reminderCategoryOptions(t)}
-              onSelect={(cat) => setForm((prev) => ({ ...prev, category: cat, contentText: "" }))}
-            />
-
-            <ComboboxField
-              label={t("reminders.content")}
-              value={form.contentText}
-              onChangeText={(v) => setForm((prev) => ({ ...prev, contentText: v }))}
-              options={contentOptions}
-              placeholder={t("reminders.contentPlaceholder")}
-              emptyText={t("reminders.emptyPreset")}
-              onAddCurrent={handleAddPreset}
-              onRemoveOption={handleRemovePreset}
-              adding={addingPreset}
-              removing={removingPreset}
-            />
-
-            <Text style={styles.label}>{t("reminders.noteOptional")}</Text>
-            <TextInput
-              style={[styles.input, styles.noteInput]}
-              value={form.note}
-              onChangeText={(v) => setForm((prev) => ({ ...prev, note: v }))}
-              placeholder={t("reminders.notePlaceholder")}
-              multiline
-              textAlignVertical="top"
-            />
-
-            {form.kind === "once" ? (
-              <DateTimeField
-                label={t("reminders.datetime")}
-                mode="datetime"
-                value={form.scheduledAt}
-                onChange={(d) => setForm((prev) => ({ ...prev, scheduledAt: d }))}
-              />
-            ) : (
-              <>
-                <DateTimeField
-                  label={t("reminders.dailyTime")}
-                  mode="time"
-                  value={form.scheduledAt}
-                  onChange={(d) => setForm((prev) => ({ ...prev, scheduledAt: d }))}
-                />
-                <Text style={styles.label}>{t("reminders.weekdays")}</Text>
-                <View style={styles.chipRow}>
-                  {weekdayShortLabels(lang).map((label, day) => {
-                    const on = (form.weekdays || []).includes(day)
-                    return (
-                      <Pressable
-                        key={`${label}-${day}`}
-                        style={[styles.chip, on ? styles.chipActiveGreen : null]}
-                        onPress={() => toggleWeekday(day)}
-                      >
-                        <Text style={[styles.chipText, on ? styles.chipTextActiveGreen : null]}>
-                          {label}
-                        </Text>
-                      </Pressable>
-                    )
-                  })}
-                </View>
-              </>
-            )}
-
-            <Pressable
-              style={[styles.saveBtn, saving ? styles.saveBtnDisabled : null]}
-              onPress={handleSave}
-              disabled={saving}
-            >
-              {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>{t("common.save")}</Text>}
-            </Pressable>
-          </ScrollView>
-        </View>
-      </Modal>
+      <AddCareTaskModal
+        visible={modalOpen}
+        onClose={() => { setModalOpen(false); setEditing(null) }}
+        onSave={handleSave}
+        saving={saving}
+        initial={editing ? {
+          kind: form.kind,
+          contentText: form.contentText,
+          extraTimes: form.extraTimes,
+          scheduledAt: form.scheduledAt,
+          note: form.note || "",
+          lockKind: true
+        } : { kind: "repeat" }}
+      />
+      <MarDoseSheet
+        visible={Boolean(marOpen?.task)}
+        task={marOpen?.task || null}
+        slotLabel={marOpen?.slotLabel || ""}
+        patientName={user?.linkedPatientName || user?.activePatientName || user?.patientName || ""}
+        submitting={false}
+        readOnly
+        onClose={() => setMarOpen(null)}
+      />
       </>
       )}
     </View>
@@ -749,6 +728,27 @@ export default function FamilyRemindersScreen({ apiBaseUrl, token }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
+  pageHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 4,
+    gap: 10
+  },
+  pageHeadText: { flex: 1 },
+  pageTitle: { color: "#FFFFFF", fontSize: 24, fontWeight: "800" },
+  pageSub: { color: "#8E95A3", fontSize: 13, marginTop: 4 },
+  headAdd: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(16,185,129,0.45)",
+    backgroundColor: "rgba(16,185,129,0.12)",
+    alignItems: "center",
+    justifyContent: "center"
+  },
   tabRow: {
     flexDirection: "row",
     backgroundColor: colors.bg,
@@ -774,12 +774,12 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 12,
     marginBottom: 4,
-    backgroundColor: colors.pine,
+    backgroundColor: colors.mint,
     borderRadius: 20,
     paddingVertical: 14,
     alignItems: "center"
   },
-  addBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  addBtnText: { color: colors.bg, fontSize: 16, fontWeight: "700" },
   listPad: { padding: 16, paddingBottom: 32 },
   card: {
     backgroundColor: colors.card,
@@ -803,12 +803,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4
   },
-  badgeGreen: { backgroundColor: "#f6ffed" },
-  badgeText: { color: colors.pine, fontSize: 12, fontWeight: "700" },
-  badgeGreenText: { color: colors.pine },
+  badgeGreen: { backgroundColor: colors.mintSoft },
+  badgeText: { color: colors.mint, fontSize: 12, fontWeight: "700" },
+  badgeGreenText: { color: colors.mint },
   statusBadge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
-  statusDone: { backgroundColor: "#f6ffed" },
-  statusPending: { backgroundColor: "#fff7e6" },
+  statusDone: { backgroundColor: colors.mintSoft },
+  statusPending: { backgroundColor: "rgba(245,158,11,0.18)" },
   statusText: { fontSize: 12, fontWeight: "600", color: colors.text },
   statusRepeat: {
     backgroundColor: colors.mintSoft,
@@ -857,6 +857,7 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 17, fontWeight: "700", color: colors.text },
   modalBody: { padding: 16, paddingBottom: 40 },
   label: { fontSize: 14, fontWeight: "700", color: colors.textMuted, marginBottom: 8, marginTop: 12 },
+  slotHint: { fontSize: 12, color: colors.textMuted, fontWeight: "500", marginTop: 8, marginBottom: 4 },
   typeRow: { flexDirection: "row", gap: 10 },
   typeChip: {
     flex: 1,
@@ -902,18 +903,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: "#f0f5ff",
+    backgroundColor: colors.mintSoft,
     borderWidth: 1,
-    borderColor: "#91caff"
+    borderColor: colors.border
   },
-  presetBtnText: { color: colors.pine, fontWeight: "700", fontSize: 13 },
+  presetBtnText: { color: colors.mint, fontWeight: "700", fontSize: 13 },
   saveBtn: {
     marginTop: 24,
-    backgroundColor: colors.pine,
+    backgroundColor: colors.mint,
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: "center"
   },
   saveBtnDisabled: { opacity: 0.6 },
-  saveBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" }
+  saveBtnText: { color: colors.bg, fontSize: 16, fontWeight: "700" }
 })

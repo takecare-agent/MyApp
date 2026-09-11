@@ -1,10 +1,15 @@
 import { View, Text, Pressable, RefreshControl, ScrollView, StyleSheet } from "react-native"
-import { colors, radius, spacing, font } from "./tokens"
+import { colors, spacing } from "./tokens"
 import { IconPhone, IconCalendar, IconActivity, IconRefresh } from "./NeoIcons"
+import { AvatarMark } from "../../components/AvatarMark"
+import { useI18n } from "../../i18n/I18nContext"
 
 export default function NewPatientHome({
   helloLine,
-  todos,
+  statusText,
+  avatarEmail,
+  apiBaseUrl,
+  token,
   bpText,
   sosHint,
   refreshing = false,
@@ -14,8 +19,7 @@ export default function NewPatientHome({
   onOpenBp,
   onRefreshBp
 }) {
-  const list = Array.isArray(todos) ? todos : []
-
+  const { t } = useI18n()
   return (
     <ScrollView
       style={styles.container}
@@ -27,41 +31,38 @@ export default function NewPatientHome({
       }
     >
       <View style={[styles.card, styles.headerCard]}>
-        {helloLine ? <Text style={styles.hello}>{helloLine}</Text> : null}
-        <Text style={styles.kicker}>TakeCare 受顧者端</Text>
+        <View style={styles.headerRow}>
+          <AvatarMark email={avatarEmail} size={52} apiBaseUrl={apiBaseUrl} token={token} />
+          <View style={styles.headerText}>
+            {helloLine ? <Text style={styles.hello}>{helloLine}</Text> : null}
+            {statusText ? <Text style={styles.kicker}>{statusText}</Text> : <Text style={styles.kicker}>{t("home.patientKicker")}</Text>}
+          </View>
+        </View>
       </View>
 
       <Pressable
         style={styles.sosCard}
         onPress={onOpenSos}
         accessibilityRole="button"
-        accessibilityLabel="呼叫"
+        accessibilityLabel={t("home.callButton")}
       >
-        <IconPhone size={28} color="#FFFFFF" />
-        <Text style={styles.sosTitle}>呼叫</Text>
+        <IconPhone size={30} color="#FFFFFF" />
+        <Text style={styles.sosTitle}>{t("home.callButton")}</Text>
         {sosHint ? <Text style={styles.sosHint}>{sosHint}</Text> : null}
       </Pressable>
 
       <Pressable style={styles.card} onPress={onOpenTodo}>
         <View style={styles.cardTitleRow}>
           <IconCalendar size={18} />
-          <Text style={styles.cardTitle}>今日待辦</Text>
+          <Text style={styles.cardTitle}>{t("home.todoLog")}</Text>
         </View>
-        {list.length === 0 ? (
-          <Text style={styles.empty}>今日無待辦</Text>
-        ) : (
-          list.slice(0, 3).map((item, i) => (
-            <Text key={item.id ?? i} style={styles.todoLine} numberOfLines={1}>
-              {item.title}
-            </Text>
-          ))
-        )}
+        <Text style={styles.cardHint}>{t("home.todoHint")}</Text>
       </Pressable>
 
       <Pressable style={styles.card} onPress={onOpenBp}>
         <View style={styles.bpHeader}>
           <IconActivity size={18} />
-          <Text style={styles.bpTitle}>最新血壓</Text>
+          <Text style={styles.bpTitle}>{t("home.latestBp")}</Text>
           <Pressable
             onPress={(e) => {
               e?.stopPropagation?.()
@@ -79,36 +80,36 @@ export default function NewPatientHome({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
+  container: { flex: 1, backgroundColor: "#0B0D0E" },
   content: { paddingHorizontal: 16, paddingTop: spacing.lg, paddingBottom: spacing.xl, gap: 14 },
   card: {
-    backgroundColor: colors.card,
-    borderRadius: radius.card,
+    backgroundColor: "#16181D",
+    borderRadius: 16,
     borderCurve: "continuous",
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: "rgba(255,255,255,0.1)",
     padding: 16
   },
-  headerCard: { gap: 4 },
-  hello: { fontSize: font.h1, fontWeight: "800", color: colors.text },
-  kicker: { fontSize: font.small, color: colors.textMuted, fontWeight: "600" },
+  headerCard: { paddingVertical: 14 },
+  headerRow: { flexDirection: "row", alignItems: "center", gap: 16 },
+  headerText: { flex: 1, marginLeft: 0, gap: 4 },
+  hello: { fontSize: 22, fontWeight: "700", color: "#FFFFFF" },
+  kicker: { fontSize: 12, color: colors.textMuted, fontWeight: "600" },
   sosCard: {
-    backgroundColor: "#E05A47",
-    borderRadius: radius.card,
+    backgroundColor: "#D95C48",
+    borderRadius: 24,
     borderCurve: "continuous",
-    minHeight: 148,
+    height: 140,
     alignItems: "center",
     justifyContent: "center",
-    padding: spacing.lg,
-    gap: 8
+    padding: spacing.lg
   },
-  sosTitle: { color: "#FFF", fontSize: 42, fontWeight: "800" },
-  sosHint: { color: "rgba(255,255,255,0.92)", fontSize: font.body, fontWeight: "600" },
-  cardTitleRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: spacing.sm },
-  cardTitle: { fontSize: font.h2, fontWeight: "700", color: colors.text },
-  todoLine: { fontSize: font.body, color: colors.text, marginTop: 6 },
-  empty: { fontSize: font.body, color: colors.textMuted },
+  sosTitle: { color: "#FFFFFF", fontSize: 30, fontWeight: "900", marginVertical: 4 },
+  sosHint: { color: "rgba(255,255,255,0.9)", fontSize: 14, fontWeight: "700" },
+  cardTitleRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 },
+  cardTitle: { fontSize: 16, fontWeight: "700", color: "#FFFFFF" },
+  cardHint: { fontSize: 14, color: colors.textMuted, fontWeight: "600" },
   bpHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
-  bpTitle: { flex: 1, fontSize: font.h2, fontWeight: "700", color: colors.text },
-  bpValue: { marginTop: spacing.md, fontSize: 32, fontWeight: "800", color: colors.mint }
+  bpTitle: { flex: 1, fontSize: 16, fontWeight: "700", color: "#FFFFFF" },
+  bpValue: { marginTop: spacing.md, fontSize: 30, fontWeight: "900", color: "#10B981", letterSpacing: -0.4 }
 })

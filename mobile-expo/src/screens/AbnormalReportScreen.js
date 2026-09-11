@@ -20,9 +20,9 @@ import { useI18n } from "../i18n/I18nContext"
 import { colors } from "./new_ui/tokens"
 
 const SEV = [
-  { code: "Low", color: colors.mint, bg: "#f6ffed", border: "#b7eb8f" },
-  { code: "Medium", color: "#fa8c16", bg: "#fff7e6", border: "#ffd591" },
-  { code: "High", color: "#f5222d", bg: "#fff1f0", border: "#ffa39e" }
+  { code: "Low", color: "#10B981", bg: "rgba(16,185,129,0.12)", border: "rgba(16,185,129,0.35)" },
+  { code: "Medium", color: "#F59E0B", bg: "rgba(245,158,11,0.12)", border: "rgba(245,158,11,0.4)" },
+  { code: "High", color: "#FF4D4D", bg: "rgba(255,77,77,0.12)", border: "rgba(255,77,77,0.45)" }
 ]
 
 export default function AbnormalReportScreen({ apiBaseUrl, token, onBack }) {
@@ -96,7 +96,7 @@ export default function AbnormalReportScreen({ apiBaseUrl, token, onBack }) {
               value={custom}
               onChangeText={setCustom}
               placeholder={t("report.customType")}
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor="#8E95A3"
             />
           ) : (
             <DropdownField
@@ -112,7 +112,7 @@ export default function AbnormalReportScreen({ apiBaseUrl, token, onBack }) {
               value={custom}
               onChangeText={setCustom}
               placeholder={t("report.customDetail")}
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor="#8E95A3"
               multiline
             />
           ) : null}
@@ -156,42 +156,48 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 12,
     paddingVertical: 12,
-    backgroundColor: "#fff",
+    backgroundColor: colors.bg,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#e5e7eb"
+    borderBottomColor: colors.border
   },
-  back: { color: colors.pine, fontWeight: "700", fontSize: 16 },
-  navTitle: { fontSize: 16, fontWeight: "800", color: "#111827" },
+  back: { color: "#FF4D4D", fontWeight: "700", fontSize: 16 },
+  navTitle: { fontSize: 16, fontWeight: "800", color: colors.text },
   pad: { padding: 16, paddingBottom: 40 },
-  h1: { fontSize: 22, fontWeight: "800", color: "#111827" },
-  sub: { marginTop: 6, fontSize: 13, color: "#6b7280", lineHeight: 20 },
+  h1: { fontSize: 22, fontWeight: "800", color: colors.text },
+  sub: { marginTop: 6, fontSize: 13, color: colors.textMuted, lineHeight: 20 },
   card: {
     marginTop: 16,
-    backgroundColor: "#fff",
+    backgroundColor: colors.card,
     borderRadius: 16,
-    padding: 16
+    borderCurve: "continuous",
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.border
   },
-  label: { marginTop: 14, marginBottom: 8, fontSize: 14, fontWeight: "700", color: "#374151" },
+  label: { marginTop: 14, marginBottom: 8, fontSize: 14, fontWeight: "700", color: colors.textMuted },
   input: {
     marginTop: 10,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderColor: colors.border,
+    backgroundColor: colors.bg,
+    borderRadius: 16,
+    borderCurve: "continuous",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     fontSize: 15,
-    color: "#111827"
+    color: colors.text
   },
   multi: { minHeight: 80, textAlignVertical: "top" },
-  sev: { borderWidth: 2, borderRadius: 12, padding: 12, marginBottom: 8 },
+  sev: { borderWidth: 1, borderRadius: 16, borderCurve: "continuous", padding: 12, marginBottom: 8 },
   sevTitle: { fontSize: 15, fontWeight: "800" },
-  sevDesc: { marginTop: 4, fontSize: 12, color: "#6b7280", lineHeight: 18 },
+  sevDesc: { marginTop: 4, fontSize: 12, color: colors.textMuted, lineHeight: 18 },
   submit: {
     marginTop: 12,
-    backgroundColor: colors.pine,
-    borderRadius: 12,
+    backgroundColor: colors.mint,
+    borderRadius: 16,
+    borderCurve: "continuous",
     paddingVertical: 14,
     alignItems: "center"
   },
-  submitText: { color: "#fff", fontWeight: "800", fontSize: 16 }
+  submitText: { color: "#FFFFFF", fontWeight: "800", fontSize: 16 }
 })

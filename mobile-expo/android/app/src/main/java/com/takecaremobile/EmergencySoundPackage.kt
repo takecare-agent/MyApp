@@ -7,7 +7,7 @@ import com.facebook.react.uimanager.ViewManager
 
 class EmergencySoundPackage : ReactPackage {
   override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> =
-    listOf(EmergencySoundModule(reactContext))
+    listOf(EmergencySoundModule(reactContext), VoiceWavModule(reactContext))
 
   override fun createViewManagers(
     reactContext: ReactApplicationContext

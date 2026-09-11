@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo } from "react"
 import { catalogs } from "./catalogs"
 import { catalogPatch } from "./catalogPatch"
+import { catalogSkin } from "./catalogSkin"
 import { firstAidCatalog } from "./firstAidCatalog"
 import { DEFAULT_LANG, FALLBACK_LANG, LANG_OPTIONS, LANG_SHORT } from "./languages"
 
@@ -15,6 +16,7 @@ function table(lang) {
   return {
     ...(catalogs[lang] || {}),
     ...(catalogPatch[lang] || {}),
+    ...(catalogSkin[lang] || {}),
     ...(firstAidCatalog[lang] || {})
   }
 }

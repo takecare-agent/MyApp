@@ -85,13 +85,13 @@ export default function VerifyScreen({
         keyboardType="number-pad"
         maxLength={8}
         placeholder={t("verify.codePh")}
-        placeholderTextColor="#8aa0b8"
+        placeholderTextColor={colors.textMuted}
       />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <Pressable style={[styles.primaryBtn, busy && styles.btnDisabled]} onPress={handleVerify} disabled={busy}>
-        {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>{t("verify.continue")}</Text>}
+        {busy ? <ActivityIndicator color={colors.bg} /> : <Text style={styles.primaryBtnText}>{t("verify.continue")}</Text>}
       </Pressable>
 
       <Pressable style={styles.secondaryBtn} onPress={handleResend} disabled={busy}>
@@ -104,65 +104,72 @@ export default function VerifyScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: colors.bg,
     padding: 24,
-    paddingTop: 20
+    paddingTop: 20,
+    gap: 4
   },
   backBtn: { alignSelf: "flex-start", paddingVertical: 8, marginBottom: 8 },
-  backText: { color: colors.pine, fontWeight: "800", fontSize: 16 },
-  title: { fontSize: 24, fontWeight: "900", color: "#111827", textAlign: "center" },
+  backText: { color: colors.mint, fontWeight: "800", fontSize: 16 },
+  title: { fontSize: 24, fontWeight: "900", color: colors.text, textAlign: "center" },
   subtitle: {
     marginTop: 10,
-    color: "#6b7280",
+    color: colors.textMuted,
     textAlign: "center",
     lineHeight: 22,
     fontWeight: "600"
   },
-  email: { color: colors.pine, fontWeight: "800" },
+  email: { color: colors.mint, fontWeight: "800" },
   info: {
     marginTop: 14,
     padding: 12,
     borderRadius: 12,
-    backgroundColor: "#eff6ff",
-    color: "#1d4ed8",
+    borderCurve: "continuous",
+    backgroundColor: colors.mintSoft,
+    color: colors.mint,
     fontSize: 13,
     lineHeight: 18,
     fontWeight: "700"
   },
-  label: { marginTop: 16, color: "#334155", fontWeight: "800", fontSize: 13 },
+  label: { marginTop: 16, color: colors.textMuted, fontWeight: "800", fontSize: 13 },
   input: {
     marginTop: 6,
     borderWidth: 1,
-    borderColor: "#d1d5db",
+    borderColor: colors.border,
     borderRadius: 12,
+    borderCurve: "continuous",
     paddingHorizontal: 14,
     paddingVertical: 14,
     minHeight: 52,
-    color: "#111827",
+    color: colors.text,
+    backgroundColor: colors.card,
     fontSize: 22,
     letterSpacing: 8,
     textAlign: "center",
     fontWeight: "800"
   },
-  error: { marginTop: 10, color: "#b42318", fontWeight: "700", textAlign: "center" },
+  error: { marginTop: 10, color: colors.clay, fontWeight: "700", textAlign: "center" },
   primaryBtn: {
     marginTop: 24,
-    backgroundColor: colors.pine,
+    backgroundColor: colors.mint,
     borderRadius: 12,
+    borderCurve: "continuous",
     paddingVertical: 16,
     alignItems: "center",
     minHeight: 52,
     justifyContent: "center"
   },
   btnDisabled: { opacity: 0.7 },
-  primaryBtnText: { color: "#fff", fontWeight: "900", fontSize: 16 },
+  primaryBtnText: { color: colors.bg, fontWeight: "900", fontSize: 16 },
   secondaryBtn: {
     marginTop: 12,
     borderRadius: 12,
+    borderCurve: "continuous",
     borderWidth: 1.5,
-    borderColor: "#93c5fd",
+    borderColor: colors.mint,
     paddingVertical: 14,
-    alignItems: "center"
+    alignItems: "center",
+    backgroundColor: colors.card
   },
-  secondaryBtnText: { color: colors.pine, fontWeight: "800", fontSize: 15 }
+  secondaryBtnText: { color: colors.mint, fontWeight: "800", fontSize: 15 }
 })

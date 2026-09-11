@@ -118,7 +118,7 @@ export default function RoleSelectScreen({ loginDraft, onBack, onLoginSuccess })
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <Pressable onPress={step === "bind" ? () => setStep("role") : onBack} style={styles.backBtn}>
         <Text style={styles.backText}>‹ {t("common.back")}</Text>
       </Pressable>
@@ -143,7 +143,7 @@ export default function RoleSelectScreen({ loginDraft, onBack, onLoginSuccess })
                   <View style={[styles.radio, active && styles.radioActive]}>
                     {active ? <View style={styles.radioDot} /> : null}
                   </View>
-                  <View style={{ flex: 1 }}>
+                  <View style={styles.roleBody}>
                     <Text style={styles.roleTitle}>{item.title}</Text>
                     <Text style={styles.roleDesc}>{item.desc}</Text>
                   </View>
@@ -190,7 +190,7 @@ export default function RoleSelectScreen({ loginDraft, onBack, onLoginSuccess })
                 onChangeText={setInviteCode}
                 autoCapitalize="characters"
                 placeholder={t("role.invitePlaceholder")}
-                placeholderTextColor="#8aa0b8"
+                placeholderTextColor={colors.textMuted}
               />
             </>
           ) : (
@@ -203,7 +203,7 @@ export default function RoleSelectScreen({ loginDraft, onBack, onLoginSuccess })
                 autoCapitalize="none"
                 keyboardType="email-address"
                 placeholder="patient@test.com"
-                placeholderTextColor="#8aa0b8"
+                placeholderTextColor={colors.textMuted}
               />
             </>
           )}
@@ -214,7 +214,7 @@ export default function RoleSelectScreen({ loginDraft, onBack, onLoginSuccess })
             value={careRecipientName}
             onChangeText={setCareRecipientName}
             placeholder={t("role.nicknamePh")}
-            placeholderTextColor="#8aa0b8"
+            placeholderTextColor={colors.textMuted}
           />
         </>
       )}
@@ -227,7 +227,7 @@ export default function RoleSelectScreen({ loginDraft, onBack, onLoginSuccess })
         disabled={loading}
       >
         {loading ? (
-          <ActivityIndicator color="#fff" />
+          <ActivityIndicator color={colors.bg} />
         ) : (
           <Text style={styles.primaryBtnText}>
             {step === "role" ? (needsBind ? t("role.continue") : t("role.enterApp")) : t("role.bindEnter")}
@@ -241,16 +241,17 @@ export default function RoleSelectScreen({ loginDraft, onBack, onLoginSuccess })
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
-    backgroundColor: "#fff",
+    backgroundColor: colors.bg,
     padding: 24,
-    paddingTop: 20
+    paddingTop: 20,
+    gap: 8
   },
   backBtn: { alignSelf: "flex-start", paddingVertical: 8, marginBottom: 8 },
-  backText: { color: colors.pine, fontWeight: "800", fontSize: 16 },
-  title: { fontSize: 24, fontWeight: "900", color: "#111827", textAlign: "center" },
+  backText: { color: colors.mint, fontWeight: "800", fontSize: 16 },
+  title: { fontSize: 24, fontWeight: "900", color: colors.text, textAlign: "center" },
   subtitle: {
     marginTop: 8,
-    color: "#6b7280",
+    color: colors.textMuted,
     textAlign: "center",
     lineHeight: 20,
     fontWeight: "600"
@@ -259,7 +260,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 16,
     textAlign: "center",
-    color: colors.pine,
+    color: colors.mint,
     fontWeight: "700",
     fontSize: 13
   },
@@ -270,64 +271,71 @@ const styles = StyleSheet.create({
     gap: 12,
     padding: 16,
     borderRadius: 14,
+    borderCurve: "continuous",
     borderWidth: 1,
-    borderColor: "#e5e7eb",
-    backgroundColor: "#fff"
+    borderColor: colors.border,
+    backgroundColor: colors.card
   },
-  roleRowActive: { borderColor: colors.pine, backgroundColor: "#f0f7ff" },
+  roleRowActive: { borderColor: colors.mint, backgroundColor: colors.mintSoft },
   radio: {
     width: 22,
     height: 22,
     borderRadius: 11,
     borderWidth: 2,
-    borderColor: "#cbd5e1",
+    borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
     marginTop: 2
   },
-  radioActive: { borderColor: colors.pine },
+  radioActive: { borderColor: colors.mint },
   radioDot: {
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: colors.pine
+    backgroundColor: colors.mint
   },
-  roleTitle: { color: "#111827", fontSize: 17, fontWeight: "900" },
-  roleDesc: { marginTop: 4, color: "#6b7280", lineHeight: 20, fontWeight: "600" },
+  roleBody: { flex: 1 },
+  roleTitle: { color: colors.text, fontSize: 17, fontWeight: "900" },
+  roleDesc: { marginTop: 4, color: colors.textMuted, lineHeight: 20, fontWeight: "600" },
   modeRow: { flexDirection: "row", gap: 8, marginBottom: 8 },
   modeChip: {
     flex: 1,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: 999,
+    borderCurve: "continuous",
     borderWidth: 1,
-    borderColor: "#d1d5db",
+    borderColor: colors.border,
+    backgroundColor: colors.card,
     alignItems: "center"
   },
-  modeChipActive: { backgroundColor: colors.text, borderColor: colors.text },
-  modeChipText: { color: "#64748b", fontWeight: "800" },
-  modeChipTextActive: { color: "#fff" },
-  label: { marginTop: 14, color: "#334155", fontWeight: "800", fontSize: 13 },
+  modeChipActive: { backgroundColor: colors.mint, borderColor: colors.mint },
+  modeChipText: { color: colors.textMuted, fontWeight: "800" },
+  modeChipTextActive: { color: colors.bg },
+  label: { marginTop: 14, color: colors.textMuted, fontWeight: "800", fontSize: 13 },
   input: {
     marginTop: 6,
     borderWidth: 1,
-    borderColor: "#d1d5db",
+    borderColor: colors.border,
     borderRadius: 12,
+    borderCurve: "continuous",
     paddingHorizontal: 14,
     paddingVertical: 14,
     minHeight: 50,
-    color: "#111827",
+    color: colors.text,
+    backgroundColor: colors.card,
     fontSize: 16
   },
-  error: { marginTop: 14, color: "#b42318", fontWeight: "700", textAlign: "center" },
+  error: { marginTop: 14, color: colors.clay, fontWeight: "700", textAlign: "center" },
   primaryBtn: {
     marginTop: 24,
-    backgroundColor: colors.pine,
+    backgroundColor: colors.mint,
     borderRadius: 12,
+    borderCurve: "continuous",
     paddingVertical: 16,
     alignItems: "center",
     minHeight: 52,
     justifyContent: "center"
   },
   primaryBtnDisabled: { opacity: 0.7 },
-  primaryBtnText: { color: "#fff", fontWeight: "900", fontSize: 16 }
+  primaryBtnText: { color: colors.bg, fontWeight: "900", fontSize: 16 }
 })

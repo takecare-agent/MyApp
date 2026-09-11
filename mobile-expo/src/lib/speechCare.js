@@ -1,4 +1,4 @@
-import { PermissionsAndroid, Platform } from "react-native"
+import { NativeModules, PermissionsAndroid, Platform } from "react-native"
 import Voice from "@react-native-voice/voice"
 import Tts from "react-native-tts"
 import { apiRequest } from "./api"
@@ -10,6 +10,42 @@ export const SPEECH_LOCALE = {
   vi: "vi-VN",
   tl: "fil-PH",
   th: "th-TH"
+}
+
+const LOCALE_FALLBACKS = {
+  zh: ["zh-TW", "zh-CN", "zh-HK", "zh"],
+  en: ["en-US", "en-GB", "en"],
+  vi: ["vi-VN", "vi"],
+  id: ["id-ID", "id", "in-ID"],
+  tl: ["fil-PH", "fil_PH", "tl-PH", "tl_PH", "fil", "tl"],
+  th: ["th-TH", "th"]
+}
+
+/** Apple Speech 沒有 Filipino/Tagalog（只有 en-PH）。這些語改走 Whisper。 */
+export function usesAppleOnDeviceSpeech(lang) {
+  const code = String(lang || "").toLowerCase()
+  if (code === "tl" || code.startsWith("fil")) return false
+  return true
+}
+
+const VoiceWav = NativeModules.VoiceWav
+
+export async function abortVoiceWav() {
+  if (typeof VoiceWav?.cancel === "function") {
+    try {
+      await VoiceWav.cancel()
+      return
+    } catch {
+      // fall through
+    }
+  }
+  if (typeof VoiceWav?.stop === "function") {
+    try {
+      await VoiceWav.stop()
+    } catch {
+      // idle / too short
+    }
+  }
 }
 
 export async function requestMicPermission(labels) {
@@ -33,6 +69,67 @@ export function pickBestTranscript(value) {
   const list = Array.isArray(value) ? value.map((s) => String(s || "").trim()).filter(Boolean) : []
   if (!list.length) return ""
   return list.reduce((best, cur) => (cur.length > best.length ? cur : best), list[0])
+}
+
+let voiceHandlerGen = 0
+
+export function clearVoiceHandlers() {
+  voiceHandlerGen += 1
+  Voice.onSpeechPartialResults = () => {}
+  Voice.onSpeechResults = () => {}
+  Voice.onSpeechStart = () => {}
+  Voice.onSpeechEnd = () => {}
+  Voice.onSpeechError = () => {}
+}
+
+/**
+ * 只在講完（onSpeechEnd）才交最終稿。Android 的 onSpeechResults 會一直噴半句，
+ * 若在那裡翻譯／朗讀就會覆誦十幾次。
+ */
+export function bindUtteranceHandlers({ onHeard, onComplete }) {
+  const gen = ++voiceHandlerGen
+  let last = ""
+  let completed = false
+  const finish = () => {
+    if (gen !== voiceHandlerGen) return
+    if (completed) return
+    completed = true
+    onComplete?.(last)
+  }
+  Voice.onSpeechPartialResults = (e) => {
+    if (gen !== voiceHandlerGen) return
+    const text = pickBestTranscript(e?.value)
+    if (text) {
+      last = text
+      onHeard?.(text)
+    }
+  }
+  Voice.onSpeechResults = (e) => {
+    if (gen !== voiceHandlerGen) return
+    const text = pickBestTranscript(e?.value)
+    if (text) {
+      last = text
+      onHeard?.(text)
+    }
+  }
+  // startListening 開頭的 stop/cancel 會噴空的 End/Error；沒聽到字就不要結案，
+  // 否則口譯一按「說」就顯示聽不清楚，真正辨識還跑去聊天紅字。
+  Voice.onSpeechEnd = () => {
+    if (gen !== voiceHandlerGen) return
+    if (last) finish()
+  }
+  Voice.onSpeechError = () => {
+    if (gen !== voiceHandlerGen) return
+    if (last) finish()
+  }
+  return {
+    completeNow: () => finish(),
+    reset: () => {
+      if (gen !== voiceHandlerGen) return
+      last = ""
+      completed = false
+    }
+  }
 }
 
 export async function polishSpeechText({ apiBaseUrl, token, text, lang }) {
@@ -61,65 +158,46 @@ export async function isVoiceAvailable() {
   }
 }
 
-/**
- * 只在講完（onSpeechEnd）才交最終稿。Android 的 onSpeechResults 會一直噴半句，
- * 若在那裡翻譯／朗讀就會覆誦十幾次。
- */
-export function bindUtteranceHandlers({ onHeard, onComplete, onError }) {
-  let last = ""
-  let completed = false
-  const finish = () => {
-    if (completed) return
-    completed = true
-    onComplete?.(last)
-  }
-  Voice.onSpeechPartialResults = (e) => {
-    const text = pickBestTranscript(e?.value)
-    if (text) {
-      last = text
-      onHeard?.(text)
-    }
-  }
-  Voice.onSpeechResults = (e) => {
-    const text = pickBestTranscript(e?.value)
-    if (text) {
-      last = text
-      onHeard?.(text)
-    }
-  }
-  Voice.onSpeechEnd = () => finish()
-  Voice.onSpeechError = () => {
-    if (last) finish()
-    else onError?.()
-  }
-  return {
-    completeNow: () => finish(),
-    reset: () => {
-      last = ""
-      completed = false
-    }
-  }
-}
-
-export async function startListening(lang) {
+export async function startListening(lang, opts = {}) {
   const available = await isVoiceAvailable()
   if (!available) {
     const err = new Error("VOICE_UNAVAILABLE")
     err.code = "VOICE_UNAVAILABLE"
     throw err
   }
-  const locale = SPEECH_LOCALE[lang] || SPEECH_LOCALE.zh
-  try {
-    await Voice.start(locale, {
-      EXTRA_MAX_RESULTS: 5,
-      EXTRA_PARTIAL_RESULTS: false,
-      EXTRA_LANGUAGE_MODEL: "LANGUAGE_MODEL_FREE_FORM",
-      EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 2500,
-      EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 2500
-    })
-  } catch {
-    await Voice.start(locale)
+  const locales = LOCALE_FALLBACKS[lang] || LOCALE_FALLBACKS.zh
+  const silence = Math.max(800, Number(opts.silenceMs) || 2500)
+  const extras = {
+    EXTRA_MAX_RESULTS: 5,
+    EXTRA_PARTIAL_RESULTS: true,
+    EXTRA_LANGUAGE_MODEL: "LANGUAGE_MODEL_FREE_FORM",
+    EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: silence,
+    EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: silence
   }
+  try {
+    const recognizing = await Voice.isRecognizing()
+    if (recognizing) await Voice.cancel()
+  } catch {
+    // ignore
+  }
+  let lastErr = null
+  for (const locale of locales) {
+    try {
+      await Voice.start(locale, extras)
+      return locale
+    } catch (err) {
+      lastErr = err
+      try {
+        await Voice.start(locale)
+        return locale
+      } catch (err2) {
+        lastErr = err2
+      }
+    }
+  }
+  const fail = lastErr || new Error("VOICE_UNAVAILABLE")
+  fail.code = "VOICE_UNAVAILABLE"
+  throw fail
 }
 
 export async function stopListening() {
@@ -131,12 +209,22 @@ export async function stopListening() {
 }
 
 export async function destroyVoice() {
+  voiceHandlerGen += 1
   try {
     await Voice.destroy()
   } catch {
     // ignore
   }
-  Voice.removeAllListeners()
+  try {
+    Voice.removeAllListeners()
+  } catch {
+    // ignore
+  }
+  Voice.onSpeechPartialResults = () => {}
+  Voice.onSpeechResults = () => {}
+  Voice.onSpeechStart = () => {}
+  Voice.onSpeechEnd = () => {}
+  Voice.onSpeechError = () => {}
 }
 
 export async function speakText(text, lang) {
@@ -154,9 +242,12 @@ export async function speakText(text, lang) {
     // device may lack that voice; still speak
   }
   try {
-    await Tts.speak(line)
+    await Promise.race([
+      Tts.speak(line),
+      new Promise((resolve) => setTimeout(resolve, 4000))
+    ])
   } catch {
-    // Huawei 等無 TTS 引擎時不要閃退
+    // Huawei 等無 TTS 引擎時不要卡住口譯
   }
 }
 

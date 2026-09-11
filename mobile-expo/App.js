@@ -23,7 +23,6 @@ import RoleSelectScreen from "./src/screens/RoleSelectScreen"
 import VerifyScreen from "./src/screens/VerifyScreen"
 import VisionScreen from "./src/screens/VisionScreen"
 import CaregiverFirstAidScreen from "./src/screens/CaregiverFirstAidScreen"
-import HealthCardReadonly from "./src/components/HealthCardReadonly"
 import GlobalEmergencyModal from "./src/components/GlobalEmergencyModal"
 import { apiRequest, mobileMe, mobileSosInbox, caregiverSosResolve, familySosRemind, mobileGetHealthCard } from "./src/lib/api"
 import {
@@ -126,11 +125,9 @@ export default function App() {
   const [careSosReady, setCareSosReady] = useState(false)
   const [globalEmergency, setGlobalEmergency] = useState(null)
   const [emergencyBusy, setEmergencyBusy] = useState(false)
-  const [healthCardVisible, setHealthCardVisible] = useState(false)
   const [healthCard, setHealthCard] = useState(null)
   const [healthCardLoading, setHealthCardLoading] = useState(false)
   const [healthCardError, setHealthCardError] = useState("")
-  const [showFirstAidStub, setShowFirstAidStub] = useState(false)
   const [firstAidFullOpen, setFirstAidFullOpen] = useState(false)
   const [emergencyActionMsg, setEmergencyActionMsg] = useState("")
   const [emergencyActionMsgKey, setEmergencyActionMsgKey] = useState("")
@@ -249,9 +246,6 @@ export default function App() {
   const closeGlobalEmergency = useCallback(() => {
     stopEmergencyVibration()
     setGlobalEmergency(null)
-    setHealthCardVisible(false)
-    setShowFirstAidStub(false)
-    setFirstAidFullOpen(false)
     setEmergencyActionMsg("")
     setEmergencyActionMsgKey("")
   }, [])
@@ -304,12 +298,19 @@ export default function App() {
   }, [emergencyBusy, globalEmergency, session?.apiBaseUrl, session?.token])
 
   const openHealthCard = useCallback(async () => {
-    const patientEmail = globalEmergency?.patientEmail
-    if (!patientEmail || !session?.token) return
-    setHealthCardVisible(true)
+    const patientEmail =
+      globalEmergency?.patientEmail ||
+      session?.user?.linkedPatientEmail ||
+      session?.user?.activePatientEmail ||
+      ""
+    if (!patientEmail || !session?.token) {
+      setHealthCard(null)
+      setHealthCardError("missing-elder")
+      setHealthCardLoading(false)
+      return
+    }
     setHealthCardLoading(true)
     setHealthCardError("")
-    setShowFirstAidStub(false)
     try {
       const data = await mobileGetHealthCard({
         apiBaseUrl: session.apiBaseUrl,
@@ -323,7 +324,13 @@ export default function App() {
     } finally {
       setHealthCardLoading(false)
     }
-  }, [globalEmergency?.patientEmail, session?.apiBaseUrl, session?.token])
+  }, [
+    globalEmergency?.patientEmail,
+    session?.apiBaseUrl,
+    session?.token,
+    session?.user?.activePatientEmail,
+    session?.user?.linkedPatientEmail
+  ])
 
   useEffect(() => {
     let mounted = true
@@ -720,38 +727,16 @@ export default function App() {
         actionMsgKey={emergencyActionMsgKey}
         apiBaseUrl={session?.apiBaseUrl}
         token={session?.token}
+        healthCard={healthCard}
+        healthLoading={healthCardLoading}
+        healthError={healthCardError}
         onResolve={handleSosResolve}
         onRemind={handleSosRemind}
         onOpen119={() => openPhone("119")}
         onOpenHealth={openHealthCard}
+        onOpenFullGuide={() => setFirstAidFullOpen(true)}
         onDismiss={closeGlobalEmergency}
       />
-
-      <Modal
-        animationType="fade"
-        transparent
-        visible={healthCardVisible}
-        onRequestClose={() => setHealthCardVisible(false)}
-      >
-        <View style={styles.healthBackdrop}>
-          <View style={styles.healthPanel}>
-            <HealthCardReadonly
-              card={healthCard}
-              patientName={healthCard?.patientName || globalEmergency?.patientName || "長輩"}
-              loading={healthCardLoading}
-              error={healthCardError}
-              showFirstAidToggle
-              showFirstAid={showFirstAidStub}
-              onToggleFirstAid={() => setShowFirstAidStub(prev => !prev)}
-              onClose={() => setHealthCardVisible(false)}
-              onOpenFullGuide={() => {
-                setHealthCardVisible(false)
-                setFirstAidFullOpen(true)
-              }}
-            />
-          </View>
-        </View>
-      </Modal>
 
       <Modal
         animationType="slide"

@@ -74,3 +74,77 @@ export function formatMinuteUnit(lang) {
   if (lang === "zh") return "分"
   return ""
 }
+
+function pad2(n) {
+  return String(n).padStart(2, "0")
+}
+
+export function formatDateTime(value, lang = "zh") {
+  const d = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(d.getTime())) return "--"
+  try {
+    return new Intl.DateTimeFormat(localeForLang(lang), {
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }).format(d)
+  } catch {
+    return `${d.getFullYear()}/${pad2(d.getMonth() + 1)}/${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+  }
+}
+
+export function formatTimeShort(value, lang = "zh") {
+  const d = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(d.getTime())) return ""
+  try {
+    return new Intl.DateTimeFormat(localeForLang(lang), {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }).format(d)
+  } catch {
+    return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+  }
+}
+
+function ymd(d) {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+}
+
+/** LINE 氣泡日期分隔：今天／昨天／年月日 */
+export function formatChatDayDivider(value, lang = "zh", base = new Date()) {
+  const d = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(d.getTime())) return ""
+  const today = ymd(base)
+  const yest = new Date(base)
+  yest.setDate(yest.getDate() - 1)
+  const key = ymd(d)
+  if (key === today) {
+    if (lang === "zh") return "今天"
+    if (lang === "th") return "วันนี้"
+    if (lang === "vi") return "Hôm nay"
+    if (lang === "id") return "Hari ini"
+    if (lang === "tl") return "Ngayon"
+    return "Today"
+  }
+  if (key === ymd(yest)) {
+    if (lang === "zh") return "昨天"
+    if (lang === "th") return "เมื่อวาน"
+    if (lang === "vi") return "Hôm qua"
+    if (lang === "id") return "Kemarin"
+    if (lang === "tl") return "Kahapon"
+    return "Yesterday"
+  }
+  try {
+    return new Intl.DateTimeFormat(localeForLang(lang), {
+      year: "numeric",
+      month: "long",
+      day: "numeric"
+    }).format(d)
+  } catch {
+    return `${d.getFullYear()}/${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}`
+  }
+}

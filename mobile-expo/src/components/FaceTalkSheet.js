@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from "react"
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native"
+import { Keyboard, Modal, NativeModules, Platform, Pressable, StyleSheet, Text, View } from "react-native"
 import { apiRequest } from "../lib/api"
 import { useI18n } from "../i18n/I18nContext"
-import { LANG_OPTIONS } from "../i18n/languages"
+import { ChatVoiceRecorder } from "./ChatVoice"
+import { LangPickField } from "./LangListPicker"
 import {
+  abortVoiceWav,
   bindUtteranceHandlers,
+  clearVoiceHandlers,
   destroyVoice,
   isVoiceAvailable,
   polishSpeechText,
@@ -12,14 +15,13 @@ import {
   speakText,
   startListening,
   stopListening,
-  stopSpeaking
+  stopSpeaking,
+  usesAppleOnDeviceSpeech
 } from "../lib/speechCare"
-import { colors } from "../screens/new_ui/tokens"
 
-/**
- * 口譯：人在旁邊時開口說 → 講完再翻成對方語言 → 朗讀一次
- * 不進聊天室
- */
+const VoiceWav = NativeModules.VoiceWav
+const useAndroidWav = Platform.OS === "android" && typeof VoiceWav?.start === "function"
+
 export default function FaceTalkSheet({ visible, onClose, apiBaseUrl, token, myLang, partnerLang }) {
   const { t } = useI18n()
   const speakDefault = myLang || "zh"
@@ -37,6 +39,13 @@ export default function FaceTalkSheet({ visible, onClose, apiBaseUrl, token, myL
   const hearRef = useRef(hearLang)
   const sessionRef = useRef(null)
   const busyRef = useRef(false)
+  const listeningRef = useRef(false)
+  const tRef = useRef(t)
+  const wavArmedRef = useRef(false)
+
+  tRef.current = t
+  listeningRef.current = listening
+  const useIosWhisper = Platform.OS === "ios" && !usesAppleOnDeviceSpeech(speakLang)
 
   useEffect(() => {
     if (!visible) return
@@ -58,85 +67,191 @@ export default function FaceTalkSheet({ visible, onClose, apiBaseUrl, token, myL
     busyRef.current = busy
   }, [busy])
 
-  useEffect(() => {
-    if (!visible) {
-      stopListening()
-      stopSpeaking()
-      setListening(false)
+  const finishUtterance = async (raw) => {
+    if (busyRef.current) return
+    const text = String(raw || "").trim()
+    setListening(false)
+    listeningRef.current = false
+    const tr = tRef.current
+    if (!text) {
+      setStatus(tr("phrase.voiceError"))
+      return
+    }
+    busyRef.current = true
+    setBusy(true)
+    try {
+      const polished = await polishSpeechText({
+        apiBaseUrl,
+        token,
+        text,
+        lang: speakRef.current
+      })
+      setHeard(polished)
+      if (speakRef.current === hearRef.current) {
+        setSpoken(polished)
+        await speakText(polished, hearRef.current)
+      } else {
+        const data = await apiRequest({
+          apiBaseUrl,
+          path: "/translate",
+          method: "POST",
+          token,
+          body: { text: polished, targetLang: hearRef.current }
+        })
+        const out = String(data?.translatedText || polished).trim()
+        setSpoken(out)
+        await speakText(out, hearRef.current)
+      }
       setStatus("")
+    } catch {
+      setStatus(tr("phrase.translateFail"))
+    } finally {
+      busyRef.current = false
+      setBusy(false)
+    }
+  }
+
+  const attachIosHandlers = () => {
+    sessionRef.current = bindUtteranceHandlers({
+      onHeard: (text) => setHeard(text),
+      onComplete: (text) => {
+        finishUtterance(text)
+      },
+      onError: () => {
+        setListening(false)
+        setStatus(tRef.current("phrase.voiceError"))
+      }
+    })
+  }
+
+  useEffect(() => {
+    if (visible) {
+      Keyboard.dismiss()
+      setHeard("")
+      setSpoken("")
+      setStatus("")
+      setListening(false)
+      listeningRef.current = false
       return undefined
     }
-
-    let cancelled = false
-    const runOnce = async (raw) => {
-      if (busyRef.current) return
-      const text = String(raw || "").trim()
-      setListening(false)
-      if (!text) {
-        setStatus(t("phrase.voiceError"))
-        return
-      }
-      busyRef.current = true
-      setBusy(true)
-      try {
-        const polished = await polishSpeechText({
-          apiBaseUrl,
-          token,
-          text,
-          lang: speakRef.current
-        })
-        setHeard(polished)
-        if (speakRef.current === hearRef.current) {
-          setSpoken(polished)
-          await speakText(polished, hearRef.current)
-        } else {
-          const data = await apiRequest({
-            apiBaseUrl,
-            path: "/translate",
-            method: "POST",
-            token,
-            body: { text: polished, targetLang: hearRef.current }
-          })
-          const out = String(data?.translatedText || polished).trim()
-          setSpoken(out)
-          await speakText(out, hearRef.current)
-        }
-        setStatus("")
-      } catch {
-        setStatus(t("phrase.translateFail"))
-      } finally {
-        busyRef.current = false
-        setBusy(false)
-      }
+    stopSpeaking()
+    sessionRef.current = null
+    if (wavArmedRef.current && useAndroidWav) {
+      wavArmedRef.current = false
+      abortVoiceWav().catch(() => {})
     }
+    clearVoiceHandlers()
+    destroyVoice().catch(() => {})
+    setListening(false)
+    setStatus("")
+    return undefined
+  }, [visible])
 
-    isVoiceAvailable().then((ok) => {
-      if (cancelled) return
-      if (!ok) {
-        setStatus(t("phrase.voiceUnavailable"))
-        return
-      }
-      sessionRef.current = bindUtteranceHandlers({
-        onHeard: (text) => setHeard(text),
-        onComplete: (text) => {
-          runOnce(text)
-        },
-        onError: () => {
-          setListening(false)
-          setStatus(t("phrase.voiceError"))
-        }
-      })
+  const transcribeWav = async (b64) => {
+    const tr = tRef.current
+    if (!b64) {
+      setStatus(tr("phrase.voiceError"))
+      return
+    }
+    setStatus(tr("chat.voiceSending"))
+    const data = await apiRequest({
+      apiBaseUrl,
+      path: "/stt",
+      method: "POST",
+      token,
+      body: { audioBase64: b64, mimeType: "audio/wav", sourceLang: speakRef.current }
     })
+    await finishUtterance(String(data?.text || "").trim())
+  }
 
-    return () => {
-      cancelled = true
-      destroyVoice()
-      stopSpeaking()
-      sessionRef.current = null
+  const startAndroidWav = async () => {
+    const tr = tRef.current
+    const ok = await requestMicPermission({
+      title: tr("phrase.micTitle"),
+      message: tr("phrase.micMsg"),
+      allow: tr("phrase.micAllow")
+    })
+    if (!ok) {
+      setStatus(tr("phrase.permDenied"))
+      return
     }
-  }, [visible, apiBaseUrl, token, t])
+    Keyboard.dismiss()
+    setSpoken("")
+    setHeard("")
+    setStatus(tr("phrase.listening"))
+    try {
+      await abortVoiceWav()
+      await VoiceWav.start()
+      wavArmedRef.current = true
+      setListening(true)
+    } catch {
+      wavArmedRef.current = false
+      setListening(false)
+      setStatus(tr("phrase.voiceError"))
+    }
+  }
+
+  const stopAndroidWav = async () => {
+    const tr = tRef.current
+    setListening(false)
+    if (!wavArmedRef.current) return
+    wavArmedRef.current = false
+    try {
+      const res = await VoiceWav.stop()
+      const b64 = res?.b64
+      if (!b64) {
+        setStatus(tr("phrase.voiceError"))
+        return
+      }
+      setStatus(tr("chat.voiceSending"))
+      await transcribeWav(b64)
+    } catch {
+      setStatus(tr("phrase.voiceError"))
+    }
+  }
+
+  const startIosWav = async () => {
+    const tr = tRef.current
+    const ok = await requestMicPermission({
+      title: tr("phrase.micTitle"),
+      message: tr("phrase.micMsg"),
+      allow: tr("phrase.micAllow")
+    })
+    if (!ok) {
+      setStatus(tr("phrase.permDenied"))
+      return
+    }
+    Keyboard.dismiss()
+    setSpoken("")
+    setHeard("")
+    setStatus(tr("phrase.listening"))
+    wavArmedRef.current = true
+    setListening(true)
+    listeningRef.current = true
+  }
 
   const toggleMic = async () => {
+    const tr = tRef.current
+    if (useAndroidWav) {
+      if (listening) {
+        await stopAndroidWav()
+        return
+      }
+      await startAndroidWav()
+      return
+    }
+
+    if (useIosWhisper) {
+      if (listening) {
+        wavArmedRef.current = false
+        setListening(false)
+        listeningRef.current = false
+        return
+      }
+      await startIosWav()
+      return
+    }
+
     if (listening) {
       await stopListening()
       setListening(false)
@@ -145,74 +260,106 @@ export default function FaceTalkSheet({ visible, onClose, apiBaseUrl, token, myL
     }
     const okEngine = await isVoiceAvailable()
     if (!okEngine) {
-      setStatus(t("phrase.voiceUnavailable"))
+      setStatus(tr("phrase.voiceUnavailable"))
       return
     }
     const ok = await requestMicPermission({
-      title: t("phrase.micTitle"),
-      message: t("phrase.micMsg"),
-      allow: t("phrase.micAllow")
+      title: tr("phrase.micTitle"),
+      message: tr("phrase.micMsg"),
+      allow: tr("phrase.micAllow")
     })
     if (!ok) {
-      setStatus(t("phrase.permDenied"))
+      setStatus(tr("phrase.permDenied"))
       return
     }
     setSpoken("")
     setHeard("")
-    sessionRef.current?.reset?.()
+    Keyboard.dismiss()
+    sessionRef.current = null
+    await destroyVoice()
+    attachIosHandlers()
     setListening(true)
-    setStatus(t("phrase.listening"))
+    listeningRef.current = true
+    setStatus(tr("phrase.listening"))
     try {
       await startListening(speakLang)
-    } catch (err) {
+    } catch {
       setListening(false)
-      setStatus(err?.code === "VOICE_UNAVAILABLE" ? t("phrase.voiceUnavailable") : t("phrase.voiceError"))
+      listeningRef.current = false
+      setStatus(tr("phrase.voiceUnavailable"))
     }
   }
+
+  useEffect(() => {
+    if (!visible || !listeningRef.current || useAndroidWav) return undefined
+    if (!usesAppleOnDeviceSpeech(speakLang)) {
+      stopListening().catch(() => {})
+      setListening(false)
+      listeningRef.current = false
+      return undefined
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        sessionRef.current?.reset?.()
+        attachIosHandlers()
+        await startListening(speakLang)
+      } catch {
+        if (!cancelled) {
+          setListening(false)
+          listeningRef.current = false
+          setStatus(tRef.current("phrase.voiceUnavailable"))
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [speakLang, visible])
 
   if (!visible) return null
 
   return (
-    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+    <Modal
+      visible
+      animationType="slide"
+      transparent
+      presentationStyle="overFullScreen"
+      onRequestClose={onClose}
+    >
       <View style={styles.mask}>
         <Pressable style={styles.dismiss} onPress={onClose} />
         <View style={styles.sheet}>
+          <View style={styles.handle} />
           <Text style={styles.title}>{t("chat.faceTalk")}</Text>
-          <Text style={styles.label}>{t("phrase.speakLang")}</Text>
-          <View style={styles.row}>
-            {LANG_OPTIONS.map((item) => (
-              <Pressable
-                key={`s-${item.code}`}
-                style={[styles.chip, speakLang === item.code ? styles.chipOn : null]}
-                onPress={() => setSpeakLang(item.code)}
-              >
-                <Text style={[styles.chipText, speakLang === item.code ? styles.chipTextOn : null]}>
-                  {item.short}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-          <Text style={styles.label}>{t("phrase.hearLang")}</Text>
-          <View style={styles.row}>
-            {LANG_OPTIONS.map((item) => (
-              <Pressable
-                key={`h-${item.code}`}
-                style={[styles.chip, hearLang === item.code ? styles.chipOn : null]}
-                onPress={() => setHearLang(item.code)}
-              >
-                <Text style={[styles.chipText, hearLang === item.code ? styles.chipTextOn : null]}>
-                  {item.short}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-          {heard ? <TextInput style={styles.box} value={heard} editable={false} multiline /> : null}
+          <LangPickField label={t("phrase.speakLang")} value={speakLang} onChange={setSpeakLang} />
+          <LangPickField label={t("phrase.hearLang")} value={hearLang} onChange={setHearLang} />
+          {heard ? <Text style={styles.box}>{heard}</Text> : null}
           {spoken ? (
             <View style={styles.out}>
-              <Text style={styles.outText}>{spoken}</Text>
+              <Text style={styles.outText} selectable>{spoken}</Text>
             </View>
           ) : null}
           {status ? <Text style={styles.status}>{status}</Text> : null}
+          {useIosWhisper ? (
+            <View style={{ height: 0, overflow: "hidden" }}>
+              <ChatVoiceRecorder
+                recording={listening}
+                enableSpeech={false}
+                locale="fil-PH"
+                onRecorded={(blob) => {
+                  if (!blob?.b64) {
+                    setStatus(tRef.current("phrase.voiceError"))
+                    return
+                  }
+                  transcribeWav(blob.b64).catch(() => {
+                    setStatus(tRef.current("phrase.voiceError"))
+                  })
+                }}
+                onFail={() => setStatus(tRef.current("phrase.voiceError"))}
+              />
+            </View>
+          ) : null}
           <Pressable style={[styles.mic, listening ? styles.micLive : null]} onPress={toggleMic} disabled={busy}>
             <Text style={styles.micText}>
               {listening ? t("phrase.micStop") : t("chat.faceSpeak")}
@@ -228,55 +375,53 @@ export default function FaceTalkSheet({ visible, onClose, apiBaseUrl, token, myL
 }
 
 const styles = StyleSheet.create({
-  mask: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(15,23,42,0.35)" },
+  mask: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(11,13,14,0.55)" },
   dismiss: { flex: 1 },
   sheet: {
-    backgroundColor: "#fff",
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
+    backgroundColor: "#16181D",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderTopWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
     padding: 16,
     paddingBottom: 28,
     gap: 8
   },
-  title: { fontSize: 17, fontWeight: "800", color: colors.text },
-  hint: { color: "#6a7e99", fontSize: 13, lineHeight: 18 },
-  label: { color: "#244569", fontWeight: "700", fontSize: 13, marginTop: 4 },
-  row: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#c7d8ed"
+  handle: {
+    alignSelf: "center",
+    width: 40,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    marginBottom: 8
   },
-  chipOn: { backgroundColor: colors.pine, borderColor: colors.pine },
-  chipText: { color: "#3a5678", fontWeight: "700", fontSize: 13 },
-  chipTextOn: { color: "#fff" },
+  title: { fontSize: 17, fontWeight: "800", color: "#FFFFFF" },
   box: {
     borderWidth: 1,
-    borderColor: "#c8d8ee",
-    borderRadius: 10,
+    borderColor: "rgba(255,255,255,0.1)",
+    borderRadius: 12,
     padding: 10,
-    color: colors.text,
+    color: "#FFFFFF",
+    backgroundColor: "#121418",
     minHeight: 44
   },
   out: {
-    backgroundColor: "#f0fdf4",
-    borderRadius: 10,
+    backgroundColor: "#12281E",
+    borderRadius: 12,
     padding: 10,
     borderWidth: 1,
-    borderColor: "#bbf7d0"
+    borderColor: "rgba(16,185,129,0.4)"
   },
-  outText: { color: "#14532d", fontWeight: "700", fontSize: 16, lineHeight: 22 },
-  status: { color: "#b91c1c", fontWeight: "700", fontSize: 13 },
+  outText: { color: "#10B981", fontWeight: "700", fontSize: 16, lineHeight: 22 },
+  status: { color: "#FF5C5C", fontWeight: "700", fontSize: 13 },
   mic: {
-    backgroundColor: colors.text,
-    borderRadius: 12,
+    backgroundColor: "#10B981",
+    borderRadius: 999,
     paddingVertical: 14,
     alignItems: "center"
   },
-  micLive: { backgroundColor: "#b91c1c" },
-  micText: { color: "#fff", fontWeight: "800" },
-  close: { alignItems: "center", paddingVertical: 8 },
-  closeText: { color: colors.pine, fontWeight: "800" }
+  micLive: { backgroundColor: "#FF4D4D" },
+  micText: { color: "#000000", fontWeight: "800" },
+  close: { alignItems: "center", paddingVertical: 12 },
+  closeText: { color: "#10B981", fontWeight: "700", fontSize: 14 }
 })

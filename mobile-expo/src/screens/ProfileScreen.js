@@ -134,7 +134,9 @@ export default function ProfileScreen({ apiBaseUrl, token, role, user, onSaved }
       >
         <Text style={styles.lead}>{t("profile.lead")}</Text>
         <Text style={styles.label}>{t("profile.email")}</Text>
-        <Text style={styles.email}>{user?.email || "—"}</Text>
+        <View style={styles.emailBox}>
+          <Text style={styles.email} numberOfLines={1}>{user?.email || "—"}</Text>
+        </View>
 
         <Text style={styles.label}>{t("profile.name")}</Text>
         <TextInput
@@ -142,7 +144,7 @@ export default function ProfileScreen({ apiBaseUrl, token, role, user, onSaved }
           value={name}
           onChangeText={setName}
           placeholder={t("profile.namePlaceholder")}
-          placeholderTextColor="#98a2b3"
+          placeholderTextColor="#8E95A3"
           autoCorrect={false}
         />
 
@@ -152,7 +154,7 @@ export default function ProfileScreen({ apiBaseUrl, token, role, user, onSaved }
           value={phone}
           onChangeText={setPhone}
           placeholder={t("profile.phonePlaceholder")}
-          placeholderTextColor="#98a2b3"
+          placeholderTextColor="#8E95A3"
           keyboardType="phone-pad"
         />
 
@@ -195,7 +197,7 @@ export default function ProfileScreen({ apiBaseUrl, token, role, user, onSaved }
               value={experience}
               onChangeText={setExperience}
               placeholder={t("profile.experiencePlaceholder")}
-              placeholderTextColor="#98a2b3"
+              placeholderTextColor="#8E95A3"
               multiline
             />
           </>
@@ -223,8 +225,18 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24, backgroundColor: colors.bg },
   pad: { padding: 16, paddingBottom: 48, gap: 8 },
   lead: { color: colors.textMuted, lineHeight: 20, marginBottom: 8 },
-  label: { color: colors.text, fontWeight: "800", fontSize: 14, marginTop: 8 },
-  email: { color: colors.textMuted, fontSize: 15, fontWeight: "600" },
+  label: { color: colors.text, fontWeight: "700", fontSize: 16, marginTop: 8 },
+  emailBox: {
+    height: 52,
+    borderRadius: 16,
+    borderCurve: "continuous",
+    backgroundColor: "#121418",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)",
+    paddingHorizontal: 14,
+    justifyContent: "center"
+  },
+  email: { color: "#8E95A3", fontSize: 15, fontWeight: "500" },
   derived: {
     color: colors.text,
     fontSize: 16,
@@ -248,27 +260,27 @@ const styles = StyleSheet.create({
   choiceTextOn: { color: colors.mint },
   input: {
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
+    borderColor: "rgba(255,255,255,0.1)",
+    borderRadius: 16,
     borderCurve: "continuous",
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    paddingHorizontal: 14,
+    height: 52,
     fontSize: 16,
-    color: colors.text,
-    backgroundColor: colors.card,
-    minHeight: 48
+    fontWeight: "500",
+    color: "#FFFFFF",
+    backgroundColor: "#16181D"
   },
-  inputTall: { minHeight: 88, textAlignVertical: "top" },
+  inputTall: { height: 52, textAlignVertical: "center" },
   error: { color: "#b42318", fontWeight: "700", marginTop: 8 },
   ok: { color: "#027a48", fontWeight: "700", marginTop: 8 },
   saveBtn: {
     marginTop: 16,
-    backgroundColor: colors.pine,
-    borderRadius: 12,
-    borderCurve: "continuous",
-    paddingVertical: 14,
-    alignItems: "center"
+    backgroundColor: "#5B8E7D",
+    borderRadius: 999,
+    height: 52,
+    alignItems: "center",
+    justifyContent: "center"
   },
   disabled: { opacity: 0.6 },
-  saveText: { color: "#fff", fontWeight: "900", fontSize: 16 }
+  saveText: { color: "#000000", fontWeight: "700", fontSize: 16 }
 })

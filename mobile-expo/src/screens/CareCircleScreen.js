@@ -18,8 +18,9 @@ import {
   mobileCareCircleRotateInvite,
   mobileCareCircleSwitch
 } from "../lib/api"
+import { AvatarMark } from "../components/AvatarMark"
 import { colors } from "./new_ui/tokens"
-
+import { NeoIcon } from "./new_ui/NeoIcons"
 import { useI18n } from "../i18n/I18nContext"
 
 function memberDisplayName(item, t) {
@@ -208,7 +209,7 @@ export default function CareCircleScreen({
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator color={colors.pine} />
+        <ActivityIndicator color={colors.mint} />
       </View>
     )
   }
@@ -223,17 +224,23 @@ export default function CareCircleScreen({
   const others = members.filter(m => String(m.email || "").toLowerCase() !== myEmail)
 
   return (
-    <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <View style={styles.summary}>
-        <Text style={styles.summaryRole}>{t(`roles.${currentRole}`) || "—"}</Text>
-        <Text style={styles.summaryEmail} numberOfLines={1}>
-          {user?.email || ""}
-        </Text>
-        {isHelper ? (
-          <Text style={styles.summaryLink} numberOfLines={1}>
-            {linked ? t("circle.following", { email: linked }) : t("circle.notJoined")}
+        <AvatarMark email={user?.email} size={44} apiBaseUrl={apiBaseUrl} token={token} />
+        <View style={styles.summaryText}>
+          <Text style={styles.summaryRole}>{t(`roles.${currentRole}`) || "—"}</Text>
+          <Text style={styles.summaryEmail} numberOfLines={1}>
+            {user?.email || ""}
           </Text>
-        ) : null}
+          {isHelper ? (
+            <View style={styles.summaryLinkRow}>
+              <View style={styles.liveDot} />
+              <Text style={styles.summaryLink} numberOfLines={1}>
+                {linked ? t("circle.following", { email: linked }) : t("circle.notJoined")}
+              </Text>
+            </View>
+          ) : null}
+        </View>
       </View>
 
       {isHelper ? (
@@ -246,6 +253,7 @@ export default function CareCircleScreen({
               const active = Boolean(item.isActive)
               return (
                 <View key={item.patientEmail} style={[styles.circleRow, active && styles.circleRowActive]}>
+                  <AvatarMark email={item.patientEmail} size={36} apiBaseUrl={apiBaseUrl} token={token} />
                   <View style={styles.memberTextCol}>
                     <Text style={styles.memberMain} numberOfLines={1}>
                       {item.patientName || t("common.elder")}{active ? t("circle.watchingTag") : ""}
@@ -338,15 +346,18 @@ export default function CareCircleScreen({
                   </Text>
                 </Pressable>
               </View>
-              <TextInput
-                style={styles.input}
-                value={bindMode === "invite" ? inviteInput : emailInput}
-                onChangeText={bindMode === "invite" ? setInviteInput : setEmailInput}
-                autoCapitalize={bindMode === "invite" ? "characters" : "none"}
-                keyboardType={bindMode === "invite" ? "default" : "email-address"}
-                placeholder={bindMode === "invite" ? t("circle.invitePlaceholder") : t("circle.elderEmail")}
-                placeholderTextColor="#8aa0b8"
-              />
+              <View style={styles.inviteField}>
+                <NeoIcon name="link" size={16} color="#8E95A3" />
+                <TextInput
+                  style={styles.inviteInput}
+                  value={bindMode === "invite" ? inviteInput : emailInput}
+                  onChangeText={bindMode === "invite" ? setInviteInput : setEmailInput}
+                  autoCapitalize={bindMode === "invite" ? "characters" : "none"}
+                  keyboardType={bindMode === "invite" ? "default" : "email-address"}
+                  placeholder={bindMode === "invite" ? t("circle.invitePlaceholder") : t("circle.elderEmail")}
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
               <Pressable
                 style={[styles.primaryBtn, busy && styles.disabled]}
                 onPress={handleBind}
@@ -371,6 +382,7 @@ export default function CareCircleScreen({
         ) : (
           others.map(item => (
             <View key={`${item.role}-${item.email}`} style={styles.memberRow}>
+              <AvatarMark email={item.email} size={36} apiBaseUrl={apiBaseUrl} token={token} />
               <View style={styles.memberTextCol}>
                 <Text style={styles.memberMain} numberOfLines={1}>
                   {t(`roles.${item.role}`) || item.role}　{memberDisplayName(item, t)}
@@ -409,26 +421,49 @@ export default function CareCircleScreen({
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#fff" },
-  container: { padding: 20, paddingBottom: 36, backgroundColor: "#fff", flexGrow: 1, gap: 14 },
-  summary: { paddingVertical: 4, gap: 4 },
-  summaryRole: { fontSize: 20, fontWeight: "900", color: "#111827" },
-  summaryEmail: { color: "#64748b", fontWeight: "600", fontSize: 13 },
-  summaryLink: { color: colors.pine, fontWeight: "700", fontSize: 13, marginTop: 2 },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.bg },
+  container: { padding: 20, paddingBottom: 36, backgroundColor: colors.bg, flexGrow: 1, gap: 14 },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  summary: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 16,
+    borderRadius: 16,
+    borderCurve: "continuous",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "#16181D"
+  },
+  summaryText: { flex: 1, gap: 2 },
+  summaryRole: { fontSize: 16, fontWeight: "800", color: colors.text },
+  summaryEmail: { color: colors.textMuted, fontWeight: "600", fontSize: 13 },
+  summaryLinkRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 },
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#10B981" },
+  summaryLink: { flex: 1, color: "#10B981", fontWeight: "700", fontSize: 13 },
   block: {
     padding: 16,
-    borderRadius: 14,
+    borderRadius: 16,
+    borderCurve: "continuous",
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "#16181D",
     gap: 10
   },
-  blockTitle: { color: "#111827", fontWeight: "900", fontSize: 15 },
-  muted: { color: "#94a3b8", fontWeight: "600", fontSize: 13 },
+  blockTitle: { color: colors.text, fontWeight: "900", fontSize: 15 },
+  muted: { color: colors.textMuted, fontWeight: "600", fontSize: 13 },
   inviteCode: {
     fontSize: 30,
     letterSpacing: 5,
     fontWeight: "900",
-    color: colors.pine,
+    color: colors.mint,
     textAlign: "center",
     marginVertical: 4
   },
@@ -436,80 +471,102 @@ const styles = StyleSheet.create({
   modeChip: {
     flex: 1,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: 999,
+    borderCurve: "continuous",
     borderWidth: 1,
-    borderColor: "#d1d5db",
+    borderColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "#121418",
     alignItems: "center"
   },
-  modeChipActive: { backgroundColor: colors.text, borderColor: colors.text },
-  modeChipText: { color: "#64748b", fontWeight: "800" },
-  modeChipTextActive: { color: "#fff" },
+  modeChipActive: { backgroundColor: "#10B981", borderColor: "#10B981" },
+  modeChipText: { color: "#8E95A3", fontWeight: "800" },
+  modeChipTextActive: { color: "#000000" },
+  inviteField: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    height: 48,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    borderRadius: 12,
+    borderCurve: "continuous",
+    paddingHorizontal: 12,
+    backgroundColor: "#121418"
+  },
+  inviteInput: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 16,
+    paddingVertical: 0
+  },
   input: {
     borderWidth: 1,
-    borderColor: "#d1d5db",
+    borderColor: "rgba(255,255,255,0.1)",
     borderRadius: 12,
+    borderCurve: "continuous",
     paddingHorizontal: 14,
     paddingVertical: 12,
     minHeight: 48,
-    color: "#111827",
+    color: colors.text,
+    backgroundColor: "#121418",
     fontSize: 16
   },
   primaryBtn: {
-    backgroundColor: colors.pine,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center"
+    backgroundColor: "#10B981",
+    borderRadius: 999,
+    height: 48,
+    alignItems: "center",
+    justifyContent: "center"
   },
-  primaryBtnText: { color: "#fff", fontWeight: "900" },
+  primaryBtnText: { color: "#000000", fontWeight: "700", fontSize: 16 },
   cancelLink: { alignItems: "center", paddingVertical: 4 },
-  cancelLinkText: { color: "#64748b", fontWeight: "700" },
+  cancelLinkText: { color: colors.textMuted, fontWeight: "700" },
   circleRow: {
-    paddingTop: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "#e5e7eb",
     flexDirection: "row",
     alignItems: "center",
-    gap: 8
+    gap: 10,
+    padding: 10,
+    borderRadius: 16,
+    borderCurve: "continuous"
   },
-  circleRowActive: { backgroundColor: "#f0f7ff", marginHorizontal: -8, paddingHorizontal: 8, borderRadius: 8 },
+  circleRowActive: { backgroundColor: "#162920" },
   memberRow: {
-    paddingTop: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "#e5e7eb",
     flexDirection: "row",
     alignItems: "center",
-    gap: 8
+    gap: 10,
+    paddingVertical: 8
   },
   memberTextCol: { flex: 1, gap: 2 },
-  memberMain: { color: "#111827", fontWeight: "700", fontSize: 14 },
-  memberSub: { color: "#94a3b8", fontSize: 12 },
+  memberMain: { color: colors.text, fontWeight: "700", fontSize: 14 },
+  memberSub: { color: colors.textMuted, fontSize: 12 },
   switchChip: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 14,
     paddingVertical: 6,
-    borderRadius: 8,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#93c5fd",
-    backgroundColor: "#eff6ff"
+    borderColor: "rgba(16,185,129,0.5)",
+    backgroundColor: "transparent"
   },
-  switchChipText: { color: "#1d4ed8", fontWeight: "800", fontSize: 12 },
+  switchChipText: { color: "#10B981", fontWeight: "700", fontSize: 12 },
   removeChip: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 14,
     paddingVertical: 6,
-    borderRadius: 8,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#fecaca",
-    backgroundColor: "#fef2f2"
+    borderColor: "rgba(255,92,92,0.5)",
+    backgroundColor: "transparent"
   },
-  removeChipText: { color: "#b91c1c", fontWeight: "800", fontSize: 12 },
+  removeChipText: { color: "#FF5C5C", fontWeight: "700", fontSize: 12 },
   dangerOutlineBtn: {
     borderRadius: 12,
+    borderCurve: "continuous",
     borderWidth: 1.5,
-    borderColor: "#fca5a5",
+    borderColor: colors.clay,
     paddingVertical: 14,
     alignItems: "center",
-    backgroundColor: "#fff"
+    backgroundColor: colors.card
   },
-  dangerOutlineText: { color: "#b91c1c", fontWeight: "900" },
-  error: { color: "#b42318", fontWeight: "700", textAlign: "center" },
+  dangerOutlineText: { color: colors.clay, fontWeight: "900" },
+  error: { color: colors.clay, fontWeight: "700", textAlign: "center" },
   disabled: { opacity: 0.65 }
 })

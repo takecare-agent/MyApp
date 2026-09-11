@@ -1,7 +1,6 @@
 import { View, Text, Pressable, RefreshControl, ScrollView, StyleSheet, Linking } from "react-native"
 import { colors, radius, spacing, font } from "./tokens"
 import {
-  IconUser,
   IconPhone,
   IconBook,
   IconUserPlus,
@@ -11,14 +10,22 @@ import {
   IconCheck,
   IconArrowRight
 } from "./NeoIcons"
+import { AvatarMark } from "../../components/AvatarMark"
+import TranslatedUgcText from "../../components/TranslatedUgcText"
+import { useI18n } from "../../i18n/I18nContext"
+import BpSparkline from "./BpSparkline"
 
 export default function NewCaregiverHome({
   elderName,
+  avatarEmail,
+  apiBaseUrl,
+  token,
   greeting,
   statusText,
   pendingCount,
   todos,
   bpText,
+  bpPoints,
   bpStage,
   healthCardHint,
   showEmergency = true,
@@ -33,17 +40,16 @@ export default function NewCaregiverHome({
   onRefreshBp,
   onPressStatus
 }) {
+  const { t } = useI18n()
   const list = Array.isArray(todos) ? todos : []
-  const completedCount = list.filter((t) => t.done).length
+  const completedCount = list.filter((item) => item.done).length
   const totalCount = list.length
 
-  let summary = null
-  if (typeof pendingCount === "number") {
+  let summary = statusText || null
+  if (!summary && typeof pendingCount === "number") {
     summary = pendingCount > 0
-      ? `狀態注意 · ${pendingCount} 項待處理異常`
-      : "狀態良好 · 無待處理異常"
-  } else if (statusText) {
-    summary = statusText
+      ? t("home.statusTodoOpen.caregiver", { n: pendingCount })
+      : t("home.statusTodoDone.caregiver")
   }
 
   const StatusWrap = onPressStatus ? Pressable : View
@@ -62,9 +68,7 @@ export default function NewCaregiverHome({
     >
       <View style={[styles.card, styles.headerCard]}>
         <View style={styles.headerRow}>
-          <View style={styles.avatar}>
-            <IconUser size={26} />
-          </View>
+          <AvatarMark email={avatarEmail} size={52} apiBaseUrl={apiBaseUrl} token={token} />
           <View style={styles.headerText}>
             {elderName ? (
               <Text style={styles.elderName} numberOfLines={1}>
@@ -101,8 +105,8 @@ export default function NewCaregiverHome({
               <Text style={styles.sosBadgeText}>SOS</Text>
             </View>
           </View>
-          <Text style={styles.sosSubtitle}>緊急通報</Text>
-          <Text style={styles.sosHint}>緊急情況 · 立即聯繫</Text>
+          <Text style={styles.sosSubtitle}>{t("home.emergencyReport")}</Text>
+          <Text style={styles.sosHint}>{t("home.emergencyNow")}</Text>
           <View style={styles.sosBottom}>
             <IconArrowRight size={16} />
             <View style={styles.phoneBtn}>
@@ -116,10 +120,10 @@ export default function NewCaregiverHome({
             <View style={styles.sideTop}>
               <View style={styles.sideCopy}>
                 <Text style={styles.sideTitle} numberOfLines={1}>
-                  緊急指引
+                  {t("home.emergencyGuide")}
                 </Text>
                 <Text style={styles.sideSub} numberOfLines={1}>
-                  (圖解救援)
+                  {t("home.guideRescue")}
                 </Text>
               </View>
               <IconBook size={20} />
@@ -135,7 +139,7 @@ export default function NewCaregiverHome({
                 adjustsFontSizeToFit
                 minimumFontScale={0.72}
               >
-                長輩健康資訊卡
+                {t("home.healthCardElder")}
               </Text>
               <IconUserPlus size={20} />
             </View>
@@ -150,21 +154,28 @@ export default function NewCaregiverHome({
           <View style={styles.todoTitleRow}>
             <IconCalendar size={18} />
             <Text style={styles.todoTitle} numberOfLines={1}>
-              今日的照護錄
+              {t("home.todayCareLog")}
             </Text>
           </View>
           {list.length === 0 ? (
-            <Text style={styles.emptyText}>今日無待辦</Text>
+            <Text style={styles.emptyText}>{t("home.noTodoToday")}</Text>
           ) : (
             <View style={styles.todoList}>
-              {list.slice(0, 3).map((t, i) => (
-                <View key={t.id ?? i} style={styles.todoRow}>
-                  <View style={[styles.checkDot, t.done ? styles.checkDotDone : null]}>
-                    {t.done ? <IconCheck size={12} /> : null}
+              {list.slice(0, 3).map((item, i) => (
+                <View key={item.id ?? i} style={styles.todoRow}>
+                  <View style={[styles.checkDot, item.done ? styles.checkDotDone : null]}>
+                    {item.done ? <IconCheck size={12} /> : null}
                   </View>
-                  <Text style={[styles.todoText, t.done ? styles.todoTextDone : null]} numberOfLines={1}>
-                    {t.title}
-                  </Text>
+                  <TranslatedUgcText
+                    text={item.title}
+                    sourceLang={item.sourceLang}
+                    contentKey={item.contentKey}
+                    apiBaseUrl={apiBaseUrl}
+                    token={token}
+                    compact
+                    numberOfLines={1}
+                    style={[styles.todoText, item.done ? styles.todoTextDone : null]}
+                  />
                 </View>
               ))}
             </View>
@@ -172,18 +183,18 @@ export default function NewCaregiverHome({
           <View style={styles.todoActions}>
             <Pressable style={styles.pillBtn} onPress={onOpenTodo}>
               <Text style={styles.pillBtnText} numberOfLines={1}>
-                全部
+                {t("common.all")}
               </Text>
             </Pressable>
             <Pressable style={styles.pillBtnFill} onPress={onWriteDaily || onOpenTodo}>
               <Text style={styles.pillBtnText} numberOfLines={1}>
-                填寫今日照護紀錄 →
+                {t("home.writeDailyArrow")}
               </Text>
             </Pressable>
           </View>
         </View>
         <View style={styles.todoRight}>
-          <ProgressRing done={completedCount} total={totalCount} />
+        <ProgressRing done={completedCount} total={totalCount} label={t("home.completeRing")} />
         </View>
       </View>
 
@@ -196,7 +207,7 @@ export default function NewCaregiverHome({
             adjustsFontSizeToFit
             minimumFontScale={0.8}
           >
-            血壓線卡 (mmHg)
+            {t("home.bpLineCard")}
           </Text>
           {bpStage ? (
             <View style={styles.bpStagePill}>
@@ -219,6 +230,7 @@ export default function NewCaregiverHome({
         <Text style={styles.bpValue} numberOfLines={1}>
           {bpText ? bpText.replace(" mmHg", "") : "- / -"} mmHg
         </Text>
+        <BpSparkline points={bpPoints} />
       </Pressable>
 
       <View style={{ height: spacing.xl }} />
@@ -226,7 +238,7 @@ export default function NewCaregiverHome({
   )
 }
 
-function ProgressRing({ done, total }) {
+function ProgressRing({ done, total, label }) {
   const safeTotal = Number(total) || 0
   const safeDone = Number(done) || 0
   const pct = safeTotal > 0 ? Math.min(1, safeDone / safeTotal) : 0
@@ -242,11 +254,10 @@ function ProgressRing({ done, total }) {
           { transform: [{ rotate: `${spin}deg` }] }
         ]}
       />
-      <View style={styles.ringGlowDot} />
       <View style={styles.ringInner} />
       <View style={styles.ringCore} />
       <View style={styles.ringCenter}>
-        <Text style={styles.ringLabel}>完成</Text>
+        <Text style={styles.ringLabel}>{label}</Text>
         <Text style={styles.ringValue}>
           {safeDone}/{safeTotal}
         </Text>
@@ -267,18 +278,7 @@ const styles = StyleSheet.create({
     padding: 14
   },
   headerCard: { marginBottom: 0, paddingVertical: 14 },
-  headerRow: { flexDirection: "row", alignItems: "center" },
-  avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: "#16181D",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12
-  },
+  headerRow: { flexDirection: "row", alignItems: "center", gap: 16 },
   headerText: { flex: 1, gap: 4 },
   elderName: { fontSize: 22, fontWeight: "700", color: colors.text },
   greeting: { fontSize: 14, color: colors.textMuted },
@@ -444,15 +444,6 @@ const styles = StyleSheet.create({
     borderRightColor: "rgba(168, 230, 207, 0.45)",
     boxShadow: "0 0 16px rgba(168, 230, 207, 0.65)"
   },
-  ringGlowDot: {
-    position: "absolute",
-    top: 8,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.mint,
-    boxShadow: "0 0 10px rgba(168, 230, 207, 0.9)"
-  },
   ringInner: {
     position: "absolute",
     width: 64,
@@ -471,7 +462,7 @@ const styles = StyleSheet.create({
   ringCenter: { alignItems: "center" },
   ringLabel: { fontSize: font.small, color: colors.textMuted },
   ringValue: { fontSize: font.h2, fontWeight: "700", color: colors.text },
-  bpCard: { minHeight: 108, padding: 14 },
+  bpCard: { minHeight: 168, padding: 14 },
   bpHeader: { flexDirection: "row", alignItems: "center", marginBottom: 4, gap: 6 },
   bpTitle: { flex: 1, fontSize: 15, fontWeight: "700", color: colors.text },
   bpStagePill: {

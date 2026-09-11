@@ -258,7 +258,7 @@ export default function RoleHomeScreen({
 }) {
   const [langModalVisible, setLangModalVisible] = useState(false)
 
-  const lang = (role === "caregiver" && uiLang) ? uiLang : "zh"
+  const lang = uiLang || "zh"
   const caregiverT = CAREGIVER_TEXT[lang] || CAREGIVER_TEXT.zh
 
   const features = role === "caregiver"

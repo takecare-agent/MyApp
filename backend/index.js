@@ -21,6 +21,8 @@ const { GoogleGenerativeAI } = require("@google/generative-ai")
 require("./googleAuth")
 const { reverseGeocode, reverseGeocodeWithTimeout } = require("./lib/reverseGeocode")
 const { normalizeHealthCard } = require("./lib/healthCardSanitize")
+const { transcribeWavBuffer, warmupWhisper, wavDurationSec, detectLangFromText } = require("./lib/whisperStt")
+const { resolveCarePresetKey } = require("./lib/carePresetKey")
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "")
 const geminiModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" })
@@ -170,6 +172,7 @@ const userSchema = new mongoose.Schema({
   inviteCodeExpires: Date,
   experience: String,
   lang: { type: String, default: "zh" },
+  avatarData: { type: String, default: "" },
   wearableSampleCursor: { type: Number, default: 0 },
   bloodPressureCursor: { type: Number, default: 0 },
   visionSampleCursor: { type: Number, default: 0 },
@@ -370,8 +373,27 @@ const reminderSchema = new mongoose.Schema({
   completedAt: Date,
   completedByUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   completedByRole: String,
+  createdByName: { type: String, default: "" },
+  marStatus: { type: String, default: "" },
+  givenAt: Date,
+  marNote: { type: String, default: "" },
+  reportExtra: { type: mongoose.Schema.Types.Mixed, default: {} },
   source: { type: String, default: "manual-reminder" }
 }, { timestamps: true })
+reminderSchema.set("toJSON", {
+  transform(_doc, ret) {
+    const key = resolveCarePresetKey(ret.content, ret.contentKey)
+    if (key) ret.contentKey = key
+    return ret
+  }
+})
+reminderSchema.set("toObject", {
+  transform(_doc, ret) {
+    const key = resolveCarePresetKey(ret.content, ret.contentKey)
+    if (key) ret.contentKey = key
+    return ret
+  }
+})
 
 const bloodPressureRecordSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
@@ -445,6 +467,7 @@ const chatMessageSchema = new mongoose.Schema({
   kind: { type: String, enum: ["text", "voice"], default: "text" },
   audioObjectKey: { type: String, default: "" },
   audioContentType: { type: String, default: "" },
+  audioDurationSec: { type: Number, default: 0 },
   timestamp: { type: Date, default: Date.now, expires: "30d" }
 })
 
@@ -467,13 +490,31 @@ const taskTemplateSchema = new mongoose.Schema({
   category: { type: String, required: true },
   content: { type: String, required: true },
   time: { type: String, default: "08:00" }, // HH:MM
+  times: { type: [String], default: [] }, // 額外 HH:MM；與 time 合併＝當日勾選次數
   weekdays: { type: [Number], default: [] }, // [] = 每天；0=日 … 6=六
   note: { type: String, default: "" },
   sourceLang: { type: String, default: "" },
   contentKey: { type: String, default: "" },
   order: { type: Number, default: 0 },
-  source: { type: String, default: "family-template" }
+  source: { type: String, default: "family-template" },
+  createdByRole: { type: String, enum: ["family", "caregiver"], default: "family" },
+  createdByName: { type: String, default: "" },
+  mealTiming: { type: String, default: "" }
 }, { timestamps: true })
+taskTemplateSchema.set("toJSON", {
+  transform(_doc, ret) {
+    const key = resolveCarePresetKey(ret.content, ret.contentKey)
+    if (key) ret.contentKey = key
+    return ret
+  }
+})
+taskTemplateSchema.set("toObject", {
+  transform(_doc, ret) {
+    const key = resolveCarePresetKey(ret.content, ret.contentKey)
+    if (key) ret.contentKey = key
+    return ret
+  }
+})
 
 /** 家屬自訂「常用事項」——掛在某類別下，供新增提醒下拉選 */
 const reminderPresetSchema = new mongoose.Schema({
@@ -631,19 +672,42 @@ app.get("/", (req, res) => {
   res.send("Backend is running!")
 })
 
-// ================= Google OAuth（Web + App 深連結） =================
+// ================= Google OAuth（Web + App 內 WebView） =================
+const googleOauthStates = new Map()
+function rememberGoogleOauthState(isMobile, callbackURL) {
+  const id = crypto.randomBytes(12).toString("hex")
+  const state = `${isMobile ? "mobile" : "web"}.${id}`
+  googleOauthStates.set(state, { isMobile: Boolean(isMobile), callbackURL })
+  setTimeout(() => googleOauthStates.delete(state), 10 * 60 * 1000)
+  return state
+}
+
 app.get("/auth/google", (req, res, next) => {
-  const state = req.query.mobile === "1" ? "mobile" : "web"
+  // Google 擋私人 IP（172.x / 192.168.x）當 redirect_uri。固定 localhost；App WebView 再改寫成 LAN。
+  const callbackURL = process.env.GOOGLE_CALLBACK_URL || "http://localhost:5000/auth/google/callback"
+  const isMobile = req.query.mobile === "1"
+  const state = rememberGoogleOauthState(isMobile, callbackURL)
+  console.log("[google oauth] callbackURL=", callbackURL, "(must be in Google Cloud Console)")
   passport.authenticate("google", {
     scope: ["profile", "email"],
     state,
-    session: false
+    callbackURL,
+    session: false,
+    prompt: "select_account"
   })(req, res, next)
 })
 
 app.get(
   "/auth/google/callback",
-  passport.authenticate("google", { session: false, failureRedirect: frontendWebUrl }),
+  (req, res, next) => {
+    const packed = googleOauthStates.get(String(req.query.state || "")) || {}
+    const callbackURL = packed.callbackURL || process.env.GOOGLE_CALLBACK_URL || "http://localhost:5000/auth/google/callback"
+    passport.authenticate("google", {
+      session: false,
+      failureRedirect: frontendWebUrl,
+      callbackURL
+    })(req, res, next)
+  },
   async (req, res) => {
     try {
       if (!req.user) return res.redirect(frontendWebUrl)
@@ -677,8 +741,16 @@ app.get(
         { expiresIn: "7d" }
       )
       const needsRole = !user.role
-      const isMobile = String(req.query.state || "") === "mobile"
+      const packed = googleOauthStates.get(String(req.query.state || "")) || {}
+      const isMobile = Boolean(packed.isMobile) || String(req.query.state || "").startsWith("mobile")
       if (isMobile) {
+        if (String(req.get("x-takecare-mobile") || "") === "1") {
+          return res.json({
+            token,
+            needsRole,
+            email: user.email
+          })
+        }
         const mobileBase = process.env.MOBILE_OAUTH_SUCCESS_URL || "takecare://auth"
         const sep = mobileBase.includes("?") ? "&" : "?"
         const qs = `token=${encodeURIComponent(token)}&needsRole=${needsRole ? "1" : "0"}&email=${encodeURIComponent(user.email)}`
@@ -709,12 +781,26 @@ app.get(
   <div class="card">
     <h1>Google 帳號已確認</h1>
     <p>${nextHint}</p>
-    <a class="btn" href="${intentLink}">回到 TakeCare</a>
-    <a class="btn btn2" href="${deepLink}">備用連結</a>
-    <p class="note">若仍無法跳轉：請先重建安裝 App（需含 takecare:// 深連結），再重試 Google 登入。</p>
+    <a class="btn" href="${deepLink}">回到 TakeCare</a>
+    <a class="btn btn2" href="${intentLink}">Android 備用</a>
+    <p class="note">若沒有自動跳回 App，請點上方按鈕。</p>
   </div>
   <script>
-    setTimeout(function () { window.location.href = ${JSON.stringify(intentLink)}; }, 400);
+    (function () {
+      var payload = {
+        token: ${JSON.stringify(token)},
+        needsRole: ${needsRole ? "true" : "false"},
+        email: ${JSON.stringify(user.email)}
+      };
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+        return;
+      }
+      var ua = navigator.userAgent || "";
+      var isAndroid = /Android/i.test(ua);
+      var target = isAndroid ? ${JSON.stringify(intentLink)} : ${JSON.stringify(deepLink)};
+      setTimeout(function () { window.location.href = target; }, 250);
+    })();
   </script>
 </body>
 </html>`)
@@ -1732,16 +1818,23 @@ const TRANSLATE_LANG_NAMES = {
 function looksLikeWrongScript(text, targetLang) {
   const s = String(text || "")
   if (!s) return false
+  const compact = s.replace(/\s/g, "")
   const cjk = (s.match(/[\u4e00-\u9fff]/g) || []).join("").length
-  const ratio = cjk / Math.max(s.replace(/\s/g, "").length, 1)
-  // 目標非中文卻大半是漢字 → 視為翻錯
-  if (targetLang !== "zh" && ratio >= 0.4) return true
+  const ratio = cjk / Math.max(compact.length, 1)
+  if (targetLang === "zh") {
+    const latinish = /[A-Za-zàáảãạăâêôơưđÀÁẢÃẠĂÂÊÔƠƯĐăâêôơư]/i.test(s)
+    if (latinish && ratio < 0.2) return true
+    return false
+  }
+  if (ratio >= 0.4) return true
   return false
 }
 
-/** 照護常用詞：寫進 prompt，避免「血壓／用藥」被亂翻 */
+/** 照護常用詞：雙向寫進 prompt，避免「血壓」被翻成抽血／薑汁 */
 const CARE_GLOSSARY = [
   { zh: "血壓", en: "blood pressure", id: "tekanan darah", vi: "huyết áp", tl: "presyon ng dugo", th: "ความดันโลหิต" },
+  { zh: "量血壓", en: "measure blood pressure", id: "ukur tekanan darah", vi: "đo huyết áp", tl: "sukatin ang blood pressure", th: "วัดความดัน" },
+  { zh: "血壓藥", en: "blood pressure medicine", id: "obat tekanan darah", vi: "thuốc huyết áp", tl: "gamot sa blood pressure", th: "ยาความดัน" },
   { zh: "收縮壓", en: "systolic pressure", id: "tekanan sistolik", vi: "huyết áp tâm thu", tl: "systolic", th: "ความดันซีสโตลิก" },
   { zh: "舒張壓", en: "diastolic pressure", id: "tekanan diastolik", vi: "huyết áp tâm trương", tl: "diastolic", th: "ความดันไดแอสโตลิก" },
   { zh: "血糖", en: "blood sugar", id: "gula darah", vi: "đường huyết", tl: "asukal sa dugo", th: "น้ำตาลในเลือด" },
@@ -1749,8 +1842,11 @@ const CARE_GLOSSARY = [
   { zh: "脈搏", en: "pulse", id: "denyut nadi", vi: "mạch", tl: "pulse", th: "ชีพจร" },
   { zh: "吃藥", en: "take medicine", id: "minum obat", vi: "uống thuốc", tl: "uminom ng gamot", th: "กินยา" },
   { zh: "用藥", en: "medication", id: "pengobatan", vi: "dùng thuốc", tl: "gamot", th: "การใช้ยา" },
+  { zh: "飯後", en: "after the meal", id: "setelah makan", vi: "sau bữa ăn", tl: "pagkatapos kumain", th: "หลังอาหาร" },
+  { zh: "抽血", en: "blood draw", id: "ambil darah", vi: "xét nghiệm máu", tl: "pagkuha ng dugo", th: "เจาะเลือด" },
   { zh: "跌倒", en: "fall", id: "jatuh", vi: "ngã", tl: "hulog", th: "หกล้ม" },
   { zh: "頭暈", en: "dizzy", id: "pusing", vi: "chóng mặt", tl: "nahihilo", th: "เวียนหัว" },
+  { zh: "記得要", en: "remember to", id: "ingat untuk", vi: "nhớ", tl: "tandaan na", th: "อย่าลืม" },
   { zh: "看護", en: "caregiver", id: "pengasuh", vi: "người chăm sóc", tl: "tagapag-alaga", th: "ผู้ดูแล" },
   { zh: "家屬", en: "family member", id: "keluarga", vi: "gia đình", tl: "kapamilya", th: "ครอบครัว" },
   { zh: "長輩", en: "elder", id: "lansia", vi: "người cao tuổi", tl: "nakatatanda", th: "ผู้สูงอายุ" }
@@ -1760,15 +1856,221 @@ const translateCache = new Map()
 
 function glossaryLines(targetLang) {
   const lang = TRANSLATE_LANG_MAP[targetLang] ? targetLang : "zh"
-  return CARE_GLOSSARY.map((row) => `${row.zh} → ${row[lang] || row.en}`).join("\n")
+  const keys = ["zh", "en", "id", "vi", "tl", "th"]
+  return CARE_GLOSSARY.map((row) => {
+    const target = row[lang] || row.zh
+    const sources = [...new Set(keys.filter((k) => k !== lang && row[k]).map((k) => row[k]))]
+    return `${sources.join(" / ")} → ${target}`
+  }).join("\n")
 }
 
 function cacheKeyFor(text, targetLang) {
   return `${targetLang}::${String(text || "").trim()}`
 }
 
+function repairCareSpeech(text) {
+  return String(text || "")
+    .replace(/huy[eệ]t\s*t[aáàạ]p/gi, "huyết áp")
+    .replace(/huy[eệ]t\s*ap\b/gi, "huyết áp")
+    .replace(/đò\s+huyết/gi, "đo huyết")
+    .replace(/\b(bad|blog|blad|blod)\s+pressure\b/gi, "blood pressure")
+    .replace(/\bpresyon\s+ng\s+dugo\b/gi, "blood pressure")
+    .replace(/良血壓|良血压/g, "量血壓")
+    .replace(/血压/g, "血壓")
+    .replace(/วัตความดัน/g, "วัดความดัน")
+    .replace(/กวามดัน/g, "ความดัน")
+    .replace(/ลังอาหาร/g, "หลังอาหาร")
+}
+
+function foldCarePhrase(s) {
+  return String(s || "")
+    .toLowerCase()
+    .normalize("NFC")
+    .replace(/[^\p{L}\p{N}]+/gu, "")
+}
+
+const CARE_PHRASE_BANK = [
+  {
+    zh: "今天量血壓了嗎？",
+    en: "Did you check your blood pressure today?",
+    vi: "Hôm nay đo huyết áp chưa?",
+    id: "Sudah cek tekanan darah belum?",
+    tl: "Nasukat mo na ba ang blood pressure ngayon?",
+    th: "วัดความดันหรือยัง",
+    aliases: [
+      "hôm nay đã đo huyết áp chưa",
+      "today you measure blood pressure",
+      "nasukat na ba ang blood pressure",
+      "nasukat mo na ba ang blood pressure",
+      "sinukat mo na ba ang blood pressure",
+      "sinukat mo na ba ang presyon"
+    ]
+  },
+  {
+    zh: "記得量血壓。",
+    en: "Please remember to check your blood pressure.",
+    vi: "Nhớ đo huyết áp giúp tôi.",
+    id: "Ingat cek tekanan darah.",
+    tl: "Pakisukat ang blood pressure.",
+    th: "อย่าลืมวัดความดัน",
+    aliases: [
+      "nhớ đo huyết áp",
+      "please remember to check your blood pressure",
+      "pakisukat mo ang blood pressure",
+      "tandaan sukatin ang blood pressure"
+    ]
+  },
+  {
+    zh: "吃午餐了嗎？",
+    en: "Have you had lunch yet?",
+    vi: "Ăn trưa chưa?",
+    id: "Sudah makan siang belum?",
+    tl: "Kumain ka na ba ng tanghalian?",
+    th: "กินข้าวเที่ยงหรือยัง",
+    aliases: [
+      "nakakain ka na ba ng tanghalian",
+      "kumain ka na",
+      "kumain ka na ba"
+    ]
+  },
+  {
+    zh: "飯後吃血壓藥。",
+    en: "Take the blood pressure medicine after the meal.",
+    vi: "Uống thuốc huyết áp sau bữa ăn.",
+    id: "Minum obat tekanan darah setelah makan.",
+    tl: "Inumin ang gamot sa blood pressure pagkatapos kumain.",
+    th: "กินยาความดันหลังอาหาร",
+    aliases: [
+      "nhớ uống thuốc huyết áp sau bữa ăn",
+      "uminom ng gamot sa blood pressure pagkatapos kumain",
+      "inumin ang gamot pagkatapos kumain"
+    ]
+  }
+]
+
+function lookupCarePhrase(text, targetLang) {
+  const fold = foldCarePhrase(text)
+  if (!fold || fold.length < 4) return ""
+  const want = TRANSLATE_LANG_MAP[targetLang] ? targetLang : "zh"
+  for (const row of CARE_PHRASE_BANK) {
+    const pool = [row.zh, row.en, row.vi, row.id, row.tl, row.th, ...(row.aliases || [])]
+    if (pool.some((p) => foldCarePhrase(p) === fold)) return row[want] || row.zh
+  }
+  const hasBp = /bloodpressure|presyon|huy[eệ]tá?p|tekanandarah|ความดัน|血壓/.test(fold)
+  const hasLunch = /tanghalian|lunch|ăntrưa|makansiang|ข้าวเที่ยง|午餐/.test(fold)
+  const hasMed = /gamot|thuốc|obat|ยา|藥|medicine/.test(fold)
+  const afterMeal = /pagkatapos|after(the)?(meal|eating)|saubữa|setelahmakan|หลังอาหาร|飯後/.test(fold)
+  const measure = /nasukat|sinukat|sukat|đo|ukur|วัด|量|check/.test(fold)
+  const remember = /pakisukat|tandaan|nhớ|ingat|อย่าลืม|記得|pleaseremember/.test(fold)
+  const ask = /หรือยัง|chưa|嗎|吗|belum/.test(fold)
+  if (hasMed && afterMeal) return CARE_PHRASE_BANK[3][want] || CARE_PHRASE_BANK[3].zh
+  if (hasBp && remember) return CARE_PHRASE_BANK[1][want] || CARE_PHRASE_BANK[1].zh
+  if (hasBp && (measure || ask)) return CARE_PHRASE_BANK[0][want] || CARE_PHRASE_BANK[0].zh
+  if (hasLunch || (/kumainkana/.test(fold) && !hasBp && !hasMed)) {
+    return CARE_PHRASE_BANK[2][want] || CARE_PHRASE_BANK[2].zh
+  }
+  return ""
+}
+
+function canonicalizeCareSpeech(text, lang) {
+  const repaired = repairCareSpeech(text)
+  if (!repaired) return ""
+  const code = TRANSLATE_LANG_MAP[lang] ? lang : ""
+  if (!code) return repaired
+  return lookupCarePhrase(repaired, code) || repaired
+}
+
+function sourceMentionsBloodPressure(source) {
+  return /huyết\s*á[pP]|huyết\s*t[aáà]p|huyết\s*ap|blood\s*pressure|presyon|tekanan\s*darah|ความดัน|血壓/i.test(String(source || ""))
+}
+
+function sourceMentionsMedicine(source) {
+  return /uống\s*thuốc|thuốc\s*huyết|nhớ\s+uống|uống\s+sau\s+bữa|minum\s*obat|take\s*medicine|blood\s*pressure\s*medicine|gamot|inumin|กินยา|吃藥|血壓藥/i.test(String(source || ""))
+}
+
+function guardZhCareTranslation(source, zh) {
+  let out = String(zh || "")
+  if (sourceMentionsBloodPressure(source)) {
+    out = out.replace(/抽過血/g, "量過血壓")
+    out = out.replace(/抽血了/g, "量過血壓")
+    out = out.replace(/去抽血/g, "去量血壓")
+    out = out.replace(/抽血/g, "量血壓")
+    out = out.replace(/驗血/g, "量血壓")
+  }
+  if (sourceMentionsBloodPressure(source) || sourceMentionsMedicine(source)) {
+    out = out.replace(/薑汁|姜汁|薑茶|姜茶/g, "血壓藥")
+    out = out.replace(/飯後再喝/g, "飯後再吃")
+    out = out.replace(/再喝一次/g, "再吃一次")
+  }
+  if (/nhớ\s+đ[oò]/i.test(String(source || "")) && /不記得/.test(out)) {
+    out = out.replace(/但是我不記得[^。！？]*/g, "請記得要量血壓")
+    out = out.replace(/我不記得[^。！？]*/g, "請記得要量血壓")
+  }
+  return out
+}
+
+function splitCareUtterances(text) {
+  const raw = String(text || "").trim()
+  if (raw.length < 50) return [raw]
+  const parts = raw.split(/(?<=[。！？?.!\n])\s*/).map((s) => s.trim()).filter(Boolean)
+  return parts.length > 1 ? parts : [raw]
+}
+
+async function translateOnce(text, code) {
+  const source = repairCareSpeech(text)
+  const phraseHit = lookupCarePhrase(source, code)
+  if (phraseHit) {
+    translateCache.set(cacheKeyFor(source, code), phraseHit)
+    return phraseHit
+  }
+  const cached = translateCache.get(cacheKeyFor(source, code))
+  if (cached) return cached
+
+  const to = TRANSLATE_LANG_MAP[code]
+  const targetName = TRANSLATE_LANG_NAMES[code] || TRANSLATE_LANG_NAMES.zh
+  const glossary = glossaryLines(code)
+
+  try {
+    const prompt =
+      `You are a professional translator for home elder-care (family, caregiver, care recipient).\n` +
+      `Translate into ${targetName} only. No quotes, no romanization, no explanation.\n` +
+      `Keep numbers, clock times, mmHg/mg/ml, and Latin medicine names unchanged.\n` +
+      `If the source already is ${targetName}, return it unchanged.\n` +
+      `Do not omit clauses. Do not add facts that are not in the source.\n` +
+      `If the source looks like broken speech-to-text, still keep medical meaning: huyết áp / huyết táp = blood pressure.\n` +
+      `Forbidden: translating huyết áp / blood pressure / đo huyết áp as 抽血, 驗血, blood draw, ginger, 薑汁.\n` +
+      `đo huyết áp = measure/check blood pressure (量血壓). uống thuốc huyết áp = take blood-pressure medicine (吃血壓藥), not a drink.\n` +
+      `nhớ + verb = remember to / please (記得要), not "I don't remember".\n` +
+      `Must-use glossary (left source forms → right ${targetName}):\n${glossary}\n\n` +
+      `Source:\n${source}`
+    const geminiResult = await geminiModel.generateContent(prompt)
+    let resultText = String(geminiResult.response.text() || "").trim()
+    if (code === "zh") resultText = guardZhCareTranslation(source, resultText)
+    if (resultText && !looksLikeWrongScript(resultText, code)) {
+      translateCache.set(cacheKeyFor(source, code), resultText)
+      return resultText
+    }
+    console.log(`[translateToLang] gemini rejected (wrong script) target=${code}`)
+  } catch (e) {
+    console.log(`[translateToLang] gemini fail: ${e.message?.slice(0, 60)}`)
+  }
+
+  try {
+    const result = await translate(source, { to, forceBatch: false })
+    let out = String(result.text || "").trim()
+    if (code === "zh") out = guardZhCareTranslation(source, out)
+    if (out && !looksLikeWrongScript(out, code)) {
+      translateCache.set(cacheKeyFor(source, code), out)
+      return out
+    }
+  } catch (e) {
+    console.log(`[translateToLang] lib fail: ${e.message?.slice(0, 60)}`)
+  }
+  return source
+}
+
 async function translateToLang(sourceText, targetLang = "zh", { messageKey = "" } = {}) {
-  const text = String(sourceText || "").trim()
+  const text = repairCareSpeech(String(sourceText || "").trim())
   if (!text && !messageKey) return text
   const code = TRANSLATE_LANG_MAP[targetLang] ? targetLang : "zh"
 
@@ -1778,45 +2080,21 @@ async function translateToLang(sourceText, targetLang = "zh", { messageKey = "" 
   if (chatHit) return chatHit
 
   if (!text) return text
-  const cached = translateCache.get(cacheKeyFor(text, code))
-  if (cached) return cached
+  const phraseHit = lookupCarePhrase(text, code)
+  if (phraseHit) return phraseHit
+  const wholeCached = translateCache.get(cacheKeyFor(text, code))
+  if (wholeCached) return wholeCached
 
-  const to = TRANSLATE_LANG_MAP[code]
-  const targetName = TRANSLATE_LANG_NAMES[code] || TRANSLATE_LANG_NAMES.zh
-  const glossary = glossaryLines(code)
-
-  // 照護口語：Gemini＋詞彙表為主；非官方 Google 套件只當備援
-  try {
-    const prompt =
-      `You are a professional translator for home elder-care (family, caregiver, care recipient).\n` +
-      `Translate into ${targetName} only. No quotes, no romanization, no explanation.\n` +
-      `Keep numbers, clock times, mmHg/mg/ml, and Latin medicine names unchanged.\n` +
-      `Use natural spoken ${targetName} used in caregiving, not word-for-word calque.\n` +
-      `If the source already is ${targetName}, return it unchanged.\n` +
-      `Must-use glossary when the source contains these ideas:\n${glossary}\n\n` +
-      `Source:\n${text}`
-    const geminiResult = await geminiModel.generateContent(prompt)
-    const resultText = String(geminiResult.response.text() || "").trim()
-    if (resultText && !looksLikeWrongScript(resultText, code)) {
-      translateCache.set(cacheKeyFor(text, code), resultText)
-      return resultText
-    }
-    console.log(`[translateToLang] gemini rejected (wrong script) target=${code}`)
-  } catch (e) {
-    console.log(`[translateToLang] gemini fail: ${e.message?.slice(0, 60)}`)
+  const parts = splitCareUtterances(text)
+  if (parts.length > 1) {
+    const bits = []
+    for (const p of parts) bits.push(await translateOnce(p, code))
+    const joined = bits.join("")
+    const guarded = code === "zh" ? guardZhCareTranslation(text, joined) : joined
+    translateCache.set(cacheKeyFor(text, code), guarded)
+    return guarded
   }
-
-  try {
-    const result = await translate(text, { to, forceBatch: false })
-    const out = String(result.text || "").trim()
-    if (out && !looksLikeWrongScript(out, code)) {
-      translateCache.set(cacheKeyFor(text, code), out)
-      return out
-    }
-  } catch (e) {
-    console.log(`[translateToLang] lib fail: ${e.message?.slice(0, 60)}`)
-  }
-  return text
+  return translateOnce(text, code)
 }
 
 const CHAT_PUSH_COPY = {
@@ -2490,6 +2768,7 @@ const { mountMobileAuth } = require("./lib/mobileAuth")
 const mobileAuthApi = mountMobileAuth(app, {
   User,
   CareCircleMember,
+  ChatMessage,
   normalizeRoleForMobile,
   normalizeLinkedPatientEmail,
   validateLinkedPatientEmailForRole,
@@ -3189,9 +3468,15 @@ app.get("/family/blood-pressure/history", async (req, res) => {
     const user = await User.findOne({ email: decoded.email })
     if (!user) return res.status(404).json({ message: "User not found" })
     const patientUserId = await resolveTargetPatient(user._id)
+    const patient = await User.findById(patientUserId).select("name")
     const limit = normalizeLimit(req.query.limit, 30, 100)
     const records = await BloodPressureRecord.find({ userId: patientUserId, source: { $ne: "mock-seed" } }).sort({ measuredAt: -1, _id: -1 }).limit(limit)
-    res.json({ records, latest: records[0] || null, linkedPatientEmail: user.linkedPatientEmail || "" })
+    res.json({
+      records,
+      latest: records[0] || null,
+      linkedPatientEmail: user.linkedPatientEmail || "",
+      linkedPatientName: patient?.name || ""
+    })
   } catch (err) {
     res.status(err.statusCode || 500).json({ message: err.message })
   }
@@ -3425,7 +3710,7 @@ app.post("/family/reminders", async (req, res) => {
   const parsedTime = new Date(time)
   if (!time || Number.isNaN(parsedTime.getTime())) return res.status(400).json({ message: "時間格式無效" })
   const patientUserId = await resolveTargetPatient(user._id)
-  const record = await Reminder.create({ reminderId: createReminderId(), patientUserId, createdByUserId: user._id, createdByRole: "family", assignedToRole: "caregiver", category: String(category).trim(), content: String(content).trim(), time: parsedTime, note: typeof note === "string" ? note.trim() : "", sourceLang: String(req.body?.sourceLang || user.lang || "zh").trim(), contentKey: String(req.body?.contentKey || "").trim(), source: "family-manual" })
+  const record = await Reminder.create({ reminderId: createReminderId(), patientUserId, createdByUserId: user._id, createdByRole: "family", createdByName: String(user.name || "").trim(), assignedToRole: "caregiver", category: String(category).trim(), content: String(content).trim(), time: parsedTime, note: typeof note === "string" ? note.trim() : "", sourceLang: String(req.body?.sourceLang || user.lang || "zh").trim(), contentKey: resolveCarePresetKey(content, req.body?.contentKey), source: "family-manual" })
   res.status(201).json({ message: "OK", record })
 })
 
@@ -3492,6 +3777,57 @@ function normalizeHhmm(value, fallback = "08:00") {
   return `${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}`
 }
 
+function templateSlotTimes(template) {
+  const extra = Array.isArray(template?.times) ? template.times : []
+  const raw = [template?.time, ...extra]
+  const slots = []
+  const seen = new Set()
+  for (const value of raw) {
+    const hh = normalizeHhmm(value, "")
+    if (!hh || seen.has(hh)) continue
+    seen.add(hh)
+    slots.push(hh)
+  }
+  slots.sort()
+  return slots.length ? slots : ["08:00"]
+}
+
+function mapTemplateTodayRecords(templates, completions, creatorNames) {
+  const doneBySource = new Map(completions.map((r) => [String(r.source || ""), r]))
+  const records = []
+  for (const t of templates) {
+    const slots = templateSlotTimes(t)
+    for (const slot of slots) {
+      const source = `template:${t._id}:${slot}`
+      const legacy = `template:${t._id}`
+      const done = doneBySource.get(source) || (slots.length === 1 ? doneBySource.get(legacy) : null)
+      records.push({
+        _id: t._id,
+        slot,
+        category: t.category,
+        content: t.content,
+        contentKey: t.contentKey || "",
+        sourceLang: t.sourceLang || "",
+        time: slot,
+        weekdays: t.weekdays,
+        note: t.note || "",
+        isCompleted: Boolean(done?.isCompleted),
+        completedAt: done?.completedAt || null,
+        givenAt: done?.givenAt || null,
+        marStatus: done?.marStatus || "",
+        marNote: done?.marNote || "",
+        reportExtra: done?.reportExtra || {},
+        reminderId: done?._id || null,
+        source,
+        createdByRole: t.createdByRole || (String(t.source || "").includes("caregiver") ? "caregiver" : "family"),
+        createdByName: (creatorNames && creatorNames.get(String(t.createdByUserId))) || t.createdByName || "",
+        mealTiming: t.mealTiming || ""
+      })
+    }
+  }
+  return records
+}
+
 function templateAppliesToday(template, now = new Date()) {
   const days = Array.isArray(template.weekdays) ? template.weekdays : []
   if (!days.length) return true
@@ -3501,6 +3837,60 @@ function templateAppliesToday(template, now = new Date()) {
 function todayDateAtHhmm(hhmm, now = new Date()) {
   const [h, m] = String(hhmm || "08:00").split(":").map((x) => Number(x))
   return new Date(now.getFullYear(), now.getMonth(), now.getDate(), h || 0, m || 0, 0, 0)
+}
+
+function normalizeMealTiming(value) {
+  const s = String(value || "").trim()
+  if (s === "before" || s === "after" || s === "with") return s
+  return ""
+}
+
+async function loadCreatorNames(templates) {
+  const ids = [...new Set((templates || []).map((t) => String(t.createdByUserId || "")).filter(Boolean))]
+  if (!ids.length) return new Map()
+  const users = await User.find({ _id: { $in: ids } }).select("name")
+  return new Map(users.map((u) => [String(u._id), String(u.name || "").trim()]))
+}
+
+function parseGivenAt(value, now = new Date()) {
+  const s = String(value || "").trim()
+  if (/^\d{1,2}:\d{2}$/.test(s)) return todayDateAtHhmm(normalizeHhmm(s), now)
+  const d = new Date(s)
+  if (!Number.isNaN(d.getTime())) return d
+  return now
+}
+
+function applyMarReport(record, user, body, now = new Date()) {
+  const raw = String(body?.marStatus || "").trim()
+  const done = raw === "done" || raw === "taken_all"
+  if (body && Object.prototype.hasOwnProperty.call(body, "givenAt") && String(body.givenAt || "").trim()) {
+    record.givenAt = parseGivenAt(body.givenAt, now)
+  }
+  if (typeof body?.marNote === "string") {
+    record.marNote = String(body.marNote).trim().slice(0, 300)
+  } else if (typeof body?.note === "string") {
+    record.marNote = String(body.note).trim().slice(0, 300)
+  }
+  if (body?.reportExtra && typeof body.reportExtra === "object") {
+    const extra = {}
+    ;["temp", "bpSys", "bpDia", "hr", "glucose"].forEach((k) => {
+      const v = body.reportExtra[k]
+      if (v != null && String(v).trim()) extra[k] = String(v).trim().slice(0, 16)
+    })
+    record.reportExtra = extra
+  }
+  record.completedByUserId = user._id
+  record.completedByRole = "caregiver"
+  if (done) {
+    record.isCompleted = true
+    record.completedAt = now
+    record.marStatus = "done"
+    if (!record.givenAt) record.givenAt = now
+  } else {
+    record.isCompleted = false
+    record.completedAt = undefined
+    record.marStatus = "not_done"
+  }
 }
 
 app.get("/family/task-templates", async (req, res) => {
@@ -3535,21 +3925,8 @@ app.get("/family/task-templates/today", async (req, res) => {
       source: { $regex: /^template:/ },
       time: { $gte: start, $lte: end }
     })
-    const doneBySource = new Map(completions.map((r) => [r.source, r]))
-    const records = templates.map((t) => {
-      const source = `template:${t._id}`
-      const done = doneBySource.get(source)
-      return {
-        _id: t._id,
-        category: t.category,
-        content: t.content,
-        time: t.time,
-        weekdays: t.weekdays,
-        note: t.note || "",
-        isCompleted: Boolean(done?.isCompleted),
-        source
-      }
-    })
+    const creatorNames = await loadCreatorNames(templates)
+    const records = mapTemplateTodayRecords(templates, completions, creatorNames)
     res.json({ records })
   } catch (err) {
     res.status(err.statusCode || 500).json({ message: err.message })
@@ -3562,20 +3939,27 @@ app.post("/family/task-templates", async (req, res) => {
     if (!decoded) return res.status(401).json({ message: "Invalid token" })
     const user = await User.findOne({ email: decoded.email })
     if (!user) return res.status(404).json({ message: "User not found" })
-    const { category, content, time, weekdays, order, note } = req.body || {}
+    const { category, content, time, times, weekdays, order, note } = req.body || {}
     if (!category || !String(category).trim()) return res.status(400).json({ message: "類別為必填" })
     if (!content || !String(content).trim()) return res.status(400).json({ message: "內容為必填" })
     const patientUserId = await resolveTargetPatient(user._id)
+    const extraTimes = Array.isArray(times)
+      ? times.map((v) => normalizeHhmm(v, "")).filter(Boolean)
+      : []
     const record = await TaskTemplate.create({
       patientUserId,
       createdByUserId: user._id,
+      createdByRole: "family",
+      createdByName: String(user.name || "").trim(),
       category: String(category).trim(),
       content: String(content).trim(),
       time: normalizeHhmm(time),
+      times: extraTimes,
       weekdays: normalizeWeekdays(weekdays),
       note: typeof note === "string" ? note.trim() : "",
+      mealTiming: normalizeMealTiming(req.body?.mealTiming),
       sourceLang: String(req.body?.sourceLang || user.lang || "zh").trim(),
-      contentKey: String(req.body?.contentKey || "").trim(),
+      contentKey: resolveCarePresetKey(content, req.body?.contentKey),
       order: Number.isFinite(Number(order)) ? Number(order) : 0
     })
     res.status(201).json({ message: "OK", record })
@@ -3669,12 +4053,18 @@ app.patch("/family/task-templates/:id", async (req, res) => {
       patientUserId,
       "Template not found"
     )
-    const { category, content, time, weekdays, order, note } = req.body || {}
+    const { category, content, time, times, weekdays, order, note } = req.body || {}
     if (typeof category === "string" && category.trim()) record.category = category.trim()
     if (typeof content === "string" && content.trim()) record.content = content.trim()
     if (time !== undefined) record.time = normalizeHhmm(time, record.time)
+    if (times !== undefined) {
+      record.times = Array.isArray(times)
+        ? times.map((v) => normalizeHhmm(v, "")).filter(Boolean)
+        : []
+    }
     if (weekdays !== undefined) record.weekdays = normalizeWeekdays(weekdays)
     if (typeof note === "string") record.note = note.trim()
+    if (req.body?.mealTiming !== undefined) record.mealTiming = normalizeMealTiming(req.body.mealTiming)
     if (typeof req.body?.contentKey === "string") record.contentKey = req.body.contentKey.trim()
     if (typeof req.body?.sourceLang === "string" && req.body.sourceLang.trim()) record.sourceLang = req.body.sourceLang.trim()
     if (order !== undefined && Number.isFinite(Number(order))) record.order = Number(order)
@@ -4180,6 +4570,75 @@ app.get("/caregiver/reminders", async (req, res) => {
   }
 })
 
+app.post("/caregiver/reminders", async (req, res) => {
+  try {
+    const decoded = verifyToken(req)
+    if (!decoded) return res.status(401).json({ message: "Invalid token" })
+    const user = await User.findOne({ email: decoded.email })
+    if (!user) return res.status(404).json({ message: "User not found" })
+    const { category, content, time, note } = req.body || {}
+    if (!category || !String(category).trim()) return res.status(400).json({ message: "類別為必填" })
+    if (!content || !String(content).trim()) return res.status(400).json({ message: "內容為必填" })
+    const parsedTime = new Date(time)
+    if (!time || Number.isNaN(parsedTime.getTime())) return res.status(400).json({ message: "時間格式無效" })
+    const patientUserId = await resolveTargetPatient(user._id)
+    const record = await Reminder.create({
+      reminderId: createReminderId(),
+      patientUserId,
+      createdByUserId: user._id,
+      createdByRole: "caregiver",
+      createdByName: String(user.name || "").trim(),
+      assignedToRole: "caregiver",
+      category: String(category).trim(),
+      content: String(content).trim(),
+      time: parsedTime,
+      note: typeof note === "string" ? note.trim() : "",
+      sourceLang: String(req.body?.sourceLang || user.lang || "zh").trim(),
+      contentKey: resolveCarePresetKey(content, req.body?.contentKey),
+      source: "caregiver-manual"
+    })
+    res.status(201).json({ message: "OK", record })
+  } catch (err) {
+    res.status(err.statusCode || 500).json({ message: err.message })
+  }
+})
+
+app.post("/caregiver/task-templates", async (req, res) => {
+  try {
+    const decoded = verifyToken(req)
+    if (!decoded) return res.status(401).json({ message: "Invalid token" })
+    const user = await User.findOne({ email: decoded.email })
+    if (!user) return res.status(404).json({ message: "User not found" })
+    const { category, content, time, times, weekdays, order, note } = req.body || {}
+    if (!category || !String(category).trim()) return res.status(400).json({ message: "類別為必填" })
+    if (!content || !String(content).trim()) return res.status(400).json({ message: "內容為必填" })
+    const patientUserId = await resolveTargetPatient(user._id)
+    const extraTimes = Array.isArray(times)
+      ? times.map((v) => normalizeHhmm(v, "")).filter(Boolean)
+      : []
+    const record = await TaskTemplate.create({
+      patientUserId,
+      createdByUserId: user._id,
+      createdByRole: "caregiver",
+      createdByName: String(user.name || "").trim(),
+      category: String(category).trim(),
+      content: String(content).trim(),
+      time: normalizeHhmm(time),
+      times: extraTimes,
+      weekdays: normalizeWeekdays(weekdays),
+      note: typeof note === "string" ? note.trim() : "",
+      mealTiming: normalizeMealTiming(req.body?.mealTiming),
+      sourceLang: String(req.body?.sourceLang || user.lang || "zh").trim(),
+      contentKey: resolveCarePresetKey(content, req.body?.contentKey),
+      order: Number.isFinite(Number(order)) ? Number(order) : 0,
+      source: "caregiver-template"
+    })
+    res.status(201).json({ message: "OK", record })
+  } catch (err) {
+    res.status(err.statusCode || 500).json({ message: err.message })
+  }
+})
+
 app.patch("/caregiver/reminders/:id/complete", async (req, res) => {
   try {
     const decoded = verifyToken(req)
@@ -4192,8 +4651,7 @@ app.patch("/caregiver/reminders/:id/complete", async (req, res) => {
       patientUserId,
       "Reminder not found"
     )
-    if (record.isCompleted) return res.json({ message: "Already completed", record })
-    record.isCompleted = true; record.completedAt = new Date(); record.completedByUserId = user._id; record.completedByRole = "caregiver"
+    applyMarReport(record, user, req.body || {}, new Date())
     await record.save()
     res.json({ message: "Reminder marked as completed", record })
   } catch (err) {
@@ -4214,6 +4672,7 @@ app.patch("/caregiver/reminders/:id/reset", async (req, res) => {
       "Reminder not found"
     )
     record.isCompleted = false; record.completedAt = undefined; record.completedByUserId = undefined; record.completedByRole = undefined
+    record.marStatus = ""; record.givenAt = undefined; record.marNote = ""
     await record.save()
     res.json({ message: "Reminder reset to pending", record })
   } catch (err) {
@@ -4238,22 +4697,7 @@ app.get("/caregiver/task-templates/today", async (req, res) => {
       source: { $regex: /^template:/ },
       time: { $gte: start, $lte: end }
     })
-    const doneBySource = new Map(completions.map((r) => [r.source, r]))
-    const records = todayTemplates.map((t) => {
-      const source = `template:${t._id}`
-      const done = doneBySource.get(source)
-      return {
-        _id: t._id,
-        category: t.category,
-        content: t.content,
-        time: t.time,
-        weekdays: t.weekdays,
-        note: t.note || "",
-        isCompleted: Boolean(done?.isCompleted),
-        reminderId: done?._id || null,
-        source
-      }
-    })
+    const records = mapTemplateTodayRecords(todayTemplates, completions, await loadCreatorNames(todayTemplates))
     res.json({ records })
   } catch (err) {
     res.status(err.statusCode || 500).json({ message: err.message })
@@ -4275,35 +4719,39 @@ app.patch("/caregiver/task-templates/:id/complete", async (req, res) => {
     if (!templateAppliesToday(template)) {
       return res.status(400).json({ message: "此重複提醒今天不執行" })
     }
-    const source = `template:${template._id}`
+    const slot = normalizeHhmm(req.body?.slot || req.query.slot || template.time)
+    const source = `template:${template._id}:${slot}`
     const now = new Date()
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
     const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
     let record = await Reminder.findOne({ patientUserId, source, time: { $gte: start, $lte: end } })
+    if (!record && slot === normalizeHhmm(template.time)) {
+      record = await Reminder.findOne({
+        patientUserId,
+        source: `template:${template._id}`,
+        time: { $gte: start, $lte: end }
+      })
+    }
     if (!record) {
-      record = await Reminder.create({
+      record = new Reminder({
         reminderId: createReminderId(),
         patientUserId,
         createdByUserId: template.createdByUserId || user._id,
-        createdByRole: "family",
+        createdByRole: template.createdByRole || "family",
+        createdByName: template.createdByName || "",
         assignedToRole: "caregiver",
         category: template.category,
         content: template.content,
-        contentKey: template.contentKey || "",
+        contentKey: resolveCarePresetKey(template.content, template.contentKey),
         sourceLang: template.sourceLang || "",
-        time: todayDateAtHhmm(template.time, now),
+        time: todayDateAtHhmm(slot, now),
         note: template.note || "",
-        isCompleted: true,
-        completedAt: now,
-        completedByUserId: user._id,
-        completedByRole: "caregiver",
         source
       })
-    } else if (!record.isCompleted) {
-      record.isCompleted = true
-      record.completedAt = now
-      record.completedByUserId = user._id
-      record.completedByRole = "caregiver"
+      applyMarReport(record, user, req.body || {}, now)
+      await record.save()
+    } else {
+      applyMarReport(record, user, req.body || {}, now)
       await record.save()
     }
     res.json({ message: "OK", record })
@@ -4446,6 +4894,173 @@ async function listCareDailyRecordsForUser(user, req, res) {
   res.json({ records })
 }
 
+const DAILY_PRESET_CAT_KEY = "__daily_cat__"
+const DAILY_PRESET_SOURCES = [
+  "care-daily-custom",
+  "care-daily-hidden",
+  "care-daily-cat",
+  "care-daily-cat-hidden"
+]
+
+function dailyPresetContentKey(category) {
+  return `daily:${String(category || "").trim()}`
+}
+
+function dailyPresetSource(scope, hidden) {
+  if (scope === "cat") return hidden ? "care-daily-cat-hidden" : "care-daily-cat"
+  return hidden ? "care-daily-hidden" : "care-daily-custom"
+}
+
+async function authDailyPresetUser(req, roles) {
+  const decoded = verifyToken(req)
+  if (!decoded) {
+    const err = new Error("Invalid token")
+    err.statusCode = 401
+    throw err
+  }
+  const user = await User.findOne({ email: decoded.email })
+  if (!user) {
+    const err = new Error("User not found")
+    err.statusCode = 404
+    throw err
+  }
+  if (Array.isArray(roles) && roles.length && !roles.includes(user.role)) {
+    const err = new Error("沒有權限")
+    err.statusCode = 403
+    throw err
+  }
+  const patientUserId = await resolveTargetPatient(user._id)
+  return { user, patientUserId }
+}
+
+app.get("/caregiver/care-daily-presets", async (req, res) => {
+  try {
+    const { patientUserId } = await authDailyPresetUser(req, ["caregiver"])
+    const records = await ReminderPreset.find({
+      patientUserId,
+      source: { $in: DAILY_PRESET_SOURCES }
+    }).sort({ category: 1, content: 1 })
+    res.json({ records })
+  } catch (err) {
+    res.status(err.statusCode || 500).json({ message: err.message })
+  }
+})
+
+app.post("/caregiver/care-daily-presets", async (req, res) => {
+  try {
+    const { user, patientUserId } = await authDailyPresetUser(req, ["caregiver"])
+    const scope = String(req.body?.scope || "content").trim() === "cat" ? "cat" : "content"
+    const hidden = req.body?.hidden === true
+    const text = String(req.body?.content || "").trim()
+    if (!text) return res.status(400).json({ message: "內容為必填" })
+    const cat = scope === "cat"
+      ? DAILY_PRESET_CAT_KEY
+      : dailyPresetContentKey(req.body?.category)
+    if (scope === "content" && cat === "daily:") {
+      return res.status(400).json({ message: "類別為必填" })
+    }
+    const source = dailyPresetSource(scope, hidden)
+    const existing = await ReminderPreset.findOne({ patientUserId, category: cat, content: text })
+    if (existing) {
+      if (hidden && !String(existing.source || "").endsWith("-hidden")) {
+        existing.source = source
+        await existing.save()
+      }
+      return res.json({ message: "OK", record: existing })
+    }
+    const record = await ReminderPreset.create({
+      patientUserId,
+      createdByUserId: user._id,
+      category: cat,
+      content: text,
+      source
+    })
+    res.status(201).json({ message: "OK", record })
+  } catch (err) {
+    if (err?.code === 11000) return res.status(409).json({ message: "此常用事項已存在" })
+    res.status(err.statusCode || 500).json({ message: err.message })
+  }
+})
+
+app.delete("/caregiver/care-daily-presets/:id", async (req, res) => {
+  try {
+    const { patientUserId } = await authDailyPresetUser(req, ["caregiver"])
+    const record = assertPatientOwned(
+      await ReminderPreset.findById(req.params.id),
+      patientUserId,
+      "Preset not found"
+    )
+    await ReminderPreset.findByIdAndDelete(record._id)
+    res.json({ message: "OK" })
+  } catch (err) {
+    res.status(err.statusCode || 500).json({ message: err.message })
+  }
+})
+
+app.get("/patient/care-daily-presets", async (req, res) => {
+  try {
+    const { patientUserId } = await authDailyPresetUser(req, ["patient"])
+    const records = await ReminderPreset.find({
+      patientUserId,
+      source: { $in: DAILY_PRESET_SOURCES }
+    }).sort({ category: 1, content: 1 })
+    res.json({ records })
+  } catch (err) {
+    res.status(err.statusCode || 500).json({ message: err.message })
+  }
+})
+
+app.post("/patient/care-daily-presets", async (req, res) => {
+  try {
+    const { user, patientUserId } = await authDailyPresetUser(req, ["patient"])
+    const scope = String(req.body?.scope || "content").trim() === "cat" ? "cat" : "content"
+    const hidden = req.body?.hidden === true
+    const text = String(req.body?.content || "").trim()
+    if (!text) return res.status(400).json({ message: "內容為必填" })
+    const cat = scope === "cat"
+      ? DAILY_PRESET_CAT_KEY
+      : dailyPresetContentKey(req.body?.category)
+    if (scope === "content" && cat === "daily:") {
+      return res.status(400).json({ message: "類別為必填" })
+    }
+    const source = dailyPresetSource(scope, hidden)
+    const existing = await ReminderPreset.findOne({ patientUserId, category: cat, content: text })
+    if (existing) {
+      if (hidden && !String(existing.source || "").endsWith("-hidden")) {
+        existing.source = source
+        await existing.save()
+      }
+      return res.json({ message: "OK", record: existing })
+    }
+    const record = await ReminderPreset.create({
+      patientUserId,
+      createdByUserId: user._id,
+      category: cat,
+      content: text,
+      source
+    })
+    res.status(201).json({ message: "OK", record })
+  } catch (err) {
+    if (err?.code === 11000) return res.status(409).json({ message: "此常用事項已存在" })
+    res.status(err.statusCode || 500).json({ message: err.message })
+  }
+})
+
+app.delete("/patient/care-daily-presets/:id", async (req, res) => {
+  try {
+    const { patientUserId } = await authDailyPresetUser(req, ["patient"])
+    const record = assertPatientOwned(
+      await ReminderPreset.findById(req.params.id),
+      patientUserId,
+      "Preset not found"
+    )
+    await ReminderPreset.findByIdAndDelete(record._id)
+    res.json({ message: "OK" })
+  } catch (err) {
+    res.status(err.statusCode || 500).json({ message: err.message })
+  }
+})
+
 app.get("/caregiver/care-daily-records", async (req, res) => {
   try {
     const decoded = verifyToken(req)
@@ -4480,7 +5095,7 @@ app.post("/caregiver/care-daily-records", async (req, res) => {
       content,
       note,
       sourceLang: String(req.body?.sourceLang || user.lang || "zh").trim(),
-      contentKey: String(req.body?.contentKey || "").trim(),
+      contentKey: resolveCarePresetKey(content, req.body?.contentKey),
       caregiverName: user.name || user.email || "",
       recordedAt: req.body?.recordedAt ? new Date(req.body.recordedAt) : new Date(),
       source: "caregiver-app"
@@ -4663,7 +5278,7 @@ app.post("/patient/care-daily-records", async (req, res) => {
       content,
       note,
       sourceLang: String(req.body?.sourceLang || user.lang || "zh").trim(),
-      contentKey: String(req.body?.contentKey || "").trim(),
+      contentKey: resolveCarePresetKey(content, req.body?.contentKey),
       caregiverName: user.name || user.email || "",
       recordedAt: req.body?.recordedAt ? new Date(req.body.recordedAt) : new Date(),
       source: "patient-app"
@@ -5240,13 +5855,15 @@ app.get("/chat-history", async (req, res) => {
         { senderEmail: meRe, targetEmail: partnerRe },
         { senderEmail: partnerRe, targetEmail: meRe }
       ]
-    }).sort({ timestamp: 1 }).limit(50)
+    }).sort({ timestamp: -1, _id: -1 }).limit(100)
+    messages.reverse()
     res.json(messages.map((m) => {
       const row = typeof m.toObject === "function" ? m.toObject() : m
       return {
         ...row,
         kind: row.kind || "text",
-        audioUrl: row.kind === "voice" ? `/chat-voice/${row._id}` : ""
+        audioUrl: row.kind === "voice" ? `/chat-voice/${row._id}` : "",
+        audioDurationSec: Number(row.audioDurationSec) || 0
       }
     }))
   } catch (e) {
@@ -5279,8 +5896,17 @@ app.get("/chat-inbox", async (req, res) => {
       reads.map((row) => [String(row.partnerEmail || "").toLowerCase(), row.lastReadAt])
     )
 
+    const partnerEmails = [...lastByPartner.keys()]
+    const partnerUsers = partnerEmails.length
+      ? await User.find({ email: { $in: partnerEmails } }).select("email name role avatarData").lean()
+      : []
+    const partnerByEmail = Object.fromEntries(
+      partnerUsers.map((u) => [String(u.email || "").toLowerCase(), u])
+    )
+
     const threads = []
     for (const [partner, last] of lastByPartner.entries()) {
+      const partnerUser = partnerByEmail[partner] || {}
       const since = readAt[partner] || new Date(0)
       const unread = await ChatMessage.countDocuments({
         senderEmail: new RegExp(`^${escapeRegex(partner)}$`, "i"),
@@ -5291,6 +5917,9 @@ app.get("/chat-inbox", async (req, res) => {
       const voicePlaceholder = last.kind === "voice" && !String(last.originalText || "").trim()
       threads.push({
         partnerEmail: partner,
+        partnerName: partnerUser.name || "",
+        partnerRole: partnerUser.role || "",
+        avatarData: partnerUser.avatarData || "",
         lastKind: last.kind || "text",
         lastSourceLang: last.sourceLang || "",
         lastPhraseKey: last.phraseKey || "",
@@ -5339,11 +5968,43 @@ function googleSttConfig(mime, languageCode) {
   else if (m.includes("wav") || m.includes("linear")) {
     config.encoding = "LINEAR16"
     config.sampleRateHertz = 16000
-  } else {
+  } else if (m.includes("mp3") || m.includes("mpeg")) {
     config.encoding = "MP3"
     config.sampleRateHertz = 16000
+  } else {
+    return null
   }
   return config
+}
+
+async function transcribeAudioWithGemini(buffer, mime, languageHint) {
+  const data = buffer.toString("base64")
+  const original = String(mime || "audio/mp4").split(";")[0].trim() || "audio/mp4"
+  const candidates = []
+  const add = (value) => {
+    if (value && !candidates.includes(value)) candidates.push(value)
+  }
+  add(original)
+  if (original.includes("mp4")) {
+    add("audio/aac")
+    add("audio/mp4")
+    add("video/mp4")
+  }
+  if (original.includes("aac")) add("audio/aac")
+  const prompt = `Transcribe the spoken words. Language hint: ${languageHint}. Return ONLY the transcript text, no quotes, no labels, no translation.`
+  for (const mimeType of candidates) {
+    try {
+      const result = await geminiModel.generateContent([
+        { inlineData: { mimeType, data } },
+        { text: prompt }
+      ])
+      const text = String(result.response.text() || "").trim()
+      if (text) return text
+    } catch (e) {
+      console.log("gemini audio stt fail:", mimeType, e.message)
+    }
+  }
+  return ""
 }
 
 function emitSavedChat(saved, clientMsgId = "") {
@@ -5361,12 +6022,38 @@ function emitSavedChat(saved, clientMsgId = "") {
     phraseKey: saved.phraseKey || "",
     kind: saved.kind || "text",
     audioUrl: saved.kind === "voice" ? `/chat-voice/${saved._id}` : "",
+    audioDurationSec: Number(saved.audioDurationSec) || 0,
     clientMsgId: clientMsgId || "",
     timestamp: saved.timestamp
   }
   chatIo.to(from).emit("new_message", { ...payload, displayText: saved.originalText })
   chatIo.to(toEmail).emit("new_message", { ...payload, displayText: saved.translatedText || saved.originalText })
 }
+
+app.post("/stt", async (req, res) => {
+  const decoded = verifyToken(req)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+  const audioBase64 = String(req.body?.audioBase64 || "").replace(/^data:[^;]+;base64,/, "")
+  const sourceLang = String(req.body?.sourceLang || "zh")
+  if (!audioBase64) return res.status(400).json({ message: "缺少語音" })
+  let buffer
+  try {
+    buffer = Buffer.from(audioBase64, "base64")
+  } catch {
+    return res.status(400).json({ message: "語音格式錯誤" })
+  }
+  if (!buffer.length || buffer.length > 12 * 1024 * 1024) {
+    return res.status(400).json({ message: "語音太短或太大" })
+  }
+  try {
+    const stt = await transcribeWavBuffer(buffer, sourceLang)
+    const text = canonicalizeCareSpeech(stt?.text || "", sourceLang)
+    res.json({ text })
+  } catch (e) {
+    console.log("stt fail:", e.message)
+    res.json({ text: "" })
+  }
+})
 
 app.post("/chat/voice", async (req, res) => {
   const decoded = verifyToken(req)
@@ -5375,7 +6062,7 @@ app.post("/chat/voice", async (req, res) => {
   const toEmail = String(req.body?.targetEmail || "").trim().toLowerCase()
   const audioBase64 = String(req.body?.audioBase64 || "").replace(/^data:[^;]+;base64,/, "")
   const mimeType = String(req.body?.mimeType || "audio/webm")
-  const sourceLang = String(req.body?.sourceLang || "zh")
+  const uiLangHint = String(req.body?.sourceLang || "zh")
   const clientMsgId = String(req.body?.clientMsgId || "")
   if (!from || !toEmail || !audioBase64) return res.status(400).json({ message: "缺少語音" })
   let buffer
@@ -5394,17 +6081,24 @@ app.post("/chat/voice", async (req, res) => {
     buffer
   })
   const langMap = { zh: "zh-TW", en: "en-US", id: "id-ID", vi: "vi-VN", tl: "fil-PH", th: "th-TH" }
-  const languageCode = langMap[sourceLang] || "zh-TW"
-  let original = ""
-  try {
-    const response = await axios.post(
-      `https://speech.googleapis.com/v1/speech:recognize?key=${GOOGLE_STT_API_KEY}`,
-      { config: googleSttConfig(mimeType, languageCode), audio: { content: audioBase64 } }
-    )
-    original = String(response.data?.results?.[0]?.alternatives?.[0]?.transcript || "").trim()
-  } catch (e) {
-    console.log("voice STT error:", e.response?.data || e.message)
+  let original = String(req.body?.transcript || "").trim()
+  let spokenLang = ""
+  const isWav = String(mimeType || "").toLowerCase().includes("wav")
+  if (!original) {
+    try {
+      const stt = await transcribeWavBuffer(buffer, uiLangHint)
+      original = canonicalizeCareSpeech(stt?.text || "", uiLangHint)
+      spokenLang = stt?.language || ""
+    } catch (e) {
+      console.log("whisper stt fail:", e.message)
+    }
   }
+  if (!original) {
+    const languageCode = langMap[uiLangHint] || "zh-TW"
+    original = await transcribeAudioWithGemini(buffer, isWav ? "audio/wav" : mimeType, languageCode)
+  }
+  if (original) original = canonicalizeCareSpeech(original, uiLangHint)
+  const sourceLang = uiLangHint || spokenLang || detectLangFromText(original) || "zh"
   let targetLang = "zh"
   let translatedText = original
   try {
@@ -5424,6 +6118,7 @@ app.post("/chat/voice", async (req, res) => {
     kind: "voice",
     audioObjectKey: stored.objectKey,
     audioContentType: mimeType,
+    audioDurationSec: wavDurationSec(buffer),
     timestamp: new Date()
   })
   emitSavedChat(saved, clientMsgId)
@@ -5438,6 +6133,7 @@ app.post("/chat/voice", async (req, res) => {
       ...saved.toObject(),
       kind: "voice",
       audioUrl: `/chat-voice/${saved._id}`,
+      audioDurationSec: saved.audioDurationSec || 0,
       clientMsgId
     }
   })
@@ -5456,7 +6152,8 @@ app.get("/chat-voice/:id", async (req, res) => {
   if (me !== from && me !== to) return res.status(403).json({ message: "Forbidden" })
   const buffer = await objectStore.getObjectBuffer(row.audioObjectKey)
   if (!buffer) return res.status(404).json({ message: "Missing audio" })
-  res.setHeader("Content-Type", row.audioContentType || "audio/webm")
+  res.setHeader("Content-Type", row.audioContentType || "audio/wav")
+  res.setHeader("Content-Length", String(buffer.length))
   res.send(buffer)
 })
 
@@ -5567,6 +6264,7 @@ io.on("connection", (socket) => {
 const PORT = Number(process.env.PORT) || 5000
 server.listen(PORT, async () => {
   console.log(`Backend running on http://localhost:${PORT}`)
+  warmupWhisper().catch((e) => console.log("[whisper] warmup skip:", e.message))
   try {
     await mobileAuthApi.ensureTestAccounts()
   } catch (err) {

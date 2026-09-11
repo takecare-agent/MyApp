@@ -19,7 +19,9 @@ import { useI18n } from "../i18n/I18nContext"
 import { USE_MORANDI_UI } from "./new_ui/flag"
 import { colors } from "./new_ui/tokens"
 import NewTodoScreen from "./new_ui/NewTodoScreen"
-import { ensureFilled, screenshotTodayTasks } from "./new_ui/screenshotFill"
+import MarDoseSheet from "./new_ui/MarDoseSheet"
+import { formatGivenAt, nowHhmm } from "../lib/marGroups"
+import { carePresetLabel } from "../lib/presetResolve"
 
 const CAT_ICON = {
   med: "Rx",
@@ -29,15 +31,21 @@ const CAT_ICON = {
   other: "•"
 }
 
-export default function CaregiverTodayRemindersScreen({ apiBaseUrl, token, onWriteDaily }) {
+export default function CaregiverTodayRemindersScreen({
+  apiBaseUrl,
+  token,
+  user,
+  reloadToken = 0
+}) {
   const { t } = useI18n()
-  const [view, setView] = useState("today") // today | doneHistory
+  const [view, setView] = useState("today")
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState("")
   const [localMark, setLocalMark] = useState({})
+  const [marOpen, setMarOpen] = useState(null)
   const inFlightRef = useRef(new Set())
 
   const load = useCallback(async ({ silent = false } = {}) => {
@@ -59,23 +67,40 @@ export default function CaregiverTodayRemindersScreen({ apiBaseUrl, token, onWri
           sourceLang: r.sourceLang || "",
           note: r.note || "",
           time: formatHHmm(r.time),
-          isCompleted: Boolean(r.isCompleted)
+          isCompleted: Boolean(r.isCompleted),
+          completedAt: r.completedAt || null,
+          givenAt: r.givenAt || null,
+          marStatus: r.marStatus || "",
+          marNote: r.marNote || "",
+          reportExtra: r.reportExtra || {},
+          createdByRole: r.createdByRole || "",
+          createdByName: r.createdByName || ""
         }))
-      const templates = (Array.isArray(tplData?.records) ? tplData.records : []).map((t) => ({
-        id: String(t._id),
+      const templates = (Array.isArray(tplData?.records) ? tplData.records : []).map((row) => ({
+        id: row.slot ? `${row._id}::${row.slot}` : String(row._id),
+        templateId: String(row._id),
+        slot: row.slot || row.time,
         kind: "template",
-        category: t.category || "other",
-        content: t.content || "",
-        contentKey: t.contentKey || "",
-        sourceLang: t.sourceLang || "",
-        note: t.note || "",
-        time: t.time || "--:--",
-        isCompleted: Boolean(t.isCompleted)
+        category: row.category || "other",
+        content: row.content || "",
+        contentKey: row.contentKey || "",
+        sourceLang: row.sourceLang || "",
+        note: row.note || "",
+        time: row.time || "--:--",
+        isCompleted: Boolean(row.isCompleted),
+        completedAt: row.completedAt || null,
+        givenAt: row.givenAt || null,
+        marStatus: row.marStatus || "",
+        marNote: row.marNote || "",
+        reportExtra: row.reportExtra || {},
+        createdByRole: row.createdByRole || "",
+        createdByName: row.createdByName || "",
+        mealTiming: row.mealTiming || ""
       }))
       const today = [...once, ...templates].sort((a, b) =>
         String(a.time).localeCompare(String(b.time))
       )
-      setTasks(ensureFilled(today, screenshotTodayTasks, 3))
+      setTasks(today)
       setLocalMark((prev) => {
         const ids = new Set(today.map((t) => t.id))
         const next = {}
@@ -97,7 +122,7 @@ export default function CaregiverTodayRemindersScreen({ apiBaseUrl, token, onWri
       if (!silent) setError("")
     } catch (err) {
       if (!silent) setError(err.message || t("common.loadFailed"))
-      setTasks(ensureFilled([], screenshotTodayTasks, 3))
+      setTasks([])
     } finally {
       if (!silent) setLoading(false)
       setRefreshing(false)
@@ -108,6 +133,11 @@ export default function CaregiverTodayRemindersScreen({ apiBaseUrl, token, onWri
     setLoading(true)
     load()
   }, [load])
+
+  useEffect(() => {
+    if (!reloadToken) return
+    load({ silent: true })
+  }, [reloadToken, load])
 
   usePollingRefresh(load, { intervalMs: 5000, enabled: !submitting && view === "today" })
 
@@ -137,10 +167,19 @@ export default function CaregiverTodayRemindersScreen({ apiBaseUrl, token, onWri
       })
       const path =
         task.kind === "template"
-          ? `/caregiver/task-templates/${encodeURIComponent(taskId)}/complete`
+          ? `/caregiver/task-templates/${encodeURIComponent(task.templateId || String(task.id).split("::")[0])}/complete`
           : `/caregiver/reminders/${encodeURIComponent(taskId)}/complete`
       try {
-        await apiRequest({ apiBaseUrl, path, method: "PATCH", token })
+        await apiRequest({
+          apiBaseUrl,
+          path,
+          method: "PATCH",
+          token,
+          body:
+            task.kind === "template" && task.slot
+              ? { slot: task.slot, marStatus: "done", givenAt: nowHhmm() }
+              : { marStatus: "done", givenAt: nowHhmm() }
+        })
         setTasks((prev) =>
           prev.map((t) => (t.id === taskId ? { ...t, isCompleted: true } : t))
         )
@@ -159,8 +198,66 @@ export default function CaregiverTodayRemindersScreen({ apiBaseUrl, token, onWri
 
   const completePathFor = (t) =>
     t.kind === "template"
-      ? `/caregiver/task-templates/${encodeURIComponent(t.id)}/complete`
+      ? `/caregiver/task-templates/${encodeURIComponent(t.templateId || String(t.id).split("::")[0])}/complete`
       : `/caregiver/reminders/${encodeURIComponent(t.id)}/complete`
+
+  const submitMar = async (payload) => {
+    const task = marOpen?.task
+    if (!task || inFlightRef.current.has(task.id)) return
+    const isDone = payload.marStatus === "done"
+    inFlightRef.current.add(task.id)
+    if (isDone) {
+      setLocalMark((prev) => ({ ...prev, [task.id]: "done" }))
+    }
+    setSubmitting(true)
+    try {
+      await apiRequest({
+        apiBaseUrl,
+        path: completePathFor(task),
+        method: "PATCH",
+        token,
+        body: {
+          ...(task.kind === "template" && task.slot ? { slot: task.slot } : {}),
+          marStatus: payload.marStatus,
+          givenAt: payload.givenAt,
+          marNote: payload.marNote,
+          reportExtra: payload.reportExtra
+        }
+      })
+      setTasks((prev) =>
+        prev.map((row) =>
+          row.id === task.id
+            ? {
+                ...row,
+                isCompleted: isDone,
+                givenAt: payload.givenAt,
+                marStatus: payload.marStatus,
+                marNote: payload.marNote,
+                reportExtra: payload.reportExtra
+              }
+            : row
+        )
+      )
+      if (!isDone) {
+        setLocalMark((prev) => {
+          const next = { ...prev }
+          delete next[task.id]
+          return next
+        })
+      }
+      setMarOpen(null)
+    } catch (err) {
+      setLocalMark((prev) => {
+        const next = { ...prev }
+        delete next[task.id]
+        return next
+      })
+      Alert.alert(t("common.error"), err.message || t("care.markFail"))
+    } finally {
+      inFlightRef.current.delete(task.id)
+      setSubmitting(false)
+    }
+  }
 
   const handleSubmitAll = async () => {
     const pendingDone = tasks.filter(
@@ -180,7 +277,8 @@ export default function CaregiverTodayRemindersScreen({ apiBaseUrl, token, onWri
           apiBaseUrl,
           path: completePathFor(task),
           method: "PATCH",
-          token
+          token,
+          body: task.kind === "template" && task.slot ? { slot: task.slot } : undefined
         })
       }
       Alert.alert(
@@ -226,13 +324,31 @@ export default function CaregiverTodayRemindersScreen({ apiBaseUrl, token, onWri
       const cat = toReminderCatCode(item.category)
       return {
         id: item.id,
-        title: item.content || t("reminders.item"),
+        title: carePresetLabel({
+          text: item.content || t("reminders.item"),
+          contentKey: item.contentKey,
+          t
+        }),
+        contentKey: item.contentKey || "",
         time: item.time,
         done: status === "done",
         skipped: status === "skip",
-        category: cat === "med" ? "med" : cat === "daily_care" ? "bath" : "other"
+        category: cat,
+        kind: item.kind,
+        templateId: item.templateId,
+        slot: item.slot,
+        createdByRole: item.createdByRole,
+        createdByName: item.createdByName,
+        mealTiming: item.mealTiming,
+        completedClock: formatGivenAt(item.givenAt || item.completedAt),
+        marNote: item.marNote || "",
+        reportExtra: item.reportExtra || {},
+        givenAt: item.givenAt || null,
+        isCompleted: Boolean(item.isCompleted)
       }
     })
+    const patientName = user?.linkedPatientName || user?.activePatientName || user?.patientName || ""
+    const marTask = marOpen?.task || null
     return (
       <View style={styles.morandiWrap}>
         <View style={styles.morandiTools}>
@@ -241,13 +357,6 @@ export default function CaregiverTodayRemindersScreen({ apiBaseUrl, token, onWri
               {t("reminders.completedHistory")} ›
             </Text>
           </Pressable>
-          {typeof onWriteDaily === "function" ? (
-            <Pressable onPress={onWriteDaily} hitSlop={8} style={styles.morandiLinkBtn}>
-              <Text style={styles.morandiLink} numberOfLines={1}>
-                {t("daily.goWrite")}
-              </Text>
-            </Pressable>
-          ) : null}
         </View>
         {error ? <Text style={styles.error}>{error}</Text> : null}
         {loading ? (
@@ -259,10 +368,33 @@ export default function CaregiverTodayRemindersScreen({ apiBaseUrl, token, onWri
             todos={todos}
             refreshing={refreshing}
             onRefresh={() => { setRefreshing(true); load() }}
-            onMarkDone={(item) => handleToggle(item.id, "done")}
-            onMarkPending={(item) => handleToggle(item.id, "skip")}
+            onOpenSlot={(slot, group) => {
+              const full = tasks.find((row) => row.id === slot.id)
+              if (!full) return
+              setMarOpen({
+                task: { ...full, title: carePresetLabel({ text: group?.title || full.content, contentKey: full.contentKey || group?.contentKey, t }), done: full.isCompleted },
+                slotLabel: slot.slotKey && slot.slotKey !== "once" ? t(`mar.${slot.slotKey}`) : ""
+              })
+            }}
+            onOpenSingle={(item) => {
+              const full = tasks.find((row) => row.id === item.id)
+              if (!full) return
+              setMarOpen({
+                task: { ...full, title: carePresetLabel({ text: full.content, contentKey: full.contentKey, t }), done: full.isCompleted },
+                slotLabel: ""
+              })
+            }}
           />
         )}
+        <MarDoseSheet
+          visible={Boolean(marTask)}
+          task={marTask}
+          slotLabel={marOpen?.slotLabel || ""}
+          patientName={patientName}
+          submitting={submitting}
+          onClose={() => setMarOpen(null)}
+          onConfirm={submitMar}
+        />
       </View>
     )
   }
@@ -335,11 +467,6 @@ export default function CaregiverTodayRemindersScreen({ apiBaseUrl, token, onWri
         <Pressable style={styles.historyLink} onPress={() => setView("doneHistory")}>
           <Text style={styles.historyLinkText}>{t("reminders.completedHistory")} ›</Text>
         </Pressable>
-        {typeof onWriteDaily === "function" ? (
-          <Pressable style={styles.writeDailyBtn} onPress={onWriteDaily}>
-            <Text style={styles.writeDailyText}>{t("daily.goWrite")}</Text>
-          </Pressable>
-        ) : null}
       </View>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}

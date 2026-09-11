@@ -476,7 +476,7 @@ export default function LanguageSupportScreen({ apiBaseUrl, token, onBack, uiLan
         </View>
       )}
 
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.container}>
 
         {/* ── 語音輸入 ── */}
         <View style={styles.card}>
@@ -485,10 +485,10 @@ export default function LanguageSupportScreen({ apiBaseUrl, token, onBack, uiLan
             {APP_LANGS.map((item) => (
               <Pressable
                 key={item.code}
-                style={[styles.refreshBtn, targetLang === item.code ? styles.micBtnActive : null]}
+                style={[styles.refreshBtn, targetLang === item.code ? styles.chipActiveGreen : null]}
                 onPress={() => setTargetLang(item.code)}
               >
-                <Text style={styles.refreshBtnText}>{item.short}</Text>
+                <Text style={[styles.refreshBtnText, targetLang === item.code ? styles.chipTextWhite : null]}>{item.short}</Text>
               </Pressable>
             ))}
           </View>
@@ -505,15 +505,15 @@ export default function LanguageSupportScreen({ apiBaseUrl, token, onBack, uiLan
           {voiceStatus ? (
             <View style={styles.statusRow}>
               {isListening
-                ? <ActivityIndicator size="small" color="#ef4444" style={{ marginRight: 6 }} />
+                ? <ActivityIndicator size="small" color={colors.clay} style={styles.spinGap} />
                 : null}
-              <Text style={[styles.hint, isListening && { color: "#ef4444" }]}>{voiceStatus}</Text>
+              <Text style={[styles.hint, isListening ? styles.listenHint : null]}>{voiceStatus}</Text>
             </View>
           ) : null}
 
           {translateInput && !isListening ? (
             <View style={styles.recognizedBox}>
-              <Text style={styles.recognizedText}>{translateInput}</Text>
+              <Text style={styles.recognizedText} selectable>{translateInput}</Text>
             </View>
           ) : null}
         </View>
@@ -528,6 +528,7 @@ export default function LanguageSupportScreen({ apiBaseUrl, token, onBack, uiLan
             value={translateInput}
             onChangeText={setTranslateInput}
             placeholder="..."
+            placeholderTextColor={colors.textMuted}
             multiline
             numberOfLines={3}
           />
@@ -542,7 +543,7 @@ export default function LanguageSupportScreen({ apiBaseUrl, token, onBack, uiLan
 
           {translating ? (
             <View style={styles.statusRow}>
-              <ActivityIndicator size="small" color={colors.pine} style={{ marginRight: 6 }} />
+              <ActivityIndicator size="small" color={colors.mint} style={styles.spinGap} />
               <Text style={styles.hint}>{t.translating}</Text>
             </View>
           ) : null}
@@ -552,7 +553,7 @@ export default function LanguageSupportScreen({ apiBaseUrl, token, onBack, uiLan
               <Text style={styles.resultLabel}>
                 {APP_LANGS.find((item) => item.code === targetLang)?.label || t.resultLang}
               </Text>
-              <Text style={styles.resultText}>{translatedResult}</Text>
+              <Text style={styles.resultText} selectable>{translatedResult}</Text>
               <Pressable
                 style={[styles.playBtn, isPlaying && styles.playBtnActive]}
                 onPress={handlePlayTts}
@@ -641,7 +642,7 @@ export default function LanguageSupportScreen({ apiBaseUrl, token, onBack, uiLan
           </View>
           {historyMsg ? <Text style={styles.successText}>{historyMsg}</Text> : null}
           {loadingHistory
-            ? <ActivityIndicator color={colors.pine} />
+            ? <ActivityIndicator color={colors.mint} />
             : historyRecords.length === 0
               ? <Text style={styles.emptyText}>{t.noData}</Text>
               : historyRecords.map((r, i) => (
@@ -661,111 +662,116 @@ export default function LanguageSupportScreen({ apiBaseUrl, token, onBack, uiLan
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   header: {
-    backgroundColor: "#fff",
+    backgroundColor: colors.bg,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 14
   },
-  backText: { color: colors.pine, fontWeight: "900" },
+  backText: { color: colors.mint, fontWeight: "900" },
   title: { marginTop: 8, color: colors.text, fontSize: 22, fontWeight: "900" },
-  subtitle: { marginTop: 4, color: "#526b88", lineHeight: 20 },
+  subtitle: { marginTop: 4, color: colors.textMuted, lineHeight: 20 },
   container: { padding: 16, gap: 12, paddingBottom: 32 },
   card: {
-    backgroundColor: "#fff",
+    backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 12,
+    borderCurve: "continuous",
     padding: 14,
     gap: 8
   },
   sectionTitle: { color: colors.text, fontSize: 16, fontWeight: "900" },
-  hint: { color: "#6a7e99", fontSize: 12 },
-  label: { color: "#244569", fontWeight: "800", fontSize: 13, marginTop: 2 },
+  hint: { color: colors.textMuted, fontSize: 12 },
+  label: { color: colors.textMuted, fontWeight: "800", fontSize: 13, marginTop: 2 },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   chip: {
     paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: 20, borderWidth: 1, borderColor: "#c7d8ed", backgroundColor: "#fff"
+    borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg
   },
-  chipActiveBlue: { backgroundColor: colors.pine, borderColor: colors.pine },
-  chipActiveGreen: { backgroundColor: colors.pine, borderColor: colors.pine },
-  chipText: { color: "#1f507f", fontSize: 12, fontWeight: "700" },
-  chipTextWhite: { color: "#fff" },
+  chipActiveBlue: { backgroundColor: colors.mint, borderColor: colors.mint },
+  chipActiveGreen: { backgroundColor: colors.mint, borderColor: colors.mint },
+  chipText: { color: colors.textMuted, fontSize: 12, fontWeight: "700" },
+  chipTextWhite: { color: colors.bg },
   micBtn: {
-    backgroundColor: colors.pine,
+    backgroundColor: colors.mint,
     borderRadius: 12,
+    borderCurve: "continuous",
     paddingVertical: 14,
     alignItems: "center",
     marginTop: 4
   },
-  micBtnActive: { backgroundColor: "#ef4444" },
-  micBtnText: { color: "#fff", fontWeight: "900", fontSize: 16 },
+  micBtnActive: { backgroundColor: colors.clay },
+  micBtnText: { color: colors.bg, fontWeight: "900", fontSize: 16 },
   statusRow: { flexDirection: "row", alignItems: "center", marginTop: 2 },
   recognizedBox: {
-    backgroundColor: "#eff6ff",
+    backgroundColor: colors.mintSoft,
     borderWidth: 1,
-    borderColor: "#bfdbfe",
+    borderColor: colors.border,
     borderRadius: 8,
     padding: 10,
     marginTop: 4
   },
-  recognizedText: { color: "#1e3a5f", fontSize: 15, lineHeight: 22 },
+  recognizedText: { color: colors.text, fontSize: 15, lineHeight: 22 },
   textArea: {
-    borderWidth: 1, borderColor: "#c8d8ee", borderRadius: 10,
-    backgroundColor: "#fbfdff", paddingHorizontal: 10, paddingVertical: 9,
+    borderWidth: 1, borderColor: colors.border, borderRadius: 10,
+    backgroundColor: colors.bg, paddingHorizontal: 10, paddingVertical: 9,
     color: colors.text, minHeight: 72, textAlignVertical: "top"
   },
   primaryBtn: {
-    backgroundColor: colors.pine, borderRadius: 10,
+    backgroundColor: colors.mint, borderRadius: 10,
+    borderCurve: "continuous",
     paddingVertical: 12, alignItems: "center", marginTop: 4
   },
-  primaryBtnText: { color: "#fff", fontWeight: "900" },
+  primaryBtnText: { color: colors.bg, fontWeight: "900" },
   resultBox: {
-    backgroundColor: "#f0fdf4", borderWidth: 1,
-    borderColor: "#bbf7d0", borderRadius: 8, padding: 12, gap: 8
+    backgroundColor: colors.mintSoft, borderWidth: 1,
+    borderColor: colors.border, borderRadius: 8, padding: 12, gap: 8
   },
-  resultLabel: { color: "#065f46", fontSize: 11, fontWeight: "700" },
-  resultText: { color: "#065f46", fontSize: 15, lineHeight: 22 },
+  resultLabel: { color: colors.mint, fontSize: 11, fontWeight: "700" },
+  resultText: { color: colors.text, fontSize: 15, lineHeight: 22 },
   playBtn: {
-    backgroundColor: colors.pine, borderRadius: 8,
+    backgroundColor: colors.mint, borderRadius: 8,
     paddingVertical: 9, paddingHorizontal: 14, alignSelf: "flex-start"
   },
-  playBtnActive: { backgroundColor: "#6b7280" },
-  playBtnText: { color: "#fff", fontWeight: "900", fontSize: 13 },
+  playBtnActive: { backgroundColor: "#6B7280" },
+  playBtnText: { color: colors.bg, fontWeight: "900", fontSize: 13 },
   phraseCard: {
-    borderWidth: 1, borderColor: "#e5eef9",
-    borderRadius: 8, padding: 10, backgroundColor: "#f8faff"
+    borderWidth: 1, borderColor: colors.border,
+    borderRadius: 8, padding: 10, backgroundColor: colors.bg
   },
   phrasePrimary: { color: colors.text, fontWeight: "800", fontSize: 14 },
-  phraseSecondary: { color: "#6a7e99", fontSize: 11, marginTop: 2 },
+  phraseSecondary: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
   dangerCard: {
-    borderWidth: 1, borderColor: "#fecaca",
-    borderRadius: 8, padding: 10, backgroundColor: "#fff5f5", gap: 4
+    borderWidth: 1, borderColor: colors.clay,
+    borderRadius: 8, padding: 10, backgroundColor: "rgba(255,77,77,0.12)", gap: 4
   },
-  dangerText: { color: "#7f1d1d", fontWeight: "800", fontSize: 14, flex: 1, marginRight: 8 },
+  dangerText: { color: colors.clay, fontWeight: "800", fontSize: 14, flex: 1, marginRight: 8 },
   dangerBadge: {
-    backgroundColor: "#ef4444", borderRadius: 12,
+    backgroundColor: colors.clay, borderRadius: 12,
     width: 22, height: 22, alignItems: "center", justifyContent: "center"
   },
-  dangerBadgeText: { color: "#fff", fontSize: 12, fontWeight: "900" },
+  dangerBadgeText: { color: colors.text, fontSize: 12, fontWeight: "900" },
   historyCard: {
-    borderWidth: 1, borderColor: "#e5eef9",
-    borderRadius: 8, padding: 10, backgroundColor: "#f8faff"
+    borderWidth: 1, borderColor: colors.border,
+    borderRadius: 8, padding: 10, backgroundColor: colors.bg
   },
   rowBetween: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   langRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 },
   actions: { flexDirection: "row", gap: 8 },
   secondaryBtn: {
-    flex: 1, backgroundColor: "#fff", borderWidth: 1,
-    borderColor: "#c7d8ed", borderRadius: 10, paddingVertical: 9, alignItems: "center"
+    flex: 1, backgroundColor: colors.bg, borderWidth: 1,
+    borderColor: colors.border, borderRadius: 10, paddingVertical: 9, alignItems: "center"
   },
-  secondaryBtnText: { color: colors.pine, fontWeight: "900", fontSize: 13 },
+  secondaryBtnText: { color: colors.mint, fontWeight: "900", fontSize: 13 },
   refreshBtn: {
-    backgroundColor: "#fff", borderWidth: 1, borderColor: "#c7d8ed",
+    backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border,
     borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4
   },
-  refreshBtnText: { color: "#1f507f", fontSize: 12, fontWeight: "800" },
-  successText: { color: "#067647", fontWeight: "800", fontSize: 13 },
-  emptyText: { color: "#6a7e99", fontSize: 13, paddingVertical: 4 }
+  refreshBtnText: { color: colors.mint, fontSize: 12, fontWeight: "800" },
+  successText: { color: colors.mint, fontWeight: "800", fontSize: 13 },
+  emptyText: { color: colors.textMuted, fontSize: 13, paddingVertical: 4 },
+  spinGap: { marginRight: 6 },
+  listenHint: { color: colors.clay }
 })

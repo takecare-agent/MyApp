@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Modal,
   Pressable,
@@ -27,6 +28,9 @@ import { usePollingRefresh } from "../lib/usePollingRefresh"
 import { useI18n } from "../i18n/I18nContext"
 import { colors } from "./new_ui/tokens"
 import { ensureFilled, screenshotCompletedReminders } from "./new_ui/screenshotFill"
+import MarDoseSheet from "./new_ui/MarDoseSheet"
+import { extraSummary, formatGivenAt } from "../lib/marGroups"
+import { carePresetLabel } from "../lib/presetResolve"
 
 /**
  * 完成封存：預設乾淨列表；篩選收進底部 sheet（不攤芯片）
@@ -54,6 +58,9 @@ export default function ReminderCompletedHistory({
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState("")
+  const [marOpen, setMarOpen] = useState(null)
+  const [submitting, setSubmitting] = useState(false)
+  const canEdit = role === "caregiver"
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setError("")
@@ -84,7 +91,7 @@ export default function ReminderCompletedHistory({
     load()
   }, [load])
 
-  usePollingRefresh(load, { intervalMs: 8000, enabled: !filterOpen })
+  usePollingRefresh(load, { intervalMs: 8000, enabled: !filterOpen && !marOpen })
 
   const filtered = useMemo(() => {
     if (category === "all") return records
@@ -118,6 +125,53 @@ export default function ReminderCompletedHistory({
     setDays(draftDays)
     setCategory(draftCategory)
     setFilterOpen(false)
+  }
+
+  const openEdit = (item) => {
+    if (!canEdit) return
+    setMarOpen({
+      id: String(item._id),
+      title: carePresetLabel({ text: item.content || "", contentKey: item.contentKey, t }),
+      content: item.content || "",
+      contentKey: item.contentKey || "",
+      time: formatHHmm(item.time),
+      isCompleted: true,
+      done: true,
+      givenAt: item.givenAt || item.completedAt,
+      completedAt: item.completedAt,
+      marNote: item.marNote || item.note || "",
+      marStatus: item.marStatus || "done",
+      reportExtra: item.reportExtra || {},
+      createdByRole: item.createdByRole || "",
+      createdByName: item.createdByName || "",
+      category: item.category || ""
+    })
+  }
+
+  const submitEdit = async (payload) => {
+    const task = marOpen
+    if (!task?.id) return
+    setSubmitting(true)
+    try {
+      await apiRequest({
+        apiBaseUrl,
+        path: `/caregiver/reminders/${encodeURIComponent(task.id)}/complete`,
+        method: "PATCH",
+        token,
+        body: {
+          marStatus: payload.marStatus,
+          givenAt: payload.givenAt,
+          marNote: payload.marNote,
+          reportExtra: payload.reportExtra
+        }
+      })
+      setMarOpen(null)
+      await load({ silent: true })
+    } catch (err) {
+      Alert.alert(t("common.error"), err.message || t("care.markFail"))
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const sections = useMemo(() => {
@@ -160,8 +214,10 @@ export default function ReminderCompletedHistory({
     const item = row.item
     const isRepeat = isTemplateReminderSource(item.source)
     const doneAt = getCompletionInstant(item)
+    const extra = extraSummary(item)
+    const marNote = String(item.marNote || "").trim()
     return (
-      <View style={styles.card}>
+      <Pressable style={styles.card} onPress={() => openEdit(item)} disabled={!canEdit}>
         <View style={styles.cardHeader}>
           <View style={[styles.badge, isRepeat ? styles.badgeGreen : null]}>
             <Text style={[styles.badgeText, isRepeat ? styles.badgeGreenText : null]}>
@@ -178,7 +234,10 @@ export default function ReminderCompletedHistory({
           token={token}
           style={styles.content}
         />
-        {item.note ? (
+        {extra ? <Text style={styles.extra}>{extra}</Text> : null}
+        {marNote ? (
+          <Text style={styles.note}>{t("common.note")}：{marNote}</Text>
+        ) : item.note ? (
           <TranslatedUgcText
             text={item.note}
             sourceLang={item.sourceLang}
@@ -193,9 +252,15 @@ export default function ReminderCompletedHistory({
           <Text style={styles.meta}>
             {t("reminders.completedAt")} {doneAt ? `${formatLocalDateLabel(doneAt, new Date(), lang)} ${formatHHmm(doneAt)}` : "—"}
           </Text>
+          {item.givenAt ? (
+            <Text style={styles.meta}>{t("mar.actualCareTime")} {formatGivenAt(item.givenAt)}</Text>
+          ) : null}
           <Text style={styles.meta}>{t("reminders.executor")} {roleLabelZh(item.completedByRole)}</Text>
         </View>
-      </View>
+        {canEdit ? (
+          <Text style={styles.editHint}>{t("daily.edit")}</Text>
+        ) : null}
+      </Pressable>
     )
   }
 
@@ -305,6 +370,17 @@ export default function ReminderCompletedHistory({
           </View>
         </View>
       </Modal>
+      {canEdit ? (
+        <MarDoseSheet
+          visible={Boolean(marOpen)}
+          task={marOpen}
+          slotLabel=""
+          submitting={submitting}
+          allowEdit
+          onClose={() => setMarOpen(null)}
+          onConfirm={submitEdit}
+        />
+      ) : null}
     </View>
   )
 }
@@ -374,6 +450,8 @@ const styles = StyleSheet.create({
   badgeGreenText: { color: colors.mint },
   doneTag: { fontSize: 12, fontWeight: "700", color: colors.mint },
   content: { fontSize: 16, fontWeight: "700", color: colors.text, marginBottom: 4 },
+  extra: { fontSize: 14, fontWeight: "700", color: colors.mint, marginBottom: 4 },
+  editHint: { marginTop: 10, color: colors.mint, fontWeight: "800", fontSize: 14, textAlign: "right" },
   note: { fontSize: 13, color: colors.textMuted, marginBottom: 6 },
   metaBlock: { gap: 2, marginTop: 4 },
   meta: { fontSize: 12, color: colors.textMuted, fontWeight: "500" },

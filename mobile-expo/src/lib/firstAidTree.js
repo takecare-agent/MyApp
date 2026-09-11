@@ -114,7 +114,6 @@ export const AID_TREE = {
   q2a: {
     type: "q",
     promptKey: "aid.q2a",
-    image: img.choke,
     sources: ["s3"],
     choices: [
       { id: "yes", labelKey: "aid.q2a.yes", next: "leaf_mild" },
@@ -131,9 +130,9 @@ export const AID_TREE = {
     type: "leaf",
     titleKey: "aid.leaf.cpr.title",
     bodyKeys: ["aid.leaf.cpr.1", "aid.leaf.cpr.2", "aid.leaf.cpr.3"],
-    videoId: "fw5cpbIqQ3w",
     image: img.cpr,
     hasMetronome: true,
+    loopAnim: "cpr",
     sources: ["s1", "s2"]
   },
   leaf_breathe: {
@@ -147,58 +146,50 @@ export const AID_TREE = {
     type: "leaf",
     titleKey: "aid.leaf.mild.title",
     bodyKeys: ["aid.leaf.mild.1"],
-    image: img.choke,
     sources: ["s3"]
   },
   leaf_heimlich: {
     type: "leaf",
     titleKey: "aid.leaf.heimlich.title",
-    bodyKeys: ["aid.leaf.heimlich.1"],
-    videoId: "rMyDMSt5RMo",
-    image: img.choke,
+    bodyKeys: ["aid.leaf.heimlich.1", "aid.leaf.heimlich.2", "aid.leaf.heimlich.3"],
+    loopAnim: "heimlich",
     extraNext: { id: "lost", labelKey: "aid.gotoCpr", next: "leaf_cpr" },
     sources: ["s3"]
   },
   leaf_fast: {
     type: "leaf",
     titleKey: "aid.leaf.fast.title",
-    bodyKeys: ["aid.leaf.fast.1", "aid.leaf.fast.side"],
-    image: img.side,
+    bodyKeys: ["aid.leaf.fast.1", "aid.leaf.fast.2", "aid.leaf.fast.3"],
     sources: ["s4", "s15"]
   },
   leaf_chest: {
     type: "leaf",
     titleKey: "aid.leaf.chest.title",
     bodyKeys: ["aid.leaf.chest.1"],
-    image: img.cpr,
     sources: ["s13"]
   },
   leaf_seizure: {
     type: "leaf",
     titleKey: "aid.leaf.seizure.title",
     bodyKeys: ["aid.leaf.seizure.1", "aid.leaf.seizure.2", "aid.leaf.seizure.3"],
-    image: img.side,
     sources: ["s5"]
   },
   leaf_foam: {
     type: "leaf",
     titleKey: "aid.leaf.foam.title",
     bodyKeys: ["aid.leaf.foam.1", "aid.leaf.seizure.2"],
-    image: img.side,
     sources: ["s5"]
   },
   leaf_bleed: {
     type: "leaf",
     titleKey: "aid.leaf.bleed.title",
     bodyKeys: ["aid.leaf.bleed.1"],
-    image: img.bleed,
     sources: ["s7"]
   },
   leaf_burn: {
     type: "leaf",
     titleKey: "aid.leaf.burn.title",
     bodyKeys: ["aid.leaf.burn.1"],
-    image: img.burn,
     sources: ["s6"]
   },
   leaf_heat: {
@@ -230,7 +221,7 @@ export const AID_TREE = {
   leaf_fall: {
     type: "leaf",
     titleKey: "aid.leaf.fall.title",
-    bodyKeys: ["aid.leaf.fall.1"],
+    bodyKeys: ["aid.leaf.fall.1", "aid.leaf.fall.2", "aid.leaf.fall.3"],
     sources: ["s11"]
   },
   leaf_sugar: {

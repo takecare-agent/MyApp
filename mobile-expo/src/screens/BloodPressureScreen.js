@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
+  AppState,
   Modal,
   Platform,
   Pressable,
@@ -15,6 +16,7 @@ import MonthCalendar from "../components/MonthCalendar"
 import { colors } from "./new_ui/tokens"
 import { NeoIcon } from "./new_ui/NeoIcons"
 import { ensureFilled, screenshotBpRecords } from "./new_ui/screenshotFill"
+import { formatDateTime as formatDateTimeLocale } from "../i18n/dateLocale"
 
 const HEALTH_CONNECT_PERMISSIONS = [
   { accessType: "read", recordType: "BloodPressure" },
@@ -128,9 +130,10 @@ const STRESS_MOODS = new Set(["焦慮", "頭暈"])
 const UI_TEXT = {
   zh: {
     back: "返回", caregiverTitle: "看護血壓照護", caregiverSub: "同步、代輸入與每日照護任務。",
-    patientTitle: "長輩每日血壓紀錄", patientSub: "Health Connect 同步、手動新增、趨勢分析與心情日記",
-    familyTitle: "長輩每日血壓監控", familySub: "家屬端固定查看近 3 個月資料",
-    tabMeasure: "量測", tabTrend: "趨勢", tabDiary: "日記",
+    patientTitle: "長輩每日血壓紀錄", patientSub: "同步、手動新增與趨勢分析",
+    familyTitle: "長輩每日血壓監控", familySub: "總覽最新數值，並可看 1／3／6 月趨勢",
+    tabMeasure: "量測", tabTrend: "趨勢", tabDiary: "日記", tabOverview: "總覽",
+    chartGrain1m: "每日平均", chartGrain3m: "每週平均", chartGrain6m: "每兩週平均", logTitle: "量測紀錄",
     noRecord: "尚無紀錄", refresh: "重新整理", syncHC: "從 Health Connect 同步",
     moodStatus: "心情狀態", sysBP: "收縮壓", diaBP: "舒張壓", pulse: "脈搏", mood: "心情",
     alertNeedsConfirm: "需要看護確認", bpAlert: "血壓提醒",
@@ -164,7 +167,7 @@ const UI_TEXT = {
     noAbnormal: "目前沒有異常血壓紀錄。",
     bpLabel: "血壓", fiveDayTrend: "近 5 日趨勢", dailyAlert: "每日警示", avgPrefix: "平均",
     autoImport: "從血壓計同步", addRecord: "對照血壓計手動輸入", saveRecord: "儲存血壓紀錄",
-    meterHint: "量完請按同步。若血壓計沒進 Health Connect，把螢幕上的數字打進來即可。",
+    meterHint: "量完回到這個頁面會自動同步。若血壓計沒進 Health Connect，把螢幕上的數字打進來即可。",
     range1m: "1個月", range3m: "3個月", range6m: "6個月",
     bpDiary: "血壓日記", dateRecordsSuffix: " 的紀錄", emptyDay: "這天沒有血壓紀錄",
     pulsePrefix: "脈搏", moodPrefix: "心情：",
@@ -191,9 +194,15 @@ const UI_TEXT = {
     moodStressHitFn: (n, total) => `近 ${total} 筆中有 ${n} 筆同時出現高血壓與焦慮或頭暈，建議記錄發生情境。`,
     moodStressContinue: "已有心情標記，可持續觀察情緒、睡眠與血壓波動的關係。",
     moodStressEmpty: "尚未累積足夠心情標記，建議每次量測後補上當下感受。",
-    pulseNoData: "尚未有脈搏資料，Health Connect 同步時會嘗試一起補入。",
-    pulseOverlapFn: (n) => `有 ${n} 筆紀錄同時出現心跳偏快、血壓偏高與壓力心情，建議留意休息與回診討論。`,
-    pulseAvgFn: (avg) => `近期平均脈搏約 ${avg} bpm，可搭配心情標記一起追蹤。`,
+    pulseNoData: "尚未有脈搏資料。同步歐姆龍／Health Connect 或手動輸入後會顯示。",
+    pulseOverlapFn: (n) => `有 ${n} 筆紀錄心跳偏快且血壓偏高，建議休息後再量。`,
+    pulseAvgFn: (avg) => `近期平均靜息脈搏約 ${avg} bpm。`,
+    pulseAdviceFn: (avg) => {
+      if (avg < 50) return `近期平均靜息脈搏約 ${avg} bpm。2018 ACC/AHA/HRS 心搏過緩指引把竇性心率 <50 列為評估參考之一，但不能單靠數字診斷；若有頭暈、無力或昏厥請就醫。`
+      if (avg < 60) return `近期平均靜息脈搏約 ${avg} bpm，低於 AHA 常見靜息範圍 60–100。低於 60 不一定是病（藥物、睡眠、運動習慣也可能）；若伴隨不適應就醫討論。`
+      if (avg <= 100) return `近期平均靜息脈搏約 ${avg} bpm，落在美國心臟協會（AHA）多數成人靜息心率 60–100 bpm 的常見範圍（坐或躺、冷靜、無不適時）。`
+      return `近期平均靜息脈搏約 ${avg} bpm，高於 AHA 靜息常見上限 100 bpm。可能受活動、發燒、咖啡因或緊張影響；休息後再量，若持續偏快或有胸悶／喘，請就醫。`
+    },
     savedMsgFn: (sys, dia, level) => `已儲存 ${sys}/${dia} mmHg，狀態：${level}`,
     pulseUnknown: "未記錄", pulseSlow: "心跳偏慢", pulseFast: "心跳偏快", pulseNormal: "心跳正常",
     obsNoData: "目前資料量不足，請先累積血壓紀錄。",
@@ -209,6 +218,9 @@ const UI_TEXT = {
     errInvalidPulse: "脈搏需介於 30 到 220 bpm。",
     errFamilySync: "家屬端只讀；同步請在受顧者端或照顧者端執行。",
     errNotAndroid: "Health Connect 同步目前僅支援 Android 實機。",
+    errIosHealth: "iPhone 不能直接連歐姆龍藍牙。請在「歐姆龍連結」把血壓分享到「健康」；本 App 下一版會從蘋果健康匯入。現在請把畫面上的數字打進來。",
+    syncHealth: "從蘋果健康同步",
+    meterHintIos: "歐姆龍量完會進蘋果「健康」。目前 iOS 還要接 HealthKit，先手動輸入。",
     errNoHCPackage: "尚未載入 Health Connect 套件，請重新安裝原生 App。",
     errHCInitFail: "無法初始化 Health Connect，請確認手機已安裝並啟用 Health Connect。",
     errNoHCPerms: "尚未取得 Health Connect 血壓與心率讀取權限。",
@@ -221,18 +233,22 @@ const UI_TEXT = {
     normalDaysFn: (days, pct) => `正常天數：${days} 天（${pct}%）`,
     periodSummaryFn: (months) => `近 ${months} 個月健康摘要`,
     moodStressTitle: "心情提醒",
-    pulseStressTitle: "脈搏提醒",
+    pulseStressTitle: "脈搏觀察",
     observation: "觀察", reference: "參考來源",
     moodSourceNote: "僅供日常觀察，不能取代醫療診斷。",
-    pulseSourceNote: "脈搏會受活動與情緒影響，請搭配血壓一起看。",
+    pulseSourceNote: "參考：AHA《All About Heart Rate》多數成人靜息 60–100 bpm（坐／躺、冷靜）；2018 ACC/AHA/HRS 心搏過緩指引以竇性心率 <50 搭配症狀評估。本欄非診斷。",
     recordDays: "紀錄天數", highRisk: "高風險", warning: "警示",
     avgPulse: "平均脈搏", recentPulse: "最近脈搏",
+    logTime: "時間", logBp: "收縮/舒張", logPulse: "脈搏",
+    logPage: "{page}/{total}",
+    chartSourceNote: "紀錄表對齊 AHA 居家血壓日誌（日期、時間、收縮、舒張、脈搏）。線圖為輔助趨勢。警戒 130/80 依 2025 AHA/ACC 高血壓指引。非診斷。",
   },
   en: {
     back: "Back", caregiverTitle: "Caregiver BP Care", caregiverSub: "Sync, proxy entry, and daily care tasks.",
     patientTitle: "Daily Blood Pressure Log", patientSub: "Sync, manual entry, trend analysis & mood diary",
     familyTitle: "Family BP Monitor", familySub: "Family view of last 3 months",
-    tabMeasure: "Measure", tabTrend: "Trend", tabDiary: "Diary",
+    tabMeasure: "Measure", tabTrend: "Trend", tabDiary: "Diary", tabOverview: "Overview",
+    chartGrain1m: "Daily average", chartGrain3m: "Weekly average", chartGrain6m: "Biweekly average", logTitle: "Readings",
     noRecord: "No record yet", refresh: "Refresh", syncHC: "Sync from Health Connect",
     moodStatus: "Mood", sysBP: "Systolic", diaBP: "Diastolic", pulse: "Pulse", mood: "Mood",
     alertNeedsConfirm: "Needs Caregiver Confirmation", bpAlert: "BP Alert",
@@ -266,6 +282,7 @@ const UI_TEXT = {
     noAbnormal: "No abnormal BP records.",
     bpLabel: "Blood Pressure", fiveDayTrend: "5-Day Trend", dailyAlert: "Daily Alert", avgPrefix: "Avg",
     autoImport: "Auto Import", addRecord: "Add a Record", saveRecord: "Save BP Record",
+    meterHint: "After measuring, return here to sync. If the meter did not write to Health Connect, type the numbers.",
     range1m: "1 Month", range3m: "3 Months", range6m: "6 Months",
     bpDiary: "BP Diary", dateRecordsSuffix: " records", emptyDay: "No BP records for this day",
     pulsePrefix: "Pulse", moodPrefix: "Mood: ",
@@ -294,7 +311,13 @@ const UI_TEXT = {
     moodStressEmpty: "Not enough mood tags yet. Add one after each measurement.",
     pulseNoData: "No pulse data yet. Health Connect sync will attempt to backfill.",
     pulseOverlapFn: (n) => `${n} records show high pulse, high BP, and stress mood together. Monitor rest and follow up.`,
-    pulseAvgFn: (avg) => `Recent avg pulse ~${avg} bpm. Track alongside mood tags.`,
+    pulseAvgFn: (avg) => `Recent resting pulse avg ~${avg} bpm.`,
+    pulseAdviceFn: (avg) => {
+      if (avg < 50) return `Recent resting pulse avg ~${avg} bpm. 2018 ACC/AHA/HRS bradycardia guidance uses sinus rate <50 bpm as one evaluation cue, not a diagnosis by number alone. Seek care if dizzy, weak, or fainting.`
+      if (avg < 60) return `Recent resting pulse avg ~${avg} bpm, below the AHA usual 60–100 range. Below 60 is not always illness (medication, sleep, fitness). See a clinician if you feel unwell.`
+      if (avg <= 100) return `Recent resting pulse avg ~${avg} bpm, within the AHA usual adult resting range of 60–100 bpm (sitting/lying, calm, feeling well).`
+      return `Recent resting pulse avg ~${avg} bpm, above the AHA usual resting upper limit of 100 bpm. Activity, fever, caffeine, or stress can raise it. Recheck at rest; seek care if it stays high or you have chest tightness/shortness of breath.`
+    },
     savedMsgFn: (sys, dia, level) => `Saved ${sys}/${dia} mmHg, status: ${level}`,
     pulseUnknown: "Unknown", pulseSlow: "Slow Pulse", pulseFast: "Fast Pulse", pulseNormal: "Normal Pulse",
     obsNoData: "Not enough data. Please accumulate more BP records.",
@@ -310,6 +333,9 @@ const UI_TEXT = {
     errInvalidPulse: "Pulse must be between 30 and 220 bpm.",
     errFamilySync: "Family view is read-only. Sync must be done from patient or caregiver app.",
     errNotAndroid: "Health Connect sync is only supported on Android devices.",
+    errIosHealth: "iPhone cannot talk to Omron over Bluetooth. Share BP from Omron connect into Apple Health. This app will import from Health in the next iOS build. For now, type the numbers.",
+    syncHealth: "Sync from Apple Health",
+    meterHintIos: "Omron writes to Apple Health. iOS HealthKit import is next; enter the reading for now.",
     errNoHCPackage: "Health Connect package not loaded. Please reinstall the native app.",
     errHCInitFail: "Cannot initialize Health Connect. Please confirm it is installed and enabled.",
     errNoHCPerms: "Health Connect blood pressure and heart rate read permission not granted.",
@@ -322,18 +348,22 @@ const UI_TEXT = {
     normalDaysFn: (days, pct) => `Normal days: ${days} (${pct}%)`,
     periodSummaryFn: (months) => `${months}-Month Health Summary`,
     moodStressTitle: "BP & Mood Correlation Analysis",
-    pulseStressTitle: "Pulse & Emotional Stress Analysis",
+    pulseStressTitle: "Pulse observation",
     observation: "Observation", reference: "Reference",
     moodSourceNote: "Stress may cause temporary BP elevation. Combine with breathing, exercise, sleep, and lifestyle management. This analysis is for reference only.",
-    pulseSourceNote: "Resting pulse is affected by mood, stress, activity, and medication. Observe alongside BP, mood, and symptoms.",
+    pulseSourceNote: "Sources: AHA All About Heart Rate — most adults rest at 60–100 bpm when sitting/lying and calm. 2018 ACC/AHA/HRS bradycardia guideline uses sinus rate <50 bpm with symptoms as an evaluation cue, not a diagnosis by number alone.",
     recordDays: "Recorded Days", highRisk: "High Risk", warning: "Warning",
     avgPulse: "Avg Pulse", recentPulse: "Recent Pulse",
+    logTime: "Time", logBp: "Sys/Dia", logPulse: "Pulse",
+    logPage: "{page}/{total}",
+    chartSourceNote: "The log follows AHA home BP monitoring (date, time, systolic, diastolic, pulse). The line chart is secondary. Alert 130/80 is from the 2025 AHA/ACC hypertension guideline. Not a diagnosis.",
   },
   id: {
     back: "Kembali", caregiverTitle: "Perawatan TD Pengasuh", caregiverSub: "Sinkronkan, masuk pengganti, dan tugas perawatan harian.",
     patientTitle: "Catatan TD Harian", patientSub: "Sinkron, entri manual, analisis tren & catatan mood",
     familyTitle: "Pantau TD Keluarga", familySub: "Tampilan keluarga 3 bulan terakhir",
-    tabMeasure: "Ukur", tabTrend: "Tren", tabDiary: "Diary",
+    tabMeasure: "Ukur", tabTrend: "Tren", tabDiary: "Diary", tabOverview: "Ringkasan",
+    chartGrain1m: "Rata-rata harian", chartGrain3m: "Rata-rata mingguan", chartGrain6m: "Rata-rata 2 minggu", logTitle: "Catatan",
     noRecord: "Belum ada catatan", refresh: "Segarkan", syncHC: "Sinkron dari Health Connect",
     moodStatus: "Suasana Hati", sysBP: "Sistolik", diaBP: "Diastolik", pulse: "Denyut Nadi", mood: "Mood",
     alertNeedsConfirm: "Perlu Konfirmasi Pengasuh", bpAlert: "Peringatan TD",
@@ -367,6 +397,7 @@ const UI_TEXT = {
     noAbnormal: "Tidak ada catatan TD abnormal.",
     bpLabel: "Tekanan Darah", fiveDayTrend: "Tren 5 Hari", dailyAlert: "Peringatan Harian", avgPrefix: "Rata-rata",
     autoImport: "Impor Otomatis", addRecord: "Tambah Catatan", saveRecord: "Simpan Catatan TD",
+    meterHint: "Setelah ukur, kembali ke halaman ini untuk sinkron. Jika tensimeter tidak masuk Health Connect, ketik angkanya.",
     range1m: "1 Bulan", range3m: "3 Bulan", range6m: "6 Bulan",
     bpDiary: "Diary TD", dateRecordsSuffix: " catatan", emptyDay: "Tidak ada catatan TD untuk hari ini",
     pulsePrefix: "Denyut", moodPrefix: "Mood: ",
@@ -395,7 +426,13 @@ const UI_TEXT = {
     moodStressEmpty: "Belum cukup tag mood. Tambahkan setelah setiap pengukuran.",
     pulseNoData: "Belum ada data denyut nadi. Sinkron Health Connect akan mencoba mengisinya.",
     pulseOverlapFn: (n) => `${n} catatan menunjukkan denyut tinggi, TD tinggi, dan mood stres. Pantau istirahat.`,
-    pulseAvgFn: (avg) => `Rata-rata denyut terakhir ~${avg} bpm. Pantau bersama tag mood.`,
+    pulseAvgFn: (avg) => `Rata-rata denyut istirahat ~${avg} bpm.`,
+    pulseAdviceFn: (avg) => {
+      if (avg < 50) return `Rata-rata denyut istirahat ~${avg} bpm. ACC/AHA/HRS 2018 memakai sinus <50 sebagai salah satu petunjuk evaluasi, bukan diagnosis dari angka saja. Jika pusing, lemas, atau pingsan, ke dokter.`
+      if (avg < 60) return `Rata-rata denyut istirahat ~${avg} bpm, di bawah kisaran biasa AHA 60–100. Di bawah 60 belum tentu sakit (obat, tidur, olahraga). Jika tidak nyaman, konsultasikan.`
+      if (avg <= 100) return `Rata-rata denyut istirahat ~${avg} bpm, dalam kisaran biasa AHA untuk dewasa: 60–100 bpm saat duduk/berbaring, tenang.`
+      return `Rata-rata denyut istirahat ~${avg} bpm, di atas batas biasa AHA 100 bpm. Aktivitas, demam, kafein, atau stres bisa menaikkan. Ukur ulang saat istirahat; jika tetap tinggi atau dada sesak/napas pendek, ke dokter.`
+    },
     savedMsgFn: (sys, dia, level) => `Disimpan ${sys}/${dia} mmHg, status: ${level}`,
     pulseUnknown: "Tidak Dicatat", pulseSlow: "Denyut Lambat", pulseFast: "Denyut Cepat", pulseNormal: "Denyut Normal",
     obsNoData: "Data belum cukup. Kumpulkan lebih banyak catatan TD.",
@@ -411,6 +448,9 @@ const UI_TEXT = {
     errInvalidPulse: "Denyut harus antara 30 dan 220 bpm.",
     errFamilySync: "Tampilan keluarga hanya baca. Sinkron dari app pasien atau pengasuh.",
     errNotAndroid: "Sinkron Health Connect hanya didukung di perangkat Android.",
+    errIosHealth: "iPhone tidak bisa Bluetooth langsung ke Omron. Bagikan ke Apple Health. Impor HealthKit menyusul. Untuk sekarang ketik angkanya.",
+    syncHealth: "Sinkron dari Apple Health",
+    meterHintIos: "Omron menulis ke Apple Health. Impor iOS menyusul; ketik dulu.",
     errNoHCPackage: "Paket Health Connect belum dimuat. Pasang ulang app native.",
     errHCInitFail: "Tidak dapat menginisialisasi Health Connect. Pastikan sudah diinstal.",
     errNoHCPerms: "Izin baca TD dan detak jantung Health Connect belum diberikan.",
@@ -434,7 +474,8 @@ const UI_TEXT = {
     back: "Quay Lại", caregiverTitle: "Chăm Sóc HA (Người Chăm)", caregiverSub: "Đồng bộ, nhập thay và công việc chăm sóc hàng ngày.",
     patientTitle: "Nhật Ký HA Hàng Ngày", patientSub: "Đồng bộ, nhập tay, phân tích xu hướng & nhật ký tâm trạng",
     familyTitle: "Theo Dõi HA Người Cao Tuổi", familySub: "Chế độ xem gia đình 3 tháng gần nhất",
-    tabMeasure: "Đo", tabTrend: "Xu Hướng", tabDiary: "Nhật Ký",
+    tabMeasure: "Đo", tabTrend: "Xu Hướng", tabDiary: "Nhật Ký", tabOverview: "Tổng quan",
+    chartGrain1m: "TB theo ngày", chartGrain3m: "TB theo tuần", chartGrain6m: "TB 2 tuần", logTitle: "Nhật ký đo",
     noRecord: "Chưa có dữ liệu", refresh: "Làm Mới", syncHC: "Đồng Bộ Health Connect",
     moodStatus: "Tâm Trạng", sysBP: "Tâm Thu", diaBP: "Tâm Trương", pulse: "Mạch", mood: "Tâm Trạng",
     alertNeedsConfirm: "Cần Xác Nhận Người Chăm", bpAlert: "Cảnh Báo HA",
@@ -468,6 +509,7 @@ const UI_TEXT = {
     noAbnormal: "Không có bản ghi HA bất thường.",
     bpLabel: "Huyết Áp", fiveDayTrend: "Xu Hướng 5 Ngày", dailyAlert: "Cảnh Báo Hàng Ngày", avgPrefix: "TB",
     autoImport: "Nhập Tự Động", addRecord: "Thêm Bản Ghi", saveRecord: "Lưu Bản Ghi HA",
+    meterHint: "Đo xong quay lại trang này sẽ đồng bộ. Nếu máy không ghi vào Health Connect, nhập số trên màn hình.",
     range1m: "1 Tháng", range3m: "3 Tháng", range6m: "6 Tháng",
     bpDiary: "Nhật Ký HA", dateRecordsSuffix: " bản ghi", emptyDay: "Không có bản ghi HA cho ngày này",
     pulsePrefix: "Mạch", moodPrefix: "Tâm Trạng: ",
@@ -496,7 +538,13 @@ const UI_TEXT = {
     moodStressEmpty: "Chưa đủ ghi chú tâm trạng. Thêm sau mỗi lần đo.",
     pulseNoData: "Chưa có dữ liệu mạch. Health Connect sẽ thử điền khi đồng bộ.",
     pulseOverlapFn: (n) => `${n} bản ghi cho thấy mạch nhanh, HA cao và tâm trạng căng thẳng. Theo dõi nghỉ ngơi.`,
-    pulseAvgFn: (avg) => `Mạch TB gần đây ~${avg} bpm. Theo dõi cùng ghi chú tâm trạng.`,
+    pulseAvgFn: (avg) => `Mạch lúc nghỉ TB gần đây ~${avg} bpm.`,
+    pulseAdviceFn: (avg) => {
+      if (avg < 50) return `Mạch lúc nghỉ TB ~${avg} bpm. ACC/AHA/HRS 2018 dùng nhịp xoang <50 như một gợi ý đánh giá, không chẩn đoán chỉ bằng số. Nếu chóng mặt, mệt hoặc ngất hãy gặp bác sĩ.`
+      if (avg < 60) return `Mạch lúc nghỉ TB ~${avg} bpm, thấp hơn khoảng thường 60–100 của AHA. Dưới 60 chưa chắc bệnh (thuốc, ngủ, tập luyện). Có khó chịu thì nên hỏi bác sĩ.`
+      if (avg <= 100) return `Mạch lúc nghỉ TB ~${avg} bpm, nằm trong khoảng thường của AHA cho người lớn: 60–100 bpm khi ngồi/nằm, bình tĩnh.`
+      return `Mạch lúc nghỉ TB ~${avg} bpm, cao hơn ngưỡng thường 100 bpm của AHA. Vận động, sốt, caffeine hoặc căng thẳng có thể làm tăng. Đo lại khi nghỉ; nếu vẫn cao hoặc tức ngực/khó thở hãy gặp bác sĩ.`
+    },
     savedMsgFn: (sys, dia, level) => `Đã lưu ${sys}/${dia} mmHg, trạng thái: ${level}`,
     pulseUnknown: "Không Ghi Nhận", pulseSlow: "Mạch Chậm", pulseFast: "Mạch Nhanh", pulseNormal: "Mạch Bình Thường",
     obsNoData: "Dữ liệu chưa đủ. Cần thêm bản ghi HA.",
@@ -512,6 +560,9 @@ const UI_TEXT = {
     errInvalidPulse: "Mạch phải từ 30 đến 220 bpm.",
     errFamilySync: "Chế độ gia đình chỉ đọc. Đồng bộ từ app người cao tuổi hoặc người chăm.",
     errNotAndroid: "Đồng bộ Health Connect chỉ hỗ trợ thiết bị Android.",
+    errIosHealth: "iPhone không Bluetooth trực tiếp với Omron. Chia sẻ sang Apple Health. Bản sau sẽ nhập HealthKit. Hiện hãy nhập số.",
+    syncHealth: "Đồng bộ từ Apple Health",
+    meterHintIos: "Omron ghi vào Apple Health. HealthKit sẽ có sau; hãy nhập số trước.",
     errNoHCPackage: "Gói Health Connect chưa được tải. Cài lại app native.",
     errHCInitFail: "Không thể khởi tạo Health Connect. Đảm bảo đã cài và bật.",
     errNoHCPerms: "Chưa cấp quyền đọc HA và nhịp tim từ Health Connect.",
@@ -524,10 +575,10 @@ const UI_TEXT = {
     normalDaysFn: (days, pct) => `Ngày bình thường: ${days} (${pct}%)`,
     periodSummaryFn: (months) => `Tóm Tắt Sức Khỏe ${months} Tháng`,
     moodStressTitle: "Phân Tích Tương Quan HA & Tâm Trạng",
-    pulseStressTitle: "Phân Tích Mạch & Áp Lực Cảm Xúc",
+    pulseStressTitle: "Quan sát mạch",
     observation: "Quan Sát", reference: "Tham Khảo",
     moodSourceNote: "Căng thẳng có thể gây tăng HA tạm thời. Kết hợp với hơi thở, vận động, giấc ngủ và quản lý lối sống.",
-    pulseSourceNote: "Mạch lúc nghỉ ngơi bị ảnh hưởng bởi tâm trạng, căng thẳng, hoạt động và thuốc. Quan sát cùng HA, tâm trạng và triệu chứng.",
+    pulseSourceNote: "Nguồn: AHA — mạch lúc nghỉ của hầu hết người lớn 60–100 bpm khi ngồi/nằm, bình tĩnh. Hướng dẫn ACC/AHA/HRS 2018 dùng nhịp xoang <50 kèm triệu chứng để đánh giá, không chẩn đoán chỉ bằng con số.",
     recordDays: "Ngày Có Bản Ghi", highRisk: "Nguy Cơ Cao", warning: "Cảnh Báo",
     avgPulse: "Mạch TB", recentPulse: "Mạch Gần Nhất",
   },
@@ -535,7 +586,8 @@ const UI_TEXT = {
     back: "Bumalik", caregiverTitle: "Pag-aalaga ng BP", caregiverSub: "I-sync, proxy entry, at mga gawain sa pag-aalaga.",
     patientTitle: "Araw-araw na Talaan ng BP", patientSub: "Sync, manu-manong entry, pagsusuri ng trend at mood diary",
     familyTitle: "Subaybayan ang BP ng Pasyente", familySub: "Tingnan ng pamilya ang nakalipas na 3 buwan",
-    tabMeasure: "Sukatin", tabTrend: "Trend", tabDiary: "Talaarawan",
+    tabMeasure: "Sukatin", tabTrend: "Trend", tabDiary: "Talaarawan", tabOverview: "Pangkalahatan",
+    chartGrain1m: "Daily average", chartGrain3m: "Weekly average", chartGrain6m: "Biweekly average", logTitle: "Readings",
     noRecord: "Wala pang talaan", refresh: "I-refresh", syncHC: "I-sync mula sa Health Connect",
     moodStatus: "Mood", sysBP: "Systolic", diaBP: "Diastolic", pulse: "Pulso", mood: "Mood",
     alertNeedsConfirm: "Kailangan ng Kumpirmasyon ng Tagapag-alaga", bpAlert: "Babala ng BP",
@@ -569,6 +621,7 @@ const UI_TEXT = {
     noAbnormal: "Walang hindi normal na talaan ng BP.",
     bpLabel: "Blood Pressure", fiveDayTrend: "Trend sa 5 Araw", dailyAlert: "Araw-araw na Babala", avgPrefix: "Avg",
     autoImport: "Auto Import", addRecord: "Magdagdag ng Talaan", saveRecord: "I-save ang Talaan ng BP",
+    meterHint: "Pagkatapos mag-measure, bumalik dito para i-sync. Kung hindi pumasok sa Health Connect, i-type ang numero.",
     range1m: "1 Buwan", range3m: "3 Buwan", range6m: "6 Buwan",
     bpDiary: "Talaarawan ng BP", dateRecordsSuffix: " talaan", emptyDay: "Walang talaan ng BP para sa araw na ito",
     pulsePrefix: "Pulso", moodPrefix: "Mood: ",
@@ -597,7 +650,13 @@ const UI_TEXT = {
     moodStressEmpty: "Hindi pa sapat na mood tags. Magdagdag pagkatapos ng bawat pagsukat.",
     pulseNoData: "Wala pang data ng pulso. Susubukan ng Health Connect sync na punan ito.",
     pulseOverlapFn: (n) => `${n} talaan ay nagpapakita ng mabilis na pulso, mataas na BP, at stress mood. Bantayan ang pahinga.`,
-    pulseAvgFn: (avg) => `Avg na pulso kamakailan ~${avg} bpm. Subaybayan kasama ang mood tags.`,
+    pulseAvgFn: (avg) => `Average resting pulse ~${avg} bpm.`,
+    pulseAdviceFn: (avg) => {
+      if (avg < 50) return `Average resting pulse ~${avg} bpm. ACC/AHA/HRS 2018 uses sinus rate <50 as one evaluation cue, not a diagnosis by number alone. See a doctor if dizzy, weak, or fainting.`
+      if (avg < 60) return `Average resting pulse ~${avg} bpm, below the usual AHA range of 60–100. Below 60 is not always illness (medicine, sleep, exercise). Consult if unwell.`
+      if (avg <= 100) return `Average resting pulse ~${avg} bpm, within the usual AHA adult range of 60–100 bpm when sitting/lying and calm.`
+      return `Average resting pulse ~${avg} bpm, above the usual AHA limit of 100 bpm. Activity, fever, caffeine, or stress can raise it. Recheck at rest; see a doctor if it stays high or there is chest tightness/shortness of breath.`
+    },
     savedMsgFn: (sys, dia, level) => `Na-save ${sys}/${dia} mmHg, status: ${level}`,
     pulseUnknown: "Hindi Naitala", pulseSlow: "Mabagal na Pulso", pulseFast: "Mabilis na Pulso", pulseNormal: "Normal na Pulso",
     obsNoData: "Hindi pa sapat ang data. Mangailangan ng mas maraming talaan ng BP.",
@@ -613,6 +672,9 @@ const UI_TEXT = {
     errInvalidPulse: "Ang pulso ay dapat na nasa pagitan ng 30 at 220 bpm.",
     errFamilySync: "Read-only ang view ng pamilya. I-sync mula sa app ng pasyente o tagapag-alaga.",
     errNotAndroid: "Ang Health Connect sync ay sinusuportahan lamang sa Android.",
+    errIosHealth: "Hindi pwedeng Bluetooth ang iPhone sa Omron. I-share sa Apple Health. HealthKit sa susunod. I-type muna ang numero.",
+    syncHealth: "I-sync mula sa Apple Health",
+    meterHintIos: "Nagsusulat ang Omron sa Apple Health. HealthKit next; i-type muna.",
     errNoHCPackage: "Hindi na-load ang pakete ng Health Connect. Muling i-install ang native app.",
     errHCInitFail: "Hindi mapasimulan ang Health Connect. Tiyaking naka-install at naka-enable.",
     errNoHCPerms: "Hindi pa ibinibigay ang pahintulot sa pagbabasa ng BP at heart rate mula sa Health Connect.",
@@ -636,7 +698,8 @@ const UI_TEXT = {
     back: "กลับ", caregiverTitle: "ดูแลความดันโลหิต (ผู้ดูแล)", caregiverSub: "ซิงค์ บันทึกแทน และงานดูแลรายวัน",
     patientTitle: "บันทึกความดันโลหิตรายวัน", patientSub: "ซิงค์ บันทึกด้วยตนเอง วิเคราะห์แนวโน้ม และไดอารี่อารมณ์",
     familyTitle: "ติดตามความดันโลหิตผู้สูงอายุ", familySub: "มุมมองครอบครัว 3 เดือนล่าสุด",
-    tabMeasure: "วัด", tabTrend: "แนวโน้ม", tabDiary: "ไดอารี่",
+    tabMeasure: "วัด", tabTrend: "แนวโน้ม", tabDiary: "ไดอารี่", tabOverview: "ภาพรวม",
+    chartGrain1m: "ค่าเฉลี่ยรายวัน", chartGrain3m: "ค่าเฉลี่ยรายสัปดาห์", chartGrain6m: "ค่าเฉลี่ย 2 สัปดาห์", logTitle: "บันทึก",
     noRecord: "ยังไม่มีบันทึก", refresh: "รีเฟรช", syncHC: "ซิงค์จาก Health Connect",
     moodStatus: "อารมณ์", sysBP: "ซิสโตลิก", diaBP: "ไดแอสโตลิก", pulse: "ชีพจร", mood: "อารมณ์",
     alertNeedsConfirm: "ต้องการการยืนยันจากผู้ดูแล", bpAlert: "แจ้งเตือนความดันโลหิต",
@@ -670,6 +733,7 @@ const UI_TEXT = {
     noAbnormal: "ไม่มีบันทึกความดันโลหิตที่ผิดปกติ",
     bpLabel: "ความดันโลหิต", fiveDayTrend: "แนวโน้ม 5 วัน", dailyAlert: "แจ้งเตือนรายวัน", avgPrefix: "เฉลี่ย",
     autoImport: "นำเข้าอัตโนมัติ", addRecord: "เพิ่มบันทึก", saveRecord: "บันทึกข้อมูลความดันโลหิต",
+    meterHint: "วัดเสร็จแล้วกลับมาหน้านี้จะซิงค์เอง ถ้าเครื่องไม่เข้า Health Connect ให้กรอกตัวเลขบนจอ",
     range1m: "1 เดือน", range3m: "3 เดือน", range6m: "6 เดือน",
     bpDiary: "ไดอารี่ความดันโลหิต", dateRecordsSuffix: " บันทึก", emptyDay: "ไม่มีบันทึกความดันโลหิตสำหรับวันนี้",
     pulsePrefix: "ชีพจร", moodPrefix: "อารมณ์: ",
@@ -698,7 +762,13 @@ const UI_TEXT = {
     moodStressEmpty: "ยังไม่มีการบันทึกอารมณ์เพียงพอ เพิ่มหลังการวัดแต่ละครั้ง",
     pulseNoData: "ยังไม่มีข้อมูลชีพจร Health Connect จะพยายามเติมเมื่อซิงค์",
     pulseOverlapFn: (n) => `${n} บันทึกแสดงชีพจรเร็ว ความดันโลหิตสูง และอารมณ์เครียด ดูแลการพักผ่อน`,
-    pulseAvgFn: (avg) => `ชีพจรเฉลี่ยล่าสุด ~${avg} bpm ติดตามพร้อมบันทึกอารมณ์`,
+    pulseAvgFn: (avg) => `ชีพจรขณะพักเฉลี่ย ~${avg} bpm`,
+    pulseAdviceFn: (avg) => {
+      if (avg < 50) return `ชีพจรขณะพักเฉลี่ย ~${avg} bpm ตามแนวทาง ACC/AHA/HRS 2018 อัตราไซนัส <50 เป็นเพียงหนึ่งในสัญญาณประเมิน ไม่ใช่การวินิจฉัยจากตัวเลขอย่างเดียว หากเวียนหัว อ่อนแรง หรือเป็นลม ให้พบแพทย์`
+      if (avg < 60) return `ชีพจรขณะพักเฉลี่ย ~${avg} bpm ต่ำกว่าช่วงปกติของ AHA 60–100 ค่าต่ำกว่า 60 ไม่ได้แปลว่าป่วยเสมอ (ยา การนอน ออกกำลังกาย) หากไม่สบายตัวควรปรึกษาแพทย์`
+      if (avg <= 100) return `ชีพจรขณะพักเฉลี่ย ~${avg} bpm อยู่ในช่วงปกติของสมาคมหัวใจอเมริกัน (AHA) สำหรับผู้ใหญ่: 60–100 bpm เมื่อนั่งหรือนอน ใจเย็น ไม่มีอาการ`
+      return `ชีพจรขณะพักเฉลี่ย ~${avg} bpm สูงกว่าเพดานปกติ 100 bpm ของ AHA กิจกรรม ไข้ คาเฟอีน หรือความเครียดอาจทำให้สูงขึ้น วัดซ้ำตอนพัก หากยังสูงหรือแน่นหน้าอก/หายใจลำบาก ให้พบแพทย์`
+    },
     savedMsgFn: (sys, dia, level) => `บันทึกแล้ว ${sys}/${dia} mmHg สถานะ: ${level}`,
     pulseUnknown: "ไม่ได้บันทึก", pulseSlow: "ชีพจรช้า", pulseFast: "ชีพจรเร็ว", pulseNormal: "ชีพจรปกติ",
     obsNoData: "ข้อมูลไม่เพียงพอ สะสมบันทึกความดันโลหิตเพิ่มเติม",
@@ -714,6 +784,9 @@ const UI_TEXT = {
     errInvalidPulse: "ชีพจรต้องอยู่ระหว่าง 30 ถึง 220 bpm",
     errFamilySync: "มุมมองครอบครัวเป็นแบบอ่านอย่างเดียว ซิงค์จากแอปผู้ป่วยหรือผู้ดูแล",
     errNotAndroid: "การซิงค์ Health Connect รองรับเฉพาะ Android เท่านั้น",
+    errIosHealth: "iPhone ต่อ Bluetooth ตรงกับ Omron ไม่ได้ ให้แชร์ไปที่แอปสุขภาพ รอบหน้าจะดึงจาก HealthKit ตอนนี้กรอกตัวเลข",
+    syncHealth: "ซิงค์จาก Apple Health",
+    meterHintIos: "Omron เขียนเข้า Apple Health รอ HealthKit กรอกตัวเลขก่อน",
     errNoHCPackage: "แพ็คเกจ Health Connect ยังไม่โหลด ติดตั้งแอป native ใหม่",
     errHCInitFail: "ไม่สามารถเริ่มต้น Health Connect ตรวจสอบว่าติดตั้งและเปิดใช้งานแล้ว",
     errNoHCPerms: "ยังไม่ได้รับอนุญาตอ่านความดันโลหิตและอัตราการเต้นของหัวใจจาก Health Connect",
@@ -864,8 +937,8 @@ function toDateKey(value) {
   return local.toISOString().slice(0, 10)
 }
 
-function formatDateTime(value) {
-  return toDate(value).toLocaleString("zh-TW", { hour12: false })
+function formatDateTime(value, lang = "zh") {
+  return formatDateTimeLocale(value, lang)
 }
 
 function formatShortDate(dateKey) {
@@ -878,7 +951,7 @@ function getBpStatus(sys, dia) {
     return {
       level: "超高血壓", levelKey: "levelCritical",
       familyLabel: "危險高血壓", familyLabelKey: "familyLabelCritical",
-      color: "#cf1322", softColor: "#fff1f0",
+      color: "#E05A47", softColor: "rgba(224,90,71,0.18)",
       category: "danger", isAbnormal: true, isCritical: true,
       recommendation: "請立即聯絡長輩，確認症狀並評估就醫。", recommendationKey: "recCritical"
     }
@@ -887,7 +960,7 @@ function getBpStatus(sys, dia) {
     return {
       level: "高血壓", levelKey: "levelDanger",
       familyLabel: "高血壓警戒", familyLabelKey: "familyLabelDanger",
-      color: "#cf1322", softColor: "#fff1f0",
+      color: "#E05A47", softColor: "rgba(224,90,71,0.18)",
       category: "danger", isAbnormal: true, isCritical: false,
       recommendation: "請儘快確認長輩狀況，安排休息後複測。", recommendationKey: "recDanger"
     }
@@ -896,7 +969,7 @@ function getBpStatus(sys, dia) {
     return {
       level: "偏低", levelKey: "levelLow",
       familyLabel: "血壓偏低", familyLabelKey: "familyLabelLow",
-      color: "#722ed1", softColor: "#f9f0ff",
+      color: "#A78BFA", softColor: "rgba(167,139,250,0.18)",
       category: "warning", isAbnormal: true, isCritical: false,
       recommendation: "請確認是否頭暈、無力，必要時聯絡醫師。", recommendationKey: "recLow"
     }
@@ -913,17 +986,17 @@ function getBpStatus(sys, dia) {
   return {
     level: "正常", levelKey: "levelNormal",
     familyLabel: "正常", familyLabelKey: "familyLabelNormal",
-    color: "#067647", softColor: "#ecfdf3",
+    color: "#10B981", softColor: "rgba(16,185,129,0.18)",
     category: "normal", isAbnormal: false, isCritical: false,
     recommendation: "目前血壓穩定，維持固定量測與紀錄。", recommendationKey: "recNormal"
   }
 }
 
 function getPulseStatus(pulse, t) {
-  if (pulse == null) return { label: t ? t.pulseUnknown : "未記錄", color: "#667085" }
-  if (pulse < 50) return { label: t ? t.pulseSlow : "心跳偏慢", color: "#722ed1" }
-  if (pulse > 100) return { label: t ? t.pulseFast : "心跳偏快", color: "#cf1322" }
-  return { label: t ? t.pulseNormal : "心跳正常", color: "#067647" }
+  if (pulse == null) return { label: t ? t.pulseUnknown : "未記錄", color: "#8E95A3" }
+  if (pulse < 50) return { label: t ? t.pulseSlow : "心跳偏慢", color: "#A78BFA" }
+  if (pulse > 100) return { label: t ? t.pulseFast : "心跳偏快", color: "#E05A47" }
+  return { label: t ? t.pulseNormal : "心跳正常", color: "#10B981" }
 }
 
 function normalizeDisplayMood(mood) {
@@ -1024,10 +1097,43 @@ function getRecordsWithinMonths(records, months) {
   return records.filter(record => toDate(record.measuredAt).getTime() >= cutoff.getTime())
 }
 
-function getSampledTrendSummaries(daily, maxPoints = 8) {
+function getSampledTrendSummaries(daily, maxPoints = 10) {
   if (daily.length <= maxPoints) return daily
   const step = (daily.length - 1) / (maxPoints - 1)
   return Array.from({ length: maxPoints }, (_, index) => daily[Math.round(index * step)])
+}
+
+function buildTrendChart(daily, months) {
+  if (!daily.length) return []
+  const bucketDays = months >= 6 ? 14 : months >= 3 ? 7 : 1
+  if (bucketDays === 1) return getSampledTrendSummaries(daily, 8)
+  const groups = new Map()
+  for (const day of daily) {
+    const d = toDate(`${day.dateKey}T00:00:00`)
+    if (!Number.isFinite(d.getTime())) continue
+    const bucket = Math.floor(d.getTime() / (bucketDays * 24 * 60 * 60 * 1000))
+    const list = groups.get(bucket) || []
+    list.push(day)
+    groups.set(bucket, list)
+  }
+  const rows = Array.from(groups.keys())
+    .sort((a, b) => a - b)
+    .map((bucket) => {
+      const items = groups.get(bucket)
+      const avgSys = Math.round(items.reduce((sum, item) => sum + item.avgSys, 0) / items.length)
+      const avgDia = Math.round(items.reduce((sum, item) => sum + item.avgDia, 0) / items.length)
+      const last = items[items.length - 1]
+      return {
+        dateKey: last.dateKey,
+        label: formatShortDate(last.dateKey),
+        avgSys,
+        avgDia,
+        avgPulse: null,
+        count: items.reduce((sum, item) => sum + (item.count || 1), 0),
+        status: getBpStatus(avgSys, avgDia)
+      }
+    })
+  return getSampledTrendSummaries(rows, 10)
 }
 
 function getPeriodicObservationKey(summary) {
@@ -1150,19 +1256,23 @@ function getMoodStressAnalysis(records, t) {
 function getPulseMoodAnalysis(records, t) {
   const recent = records.slice(0, 14)
   const pulseRecords = recent.filter(record => record.pulse != null)
-  if (!pulseRecords.length) return t ? t.pulseNoData : "尚未有脈搏資料，Health Connect 同步時會嘗試一起補入。"
+  if (!pulseRecords.length) return t ? t.pulseNoData : "尚未有脈搏資料。"
 
   const averagePulse = Math.round(
     pulseRecords.reduce((sum, record) => sum + record.pulse, 0) / pulseRecords.length
   )
-  const overlap = pulseRecords.filter(
-    record => record.pulse >= 85 && record.sys > 130 && isStressMood(record.mood)
-  ).length
-
-  if (overlap > 0) {
-    return t ? t.pulseOverlapFn(overlap) : `有 ${overlap} 筆紀錄同時出現心跳偏快、血壓偏高與壓力心情，建議留意休息與回診討論。`
+  if (t?.pulseAdviceFn) return t.pulseAdviceFn(averagePulse)
+  if (t?.pulseAvgFn) return t.pulseAvgFn(averagePulse)
+  if (averagePulse < 50) {
+    return `近期平均靜息脈搏約 ${averagePulse} bpm。2018 ACC/AHA/HRS 心搏過緩指引把竇性心率 <50 列為評估參考之一，但不能單靠數字診斷；若有頭暈、無力或昏厥請就醫。`
   }
-  return t ? t.pulseAvgFn(averagePulse) : `近期平均脈搏約 ${averagePulse} bpm，可搭配心情標記一起追蹤。`
+  if (averagePulse < 60) {
+    return `近期平均靜息脈搏約 ${averagePulse} bpm，低於 AHA 常見靜息範圍 60–100。低於 60 不一定是病（藥物、睡眠、運動習慣也可能）；若伴隨不適應就醫討論。`
+  }
+  if (averagePulse <= 100) {
+    return `近期平均靜息脈搏約 ${averagePulse} bpm，落在美國心臟協會（AHA）多數成人靜息心率 60–100 bpm 的常見範圍（坐或躺、冷靜、無不適時）。`
+  }
+  return `近期平均靜息脈搏約 ${averagePulse} bpm，高於 AHA 靜息常見上限 100 bpm。可能受活動、發燒、咖啡因或緊張影響；休息後再量，若持續偏快或有胸悶／喘，請就醫。`
 }
 
 function sortRecordsAbnormalFirst(records) {
@@ -1177,7 +1287,7 @@ const CHART_MIN = 40
 const CHART_MAX = 200
 const MINI_CHART_HEIGHT = 116
 const MINI_CHART_LABEL_SPACE = 34
-const LONG_CHART_HEIGHT = 148
+const LONG_CHART_HEIGHT = 168
 const LONG_CHART_LABEL_SPACE = 40
 
 function toChartHeight(value, chartHeight) {
@@ -1201,13 +1311,13 @@ function MiniTrendChart({ summaries, t }) {
   return (
     <View style={styles.miniChart}>
       <View pointerEvents="none" style={styles.miniChartPlot}>
-        <View style={[styles.limitLine, { bottom: toChartLineBottom(130, MINI_CHART_HEIGHT, MINI_CHART_LABEL_SPACE) }]} />
+        <View style={[styles.limitLine, { bottom: toChartLineBottom(130, MINI_CHART_HEIGHT, MINI_CHART_LABEL_SPACE), borderColor: "#EF4444" }]} />
         <View
           style={[
             styles.limitLine,
             {
               bottom: toChartLineBottom(80, MINI_CHART_HEIGHT, MINI_CHART_LABEL_SPACE),
-              borderColor: "#17a36b"
+              borderColor: "#FBBF24"
             }
           ]}
         />
@@ -1278,80 +1388,297 @@ function MiniTrendChart({ summaries, t }) {
 }
 
 function LongTrendChart({ summaries, t, onSelectPoint }) {
-  if (!summaries.length) {
+  const [plotW, setPlotW] = useState(0)
+  const [picked, setPicked] = useState(null)
+  const rows = summaries || []
+  const plotH = 168
+  const axisVals = [180, 130, 80, 40]
+
+  if (!rows.length) {
     return <Text style={styles.emptyText}>{t ? t.noLongTrendData : "\u5c1a\u7121\u9577\u671f\u8da8\u52e2\u8cc7\u6599"}</Text>
   }
 
+  const xAt = (index) => (rows.length <= 1 ? plotW / 2 : (index / (rows.length - 1)) * plotW)
+  const yAt = (value) => {
+    const ratio = (Number(value) - CHART_MIN) / (CHART_MAX - CHART_MIN)
+    return plotH - Math.max(0, Math.min(1, ratio)) * plotH
+  }
+  const labelIdx = new Set(
+    [0, Math.floor((rows.length - 1) / 3), Math.floor(((rows.length - 1) * 2) / 3), rows.length - 1].filter((n) => n >= 0)
+  )
+  const pick = (day) => {
+    setPicked(day)
+    onSelectPoint?.(day)
+  }
+
   return (
-    <View style={styles.longChartFrame}>
-      <Text style={styles.chartAxisTag}>mmHg</Text>
-      <View style={styles.lineChart}>
-        <View style={[styles.limitLine, { bottom: toChartLineBottom(130, LONG_CHART_HEIGHT, LONG_CHART_LABEL_SPACE) }]} />
+    <View style={styles.bpChartCard}>
+      {picked ? (
+        <Text style={styles.bpChartReadout}>
+          {picked.label}  {picked.avgSys}/{picked.avgDia} mmHg
+        </Text>
+      ) : (
+        <Text style={styles.bpChartReadoutMuted}>{t ? t.legendLimit : "130/80"}</Text>
+      )}
+      <View style={styles.bpChartRow}>
+        <View style={[styles.bpYCol, { height: plotH }]}>
+          {axisVals.map((value) => (
+            <Text key={value} style={[styles.bpYLabel, { top: yAt(value) - 7 }]}>{value}</Text>
+          ))}
+        </View>
         <View
-          style={[
-            styles.limitLine,
-            {
-              bottom: toChartLineBottom(80, LONG_CHART_HEIGHT, LONG_CHART_LABEL_SPACE),
-              borderColor: "#17a36b"
+          style={[styles.bpPlot, { height: plotH }]}
+          onLayout={(e) => setPlotW(e.nativeEvent.layout.width)}
+        >
+          <View style={[styles.bpGuide, { top: yAt(130), borderColor: "#EF4444" }]} />
+          <View style={[styles.bpGuide, { top: yAt(80), borderColor: "#FBBF24" }]} />
+          {plotW > 0 ? rows.map((day, index) => {
+            const next = rows[index + 1]
+            const x = xAt(index)
+            const sysY = yAt(day.avgSys)
+            const diaY = yAt(day.avgDia)
+            const segs = []
+            if (next) {
+              const nx = xAt(index + 1)
+              const nSysY = yAt(next.avgSys)
+              const nDiaY = yAt(next.avgDia)
+              const sysLen = Math.max(2, Math.hypot(nx - x, nSysY - sysY))
+              const diaLen = Math.max(2, Math.hypot(nx - x, nDiaY - diaY))
+              segs.push(
+                <View
+                  key={`s-${day.dateKey}`}
+                  pointerEvents="none"
+                  style={[
+                    styles.bpSeg,
+                    styles.bpSegSys,
+                    {
+                      left: x,
+                      top: sysY,
+                      width: sysLen,
+                      transform: [{ rotate: `${Math.atan2(nSysY - sysY, nx - x)}rad` }]
+                    }
+                  ]}
+                />,
+                <View
+                  key={`d-${day.dateKey}`}
+                  pointerEvents="none"
+                  style={[
+                    styles.bpSeg,
+                    styles.bpSegDia,
+                    {
+                      left: x,
+                      top: diaY,
+                      width: diaLen,
+                      transform: [{ rotate: `${Math.atan2(nDiaY - diaY, nx - x)}rad` }]
+                    }
+                  ]}
+                />
+              )
             }
-          ]}
-        />
-        {summaries.map((day, index) => {
-          const next = summaries[index + 1]
-          const sysBottom = toChartLineBottom(day.avgSys, LONG_CHART_HEIGHT, LONG_CHART_LABEL_SPACE)
-          const diaBottom = toChartLineBottom(day.avgDia, LONG_CHART_HEIGHT, LONG_CHART_LABEL_SPACE)
-          const nextSysBottom = next ? toChartLineBottom(next.avgSys, LONG_CHART_HEIGHT, LONG_CHART_LABEL_SPACE) : sysBottom
-          const nextDiaBottom = next ? toChartLineBottom(next.avgDia, LONG_CHART_HEIGHT, LONG_CHART_LABEL_SPACE) : diaBottom
-          const sysAngle = next ? Math.atan2(sysBottom - nextSysBottom, 34) : 0
-          const diaAngle = next ? Math.atan2(diaBottom - nextDiaBottom, 34) : 0
-          const fireBottom = Math.min(sysBottom + 46, LONG_CHART_LABEL_SPACE + LONG_CHART_HEIGHT + 18)
-          return (
-            <View key={day.dateKey} style={styles.lineChartDay}>
-              {next ? (
-                <>
-                  <View
-                    style={[
-                      styles.lineSegment,
-                      styles.lineSegmentSys,
-                      { bottom: sysBottom, transform: [{ rotate: `${sysAngle}rad` }] }
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.lineSegment,
-                      styles.lineSegmentDia,
-                      { bottom: diaBottom, transform: [{ rotate: `${diaAngle}rad` }] }
-                    ]}
-                  />
-                </>
-              ) : null}
-              {day.status.isAbnormal ? (
+            return (
+              <View key={day.dateKey}>
+                {segs}
                 <Pressable
-                  style={[styles.fireMarker, { bottom: fireBottom }]}
-                  onPress={() => onSelectPoint?.(day)}
-                >
-                  <Text style={styles.fireMarkerText}>🔥</Text>
-                </Pressable>
-              ) : null}
-              <Pressable
-                style={[styles.linePoint, styles.linePointSys, { bottom: sysBottom }]}
-                onPress={() => onSelectPoint?.(day)}
-              >
-                <Text style={styles.linePointValue}>{day.avgSys}</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.linePoint, styles.linePointDia, { bottom: diaBottom }]}
-                onPress={() => onSelectPoint?.(day)}
-              />
-              <Text style={[styles.chartLabel, styles.lineChartLabel]}>{day.label}</Text>
-            </View>
-          )
-        })}
+                  onPress={() => pick(day)}
+                  hitSlop={10}
+                  style={[styles.bpDotSys, { left: x - 5, top: sysY - 5 }]}
+                />
+                <Pressable
+                  onPress={() => pick(day)}
+                  hitSlop={10}
+                  style={[styles.bpDotDia, { left: x - 4, top: diaY - 4 }]}
+                />
+              </View>
+            )
+          }) : null}
+        </View>
+      </View>
+      <View style={styles.bpXRow}>
+        {rows.map((day, index) => (
+          <Text key={`x-${day.dateKey}`} style={[styles.bpXLabel, { opacity: labelIdx.has(index) ? 1 : 0 }]}>
+            {labelIdx.has(index) ? day.label : " "}
+          </Text>
+        ))}
       </View>
       <View style={styles.legendRow}>
         <Text style={styles.legendSys}>{t ? t.legendSys : "\u6536\u7e2e\u58d3"}</Text>
         <Text style={styles.legendDia}>{t ? t.legendDia : "\u8212\u5f35\u58d3"}</Text>
         <Text style={styles.legendLimit}>{t ? t.legendLimit : "\u8b66\u6212\u7dda 130/80"}</Text>
+      </View>
+    </View>
+  )
+}
+
+function TrendPanel({
+  t,
+  lang,
+  summaryMonths,
+  setSummaryMonths,
+  trendChartSummaries,
+  trendSummary,
+  trendRecords,
+  trendSpanLabel,
+  trendRangeStats,
+  avgTrendPulse,
+  latestTrendPulse,
+  trendPulseRecords
+}) {
+  const [logPage, setLogPage] = useState(0)
+  const sortedLogs = useMemo(
+    () => (trendRecords || []).slice().sort((a, b) => toDate(b.measuredAt) - toDate(a.measuredAt)),
+    [trendRecords]
+  )
+  const pageSize = 10
+  const pageCount = Math.max(1, Math.ceil(sortedLogs.length / pageSize))
+  const safePage = Math.min(logPage, pageCount - 1)
+  const pageRows = sortedLogs.slice(safePage * pageSize, safePage * pageSize + pageSize)
+
+  useEffect(() => {
+    setLogPage(0)
+  }, [summaryMonths, sortedLogs.length])
+
+  return (
+    <View style={styles.analysisCard}>
+      <Text style={styles.analysisTitle}>{t.trend3m}</Text>
+      {trendSpanLabel ? <Text style={styles.trendSpanText}>{trendSpanLabel}</Text> : null}
+      <Text style={styles.trendSpanText}>
+        {summaryMonths >= 6 ? t.chartGrain6m : summaryMonths >= 3 ? t.chartGrain3m : t.chartGrain1m}
+      </Text>
+      <View style={styles.segmentedControl}>
+        {HEALTH_SUMMARY_RANGES.map(range => {
+          const selected = summaryMonths === range.months
+          const rangeLabel = range.months === 1 ? t.range1m : range.months === 3 ? t.range3m : t.range6m
+          return (
+            <Pressable
+              key={range.months}
+              style={[styles.segmentButton, selected && styles.segmentButtonActive]}
+              onPress={() => setSummaryMonths(range.months)}
+            >
+              <Text style={[styles.segmentButtonText, selected && styles.segmentButtonTextActive]}>
+                {rangeLabel}
+              </Text>
+            </Pressable>
+          )
+        })}
+      </View>
+
+      <LongTrendChart summaries={trendChartSummaries} t={t} onSelectPoint={() => {}} />
+      <Text style={styles.pulseSourceText}>{t.chartSourceNote}</Text>
+
+      <View style={styles.bpLogCard}>
+        <Text style={styles.macroSummaryTitle}>{t.logTitle}</Text>
+        <View style={styles.bpLogRow}>
+          <Text style={[styles.bpLogWhen, styles.bpLogHead]}>{t.logTime || "時間"}</Text>
+          <Text style={[styles.bpLogVal, styles.bpLogHead]}>{t.logBp || "收縮/舒張"}</Text>
+          <Text style={[styles.bpLogPulse, styles.bpLogHead]}>{t.logPulse || "脈搏"}</Text>
+        </View>
+        {pageRows.map((record) => (
+          <View key={record._id || `${record.dateKey}-${record.sys}-${record.dia}`} style={styles.bpLogRow}>
+            <Text style={styles.bpLogWhen}>{formatDateTime(record.measuredAt, lang)}</Text>
+            <Text style={styles.bpLogVal}>
+              <Text style={styles.bpLogSys}>{record.sys}</Text>
+              <Text>{" / "}</Text>
+              <Text style={styles.bpLogDia}>{record.dia}</Text>
+            </Text>
+            <Text style={styles.bpLogPulse}>{record.pulse ?? "--"}</Text>
+          </View>
+        ))}
+        <View style={styles.bpLogPager}>
+          <Pressable
+            onPress={() => setLogPage((p) => Math.max(0, p - 1))}
+            disabled={safePage <= 0}
+            hitSlop={8}
+            style={[styles.bpLogPageBtn, safePage <= 0 && styles.bpLogPageBtnOff]}
+          >
+            <Text style={styles.bpLogPageText}>{"<"}</Text>
+          </Pressable>
+          <Text style={styles.bpLogPageMeta}>
+            {t.logPage
+              ? String(t.logPage).replace("{page}", String(safePage + 1)).replace("{total}", String(pageCount))
+              : `${safePage + 1}/${pageCount}`}
+          </Text>
+          <Pressable
+            onPress={() => setLogPage((p) => Math.min(pageCount - 1, p + 1))}
+            disabled={safePage >= pageCount - 1}
+            hitSlop={8}
+            style={[styles.bpLogPageBtn, safePage >= pageCount - 1 && styles.bpLogPageBtnOff]}
+            accessibilityLabel={t.logNext || ">"}
+          >
+            <Text style={styles.bpLogPageText}>{">"}</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      <View style={styles.chartSummaryRow}>
+        <View style={styles.chartSummaryPill}>
+          <Text style={styles.chartSummaryLabel}>{t.recordDays}</Text>
+          <Text style={styles.chartSummaryValue}>{trendSummary.totalDays}</Text>
+        </View>
+        <View style={styles.chartSummaryPill}>
+          <Text style={styles.chartSummaryLabel}>{t.highRisk}</Text>
+          <Text style={styles.chartSummaryValue}>{trendSummary.danger.days}</Text>
+        </View>
+        <View style={styles.chartSummaryPill}>
+          <Text style={styles.chartSummaryLabel}>{t.warning}</Text>
+          <Text style={styles.chartSummaryValue}>{trendSummary.warning.days}</Text>
+        </View>
+      </View>
+
+      <View style={styles.chartSummaryRow}>
+        <View style={styles.chartSummaryPill}>
+          <Text style={styles.chartSummaryLabel}>{t.avgSysLabel}</Text>
+          <Text style={styles.chartSummaryValue}>{trendRangeStats?.avgSys ?? "--"}</Text>
+        </View>
+        <View style={styles.chartSummaryPill}>
+          <Text style={styles.chartSummaryLabel}>{t.maxSysLabel}</Text>
+          <Text style={styles.chartSummaryValue}>{trendRangeStats?.maxSys ?? "--"}</Text>
+        </View>
+        <View style={styles.chartSummaryPill}>
+          <Text style={styles.chartSummaryLabel}>{t.minSysLabel}</Text>
+          <Text style={styles.chartSummaryValue}>{trendRangeStats?.minSys ?? "--"}</Text>
+        </View>
+      </View>
+
+      <View style={styles.adviceBox}>
+        <Text style={styles.adviceText}>{getHealthAdvice(trendRecords, t)}</Text>
+      </View>
+
+      {trendPulseRecords.length ? (
+        <View style={styles.pulseSummaryBox}>
+          <View style={styles.pulseSummaryItem}>
+            <Text style={styles.pulseSummaryLabel}>{t.avgPulse}</Text>
+            <Text style={styles.pulseSummaryValue}>{avgTrendPulse} bpm</Text>
+          </View>
+          <View style={styles.pulseSummaryDivider} />
+          <View style={styles.pulseSummaryItem}>
+            <Text style={styles.pulseSummaryLabel}>{t.recentPulse}</Text>
+            <Text style={styles.pulseSummaryValue}>{latestTrendPulse} bpm</Text>
+          </View>
+        </View>
+      ) : null}
+
+      <View style={styles.macroSummaryBox}>
+        <Text style={styles.macroSummaryTitle}>{t.periodSummaryFn(summaryMonths)}</Text>
+        <Text style={styles.macroSummaryMeta}>{t.periodStats(trendSummary.totalDays)}</Text>
+        <View style={styles.macroSummaryRow}>
+          <View style={[styles.macroSummaryDot, styles.macroSummaryDotDanger]} />
+          <Text style={styles.macroSummaryText}>{t.highRiskDaysFn(trendSummary.danger.days, trendSummary.danger.percent)}</Text>
+        </View>
+        <View style={styles.macroSummaryRow}>
+          <View style={[styles.macroSummaryDot, styles.macroSummaryDotWarning]} />
+          <Text style={styles.macroSummaryText}>{t.warningDaysFn(trendSummary.warning.days, trendSummary.warning.percent)}</Text>
+        </View>
+        <View style={styles.macroSummaryRow}>
+          <View style={[styles.macroSummaryDot, styles.macroSummaryDotNormal]} />
+          <Text style={styles.macroSummaryText}>{t.normalDaysFn(trendSummary.normal.days, trendSummary.normal.percent)}</Text>
+        </View>
+        <Text style={styles.macroSummaryObservation}>{t[trendSummary.periodicObservationKey]}</Text>
+      </View>
+
+      <View style={styles.pulseAnalysisBox}>
+        <Text style={styles.pulseAnalysisTitle}>{t.pulseStressTitle}</Text>
+        <Text style={styles.pulseAnalysisText}>{getPulseMoodAnalysis(trendRecords, t)}</Text>
+        <Text style={styles.pulseSourceText}>{t.pulseSourceNote}</Text>
       </View>
     </View>
   )
@@ -1395,7 +1722,7 @@ export default function BloodPressureScreen({
   embedded = false
 }) {
   const langKey = uiLang || "zh"
-  const t = { ...UI_TEXT.zh, ...(UI_TEXT.en || {}), ...(UI_TEXT[langKey] || {}) }
+  const t = { ...UI_TEXT.zh, ...(UI_TEXT[langKey] || {}) }
   const apiPrefix =
     role === "caregiver" ? "/caregiver" : role === "family" ? "/family" : "/patient"
   const readOnly = role === "family"
@@ -1407,6 +1734,9 @@ export default function BloodPressureScreen({
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
   const [linkedPatientEmail, setLinkedPatientEmail] = useState(user?.linkedPatientEmail || "")
+  const [linkedPatientName, setLinkedPatientName] = useState(
+    user?.linkedPatientName || user?.activePatientName || user?.patientName || ""
+  )
   const [selectedDate, setSelectedDate] = useState(() => toDateKey(new Date()))
   const [selectedTrendDay, setSelectedTrendDay] = useState(null)
   const [selectedFamilyRecord, setSelectedFamilyRecord] = useState(null)
@@ -1417,6 +1747,7 @@ export default function BloodPressureScreen({
     pulse: "72",
     mood: UNMARKED_MOOD
   })
+  const syncLock = useRef(false)
 
   const normalizedRecords = useMemo(
     () => records.map(normalizeRecord).sort((a, b) => toDate(b.measuredAt) - toDate(a.measuredAt)),
@@ -1435,9 +1766,18 @@ export default function BloodPressureScreen({
     [normalizedRecords, summaryMonths]
   )
   const trendChartSummaries = useMemo(
-    () => getSampledTrendSummaries(trendSummary.daily),
-    [trendSummary]
+    () => buildTrendChart(trendSummary.daily, summaryMonths),
+    [trendSummary, summaryMonths]
   )
+  const trendSpanLabel = useMemo(() => {
+    if (!trendRecords.length) return ""
+    const times = trendRecords
+      .map((record) => toDate(record.measuredAt).getTime())
+      .filter((n) => Number.isFinite(n))
+    if (!times.length) return ""
+    return `${toDateKey(new Date(Math.min(...times)))} → ${toDateKey(new Date(Math.max(...times)))}`
+  }, [trendRecords])
+  const trendRangeStats = useMemo(() => getFamilyStats(trendRecords), [trendRecords])
   const trendPulseRecords = useMemo(
     () => trendRecords.slice(0, 14).reverse().filter(record => record.pulse != null),
     [trendRecords]
@@ -1487,16 +1827,19 @@ export default function BloodPressureScreen({
     try {
       const data = await apiRequest({
         apiBaseUrl,
-        path: `${apiPrefix}/blood-pressure/history?limit=100`,
+        path: `${apiPrefix}/blood-pressure/history?limit=200`,
         token
       })
-      setRecords(ensureFilled(Array.isArray(data.records) ? data.records : [], screenshotBpRecords, 8))
+      setRecords(ensureFilled(Array.isArray(data.records) ? data.records : [], screenshotBpRecords, 40))
       if (typeof data.linkedPatientEmail === "string") {
         setLinkedPatientEmail(data.linkedPatientEmail)
       }
+      if (typeof data.linkedPatientName === "string" && data.linkedPatientName) {
+        setLinkedPatientName(data.linkedPatientName)
+      }
     } catch (loadError) {
       setError(loadError.message)
-      setRecords(ensureFilled([], screenshotBpRecords, 8))
+      setRecords(ensureFilled([], screenshotBpRecords, 40))
     } finally {
       setLoading(false)
     }
@@ -1542,7 +1885,7 @@ export default function BloodPressureScreen({
         path: `${apiPrefix}/blood-pressure/record`,
         method: "POST",
         token,
-        body: { sys, dia, pulse, mood: form.mood }
+        body: { sys, dia, pulse }
       })
       const status = getBpStatus(sys, dia)
       setMessage(t.savedMsgFn(data.record?.sys || sys, data.record?.dia || dia, t[status.levelKey] || status.level))
@@ -1555,30 +1898,34 @@ export default function BloodPressureScreen({
     }
   }
 
-  const handleSync = async () => {
+  const handleSync = useCallback(async (opts) => {
+    const silent = Boolean(opts && opts.silent)
     if (readOnly) {
-      setError(t.errFamilySync)
+      if (!silent) setError(t.errFamilySync)
       return
     }
+    if (Platform.OS !== "android") {
+      if (!silent) setError(t.errIosHealth || t.errNotAndroid)
+      return
+    }
+    if (syncLock.current) return
+    syncLock.current = true
 
     setSyncing(true)
-    setMessage("")
-    setError("")
+    if (!silent) {
+      setMessage("")
+      setError("")
+    }
     try {
-      if (Platform.OS !== "android") {
-        setError(t.errNotAndroid)
-        return
-      }
-
       const healthConnect = getAndroidHealthConnect()
       if (!healthConnect?.initialize || !healthConnect?.readRecords) {
-        setError(t.errNoHCPackage)
+        if (!silent) setError(t.errNoHCPackage)
         return
       }
 
       const initialized = await healthConnect.initialize()
       if (!initialized) {
-        setError(t.errHCInitFail)
+        if (!silent) setError(t.errHCInitFail)
         return
       }
 
@@ -1604,7 +1951,7 @@ export default function BloodPressureScreen({
       }
 
       if (!hasPermissions) {
-        setError(t.errNoHCPerms)
+        if (!silent) setError(t.errNoHCPerms)
         return
       }
 
@@ -1626,7 +1973,7 @@ export default function BloodPressureScreen({
 
       const mappedRecords = mapHealthConnectBloodPressureRecords(bpRecords, heartRateRecords)
       if (!mappedRecords.length) {
-        setMessage(t.hcNoData)
+        if (!silent) setMessage(t.hcNoData)
         return
       }
 
@@ -1637,14 +1984,34 @@ export default function BloodPressureScreen({
         token,
         body: { records: mappedRecords }
       })
-      setMessage(t.hcSyncDoneFn(data.importedCount || 0, data.pulseBackfillCount || 0, data.skippedCount || 0))
+      const imported = data.importedCount || 0
+      const pulse = data.pulseBackfillCount || 0
+      const skipped = data.skippedCount || 0
+      if (!silent || imported > 0 || pulse > 0) {
+        setMessage(t.hcSyncDoneFn(imported, pulse, skipped))
+        setError("")
+      }
       await loadHistory()
     } catch (syncError) {
-      setError(t.hcSyncErrFn(syncError.message || "Health Connect sync failed"))
+      if (!silent) setError(t.hcSyncErrFn(syncError.message || "Health Connect sync failed"))
     } finally {
       setSyncing(false)
+      syncLock.current = false
     }
-  }
+  }, [readOnly, t.errFamilySync, t.errIosHealth, t.errNotAndroid, t.errNoHCPackage, t.errHCInitFail, t.errNoHCPerms, t.hcNoData, t.hcSyncDoneFn, t.hcSyncErrFn, apiBaseUrl, apiPrefix, token, loadHistory])
+
+  useEffect(() => {
+    if (readOnly || Platform.OS !== "android") return
+    handleSync({ silent: true })
+  }, [handleSync, readOnly])
+
+  useEffect(() => {
+    if (readOnly || Platform.OS !== "android") return
+    const sub = AppState.addEventListener("change", (next) => {
+      if (next === "active") handleSync({ silent: true })
+    })
+    return () => sub.remove()
+  }, [handleSync, readOnly])
 
   const updateMood = async (record, mood) => {
     if (readOnly || !record?._id) return
@@ -1666,6 +2033,23 @@ export default function BloodPressureScreen({
       await loadHistory()
     }
   }
+
+  const trendPanel = (
+    <TrendPanel
+      t={t}
+      lang={langKey}
+      summaryMonths={summaryMonths}
+      setSummaryMonths={setSummaryMonths}
+      trendChartSummaries={trendChartSummaries}
+      trendSummary={trendSummary}
+      trendRecords={trendRecords}
+      trendSpanLabel={trendSpanLabel}
+      trendRangeStats={trendRangeStats}
+      avgTrendPulse={avgTrendPulse}
+      latestTrendPulse={latestTrendPulse}
+      trendPulseRecords={trendPulseRecords}
+    />
+  )
 
   if (role === "caregiver") {
     const caregiverNextStep = latest
@@ -1689,7 +2073,24 @@ export default function BloodPressureScreen({
           </View>
         )}
 
+        <View style={styles.tabRow}>
+          {[
+            ["measure", t.tabMeasure],
+            ["trend", t.tabTrend]
+          ].map(([key, label]) => (
+            <Pressable
+              key={key}
+              style={[styles.tabBtn, activeTab === key && styles.tabBtnActive]}
+              onPress={() => setActiveTab(key)}
+            >
+              <Text style={[styles.tabText, activeTab === key && styles.tabTextActive]}>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
+
         <ScrollView contentContainerStyle={styles.container}>
+          {activeTab === "trend" ? trendPanel : (
+          <>
           {loading ? <ActivityIndicator color={colors.pine} /> : null}
           {message ? <Text style={styles.message}>{message}</Text> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -1710,7 +2111,7 @@ export default function BloodPressureScreen({
                   <NeoIcon name="heart-fill" size={18} color="#FF4D4D" />
                   <Text style={styles.sectionTitle}>{t.currentBP}</Text>
                 </View>
-                <Text style={styles.rowSub}>{latest ? formatDateTime(latest.measuredAt) : t.noRecord}</Text>
+                <Text style={styles.rowSub}>{latest ? formatDateTime(latest.measuredAt, langKey) : t.noRecord}</Text>
               </View>
               {latest ? (
                 <Text
@@ -1744,38 +2145,16 @@ export default function BloodPressureScreen({
               </View>
             </View>
 
-            <View style={styles.moodStrip}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                <NeoIcon name="smile" size={16} color="#10B981" />
-                <Text style={styles.moodStripLabel}>{t.moodStatus}</Text>
-              </View>
-              {latest ? (
-                <View style={styles.moodStripValueRow}>
-                  <MoodDot mood={latest.mood} size={10} selected />
-                  <Text style={styles.moodStripValue}>{moodDisplay(latest.mood, langKey)}</Text>
-                </View>
-              ) : (
-                <Text style={styles.moodStripValue}>--</Text>
-              )}
-            </View>
-
             {latest ? (
-              <MoodPicker
-                value={latest.mood}
-                lang={langKey}
-                compact
-                onChange={(nextMood) => updateMood(latest, nextMood)}
-              />
-            ) : null}
-
-            <View style={styles.adviceBox}>
-              <NeoIcon name="lightbulb-on" size={20} color="#FACC15" />
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.adviceTitle}>{t.nextStepLabel}</Text>
-                <Text style={styles.adviceBody}>{caregiverNextStep}</Text>
+              <View style={styles.adviceBox}>
+                <NeoIcon name="lightbulb-on" size={20} color="#FACC15" />
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.adviceTitle}>{t.nextStepLabel}</Text>
+                  <Text style={styles.adviceBody}>{caregiverNextStep}</Text>
+                </View>
+                <NeoIcon name="chevron-right" size={16} color="#10B981" />
               </View>
-              <NeoIcon name="chevron-right" size={16} color="#10B981" />
-            </View>
+            ) : null}
           </View>
 
           <View style={styles.formCard}>
@@ -1789,11 +2168,11 @@ export default function BloodPressureScreen({
               ) : (
                 <>
                   <NeoIcon name="heart-circle" size={18} color="#10B981" />
-                  <Text style={styles.buttonSecondaryText}>{t.syncHC}</Text>
+                  <Text style={styles.buttonSecondaryText}>{Platform.OS === "ios" ? (t.syncHealth || t.syncHC) : t.syncHC}</Text>
                 </>
               )}
             </Pressable>
-            <Text style={styles.meterHint}>{t.meterHint || "量完請按同步，或把血壓計數字打進來。"}</Text>
+            <Text style={styles.meterHint}>{Platform.OS === "ios" ? (t.meterHintIos || t.meterHint) : (t.meterHint || "量完回到這個頁面會自動同步。")}</Text>
 
             <Text style={styles.sectionTitleSpacing}>{t.caregiverAddTitle}</Text>
             <View style={styles.inputGrid}>
@@ -1838,13 +2217,6 @@ export default function BloodPressureScreen({
               </View>
             </View>
 
-            <Text style={styles.label}>{t.mood}</Text>
-            <MoodPicker
-              value={form.mood}
-              lang={langKey}
-              onChange={(nextMood) => updateForm("mood", nextMood)}
-            />
-
             <Pressable style={styles.buttonPrimary} onPress={handleRecord} disabled={saving}>
               {saving ? (
                 <ActivityIndicator color="#fff" />
@@ -1853,6 +2225,8 @@ export default function BloodPressureScreen({
               )}
             </Pressable>
           </View>
+          </>
+          )}
         </ScrollView>
 
       </View>
@@ -1862,9 +2236,8 @@ export default function BloodPressureScreen({
   if (role === "family") {
     const pulseStatus = getPulseStatus(latest?.pulse, t)
     const familyNextStep = getFamilyNextStep(latest, familyStats.abnormalCount, t)
-    const connectionLabel = linkedPatientEmail
-      ? `${t.linkedTo}${linkedPatientEmail}`
-      : t.notLinked
+    const latestWhen = latest ? formatDateTime(latest.measuredAt, langKey) : t.noRecord
+    const latestSub = linkedPatientName ? `${linkedPatientName} · ${latestWhen}` : latestWhen
 
     return (
       <View style={styles.screen}>
@@ -1880,17 +2253,26 @@ export default function BloodPressureScreen({
           </View>
         )}
 
+        <View style={styles.tabRow}>
+          {[
+            ["measure", t.tabOverview],
+            ["trend", t.tabTrend]
+          ].map(([key, label]) => (
+            <Pressable
+              key={key}
+              style={[styles.tabBtn, activeTab === key && styles.tabBtnActive]}
+              onPress={() => setActiveTab(key)}
+            >
+              <Text style={[styles.tabText, activeTab === key && styles.tabTextActive]}>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
+
         <ScrollView contentContainerStyle={styles.container}>
-          <View style={styles.connectionBox}>
-            <Text style={styles.connectionTitle}>{t.dataSource}</Text>
-            <Text style={styles.connectionText}>{connectionLabel}</Text>
-          </View>
-
+          {activeTab === "trend" ? trendPanel : (
+          <>
           {loading ? <ActivityIndicator color={colors.pine} /> : null}
-          {message ? <Text style={styles.message}>{message}</Text> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
-
-          <BloodPressureAlertPanel record={latest} title={t.bpAlert} t={t} />
 
           <View
             style={[
@@ -1902,14 +2284,17 @@ export default function BloodPressureScreen({
           >
             <View style={styles.cardHead}>
               <View>
-                <Text style={styles.sectionTitle}>{t.latestSync}</Text>
-                <Text style={styles.rowSub}>{latest ? formatDateTime(latest.measuredAt) : t.noRecord}</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <NeoIcon name="heart-fill" size={18} color="#FF4D4D" />
+                  <Text style={styles.sectionTitle}>{t.currentBP}</Text>
+                </View>
+                <Text style={styles.rowSub}>{latestSub}</Text>
               </View>
               {latest ? (
                 <Text
                   style={[
                     styles.statusBadge,
-                    latest.status.isAbnormal && styles.statusBadgeAbnormal,
+                    latest.status.levelKey === "levelPrehypertension" ? styles.statusBadgePre : null,
                     { color: latest.status.color, backgroundColor: latest.status.softColor }
                   ]}
                 >
@@ -1919,16 +2304,16 @@ export default function BloodPressureScreen({
             </View>
 
             <View style={styles.valueGrid}>
-                <View style={[styles.valueBox, latest?.status.isAbnormal && styles.valueBoxAbnormal]}>
-                  <Text style={styles.valueLabel}>{t.sysBP}</Text>
-                  <Text style={[styles.bigValue, latest?.status.isAbnormal && { color: latest.status.color }]}>{latest?.sys ?? "--"}</Text>
-                  <Text style={styles.unitText}>mmHg</Text>
-                </View>
-                <View style={[styles.valueBox, latest?.status.isAbnormal && styles.valueBoxAbnormal]}>
-                  <Text style={styles.valueLabel}>{t.diaBP}</Text>
-                  <Text style={[styles.bigValue, latest?.status.isAbnormal && { color: latest.status.color }]}>{latest?.dia ?? "--"}</Text>
-                  <Text style={styles.unitText}>mmHg</Text>
-                </View>
+              <View style={styles.valueBox}>
+                <Text style={styles.valueLabel}>{t.sysBP}</Text>
+                <Text style={styles.bigValue}>{latest?.sys ?? "--"}</Text>
+                <Text style={styles.unitText}>mmHg</Text>
+              </View>
+              <View style={styles.valueBox}>
+                <Text style={styles.valueLabel}>{t.diaBP}</Text>
+                <Text style={styles.bigValue}>{latest?.dia ?? "--"}</Text>
+                <Text style={styles.unitText}>mmHg</Text>
+              </View>
               <View style={styles.valueBox}>
                 <Text style={styles.valueLabel}>{t.pulse}</Text>
                 <Text style={styles.bigValue}>{latest?.pulse ?? "--"}</Text>
@@ -1936,51 +2321,30 @@ export default function BloodPressureScreen({
               </View>
             </View>
 
-            <View style={styles.familyInfoRow}>
-              <Text style={styles.familyInfoText}>{t.sourcePrefix}{getSourceLabel(latest?.source, t)}</Text>
-              <Text style={[styles.familyInfoText, { color: pulseStatus.color }]}>{pulseStatus.label}</Text>
-            </View>
-
-            <View style={[styles.recommendationBox, latest && { borderLeftColor: latest.status.color }]}>
-              <Text style={styles.adviceTitle}>{t.familyFocus}</Text>
-              <Text style={styles.bodyText}>{latest ? (t[latest.status.recommendationKey] || latest.status.recommendation) : t.waitForSync}</Text>
-            </View>
-          </View>
-
-          <View style={styles.analysisCard}>
-            <Text style={styles.sectionTitle}>{t.familyDashboard}</Text>
-            <View style={styles.summaryGrid}>
-              <View style={styles.summaryBox}>
-                <Text style={styles.summaryLabel}>{t.currentStatus}</Text>
-                <Text style={[styles.summaryValue, latest && { color: latest.status.color }]}>
-                  {latest ? (t[latest.status.familyLabelKey] || latest.status.familyLabel) : "--"}
-                </Text>
+            {latest ? (
+              <View style={styles.familyInfoRow}>
+                <Text style={styles.familyInfoText}>{getSourceLabel(latest.source, t)}</Text>
+                <Text style={[styles.familyInfoText, { color: pulseStatus.color }]}>{pulseStatus.label}</Text>
               </View>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.summaryBox,
-                  familyAbnormalRecords.length && styles.summaryBoxPressable,
-                  pressed && familyAbnormalRecords.length && styles.summaryBoxPressed
-                ]}
-                disabled={!familyAbnormalRecords.length}
-                onPress={() => {
-                  const record = familyAbnormalRecords[0]
-                  if (record) setSelectedFamilyRecord(record)
-                }}
-              >
-                <Text style={styles.summaryLabel}>{t.threeMonthAbnormal}</Text>
-                <Text style={styles.summaryValue}>{familyStats.abnormalCount}{t.recordUnit}</Text>
-              </Pressable>
-            </View>
-            <View style={styles.adviceBox}>
-              <Text style={styles.adviceTitle}>{t.familyNextStepLabel}</Text>
-              <Text style={styles.bodyText}>{familyNextStep}</Text>
-            </View>
+            ) : null}
+
+            {latest ? (
+              <View style={styles.adviceBox}>
+                <NeoIcon name="lightbulb-on" size={20} color="#FACC15" />
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.adviceTitle}>{t.familyNextStepLabel}</Text>
+                  <Text style={styles.adviceBody}>{familyNextStep}</Text>
+                </View>
+              </View>
+            ) : null}
           </View>
 
           <View style={styles.analysisCard}>
             <View style={styles.cardHead}>
-              <Text style={styles.sectionTitle}>{t.trend3m}</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <NeoIcon name="activity" size={16} color={colors.pine} />
+                <Text style={styles.sectionTitle}>{t.trend3m}</Text>
+              </View>
               <Pressable onPress={loadHistory} disabled={loading}>
                 <Text style={styles.refreshText}>{t.refresh}</Text>
               </Pressable>
@@ -1994,7 +2358,10 @@ export default function BloodPressureScreen({
           </View>
 
           <View style={styles.analysisCard}>
-            <Text style={styles.sectionTitle}>{t.summary3m}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <NeoIcon name="calendar" size={16} color={colors.pine} />
+              <Text style={styles.sectionTitle}>{t.summary3m}</Text>
+            </View>
             <View style={styles.statsGrid}>
               <View style={styles.statCell}>
                 <Text style={styles.summaryLabel}>{t.avgSysLabel}</Text>
@@ -2013,9 +2380,8 @@ export default function BloodPressureScreen({
                 <Text style={styles.summaryValue}>{familyStats.minSys}</Text>
               </View>
             </View>
-            <Text style={styles.bodyText}>{t.totalPrefix}{familyStats.total}{t.recordUnit}，{t.abnormalSuffix}</Text>
             {familyAbnormalRecords.length ? (
-              familyAbnormalRecords.map(record => (
+              familyAbnormalRecords.slice(0, 4).map(record => (
                 <Pressable
                   key={record._id || `${record.dateKey}-${record.sys}-${record.dia}`}
                   style={({ pressed }) => [
@@ -2026,9 +2392,8 @@ export default function BloodPressureScreen({
                   onPress={() => setSelectedFamilyRecord(record)}
                 >
                   <Text style={styles.rowMain}>{record.sys}/{record.dia} mmHg</Text>
-                  <Text style={styles.rowSub}>{formatDateTime(record.measuredAt)}・{t[record.status.familyLabelKey] || record.status.familyLabel}</Text>
-                  <Text style={[styles.alertRecordStatus, { color: record.status.color }]}>
-                    {t[record.status.familyLabelKey] || record.status.familyLabel}
+                  <Text style={[styles.rowSub, { color: record.status.color }]}>
+                    {formatDateTime(record.measuredAt, langKey)}・{t[record.status.familyLabelKey] || record.status.familyLabel}
                   </Text>
                 </Pressable>
               ))
@@ -2036,6 +2401,8 @@ export default function BloodPressureScreen({
               <Text style={styles.emptyText}>{t.noAbnormal}</Text>
             )}
           </View>
+          </>
+          )}
         </ScrollView>
 
         <Modal
@@ -2052,7 +2419,7 @@ export default function BloodPressureScreen({
                     {selectedFamilyRecord ? `${selectedFamilyRecord.sys}/${selectedFamilyRecord.dia} mmHg` : ""}
                   </Text>
                   <Text style={styles.detailModalSub}>
-                    {selectedFamilyRecord ? formatDateTime(selectedFamilyRecord.measuredAt) : ""}
+                    {selectedFamilyRecord ? formatDateTime(selectedFamilyRecord.measuredAt, langKey) : ""}
                   </Text>
                 </View>
                 <Pressable style={styles.detailModalClose} onPress={() => setSelectedFamilyRecord(null)}>
@@ -2126,8 +2493,7 @@ export default function BloodPressureScreen({
       <View style={styles.tabRow}>
         {[
           ["measure", t.tabMeasure],
-          ["trend", t.tabTrend],
-          ["diary", t.tabDiary]
+          ["trend", t.tabTrend]
         ].map(([key, label]) => (
           <Pressable
             key={key}
@@ -2160,7 +2526,7 @@ export default function BloodPressureScreen({
                     <NeoIcon name="heart-fill" size={18} color="#FF4D4D" />
                     <Text style={styles.sectionTitle}>{t.bpLabel}</Text>
                   </View>
-                  <Text style={styles.rowSub}>{latest ? formatDateTime(latest.measuredAt) : t.noRecord}</Text>
+                  <Text style={styles.rowSub}>{latest ? formatDateTime(latest.measuredAt, langKey) : t.noRecord}</Text>
                 </View>
                 {latest ? (
                   <Text
@@ -2195,27 +2561,6 @@ export default function BloodPressureScreen({
                 </View>
               </View>
 
-              <View style={styles.moodStrip}>
-                <Text style={styles.moodStripLabel}>{t.moodStatus}</Text>
-                {latest ? (
-                  <View style={styles.moodStripValueRow}>
-                    <MoodDot mood={latest.mood} size={10} selected />
-                    <Text style={styles.moodStripValue}>{moodDisplay(latest.mood, langKey)}</Text>
-                  </View>
-                ) : (
-                  <Text style={styles.moodStripValue}>--</Text>
-                )}
-              </View>
-
-              {latest ? (
-                <MoodPicker
-                  value={latest.mood}
-                  lang={langKey}
-                  compact
-                  onChange={(nextMood) => updateMood(latest, nextMood)}
-                />
-              ) : null}
-
               <Text style={styles.sectionHint}>{t.fiveDayTrend}</Text>
               <MiniTrendChart summaries={latestFiveDays} t={t} />
               <View style={styles.legendRow}>
@@ -2238,12 +2583,12 @@ export default function BloodPressureScreen({
 
             <View style={styles.formCard}>
               <Text style={styles.sectionTitle}>{t.autoImport}</Text>
-              <Text style={styles.meterHint}>{t.meterHint || "量完請按同步，或把血壓計數字打進來。"}</Text>
+              <Text style={styles.meterHint}>{Platform.OS === "ios" ? (t.meterHintIos || t.meterHint) : (t.meterHint || "量完回到這個頁面會自動同步。")}</Text>
               <Pressable style={styles.buttonPrimary} onPress={handleSync} disabled={syncing}>
                 {syncing ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.buttonPrimaryText}>{t.syncHC}</Text>
+                  <Text style={styles.buttonPrimaryText}>{Platform.OS === "ios" ? (t.syncHealth || t.syncHC) : t.syncHC}</Text>
                 )}
               </Pressable>
 
@@ -2281,13 +2626,6 @@ export default function BloodPressureScreen({
                 </View>
               </View>
 
-              <Text style={styles.label}>{t.mood}</Text>
-              <MoodPicker
-                value={form.mood}
-                lang={langKey}
-                onChange={(nextMood) => updateForm("mood", nextMood)}
-              />
-
               <Pressable style={styles.buttonPrimary} onPress={handleRecord} disabled={saving}>
                 {saving ? (
                   <ActivityIndicator color="#fff" />
@@ -2299,93 +2637,7 @@ export default function BloodPressureScreen({
           </>
         ) : null}
 
-        {activeTab === "trend" ? (
-          <View style={styles.analysisCard}>
-            <Text style={styles.analysisTitle}>{t.trend3m}</Text>
-            <View style={styles.segmentedControl}>
-              {HEALTH_SUMMARY_RANGES.map(range => {
-                const selected = summaryMonths === range.months
-                const rangeLabel = range.months === 1 ? t.range1m : range.months === 3 ? t.range3m : t.range6m
-                return (
-                  <Pressable
-                    key={range.months}
-                    style={[styles.segmentButton, selected && styles.segmentButtonActive]}
-                    onPress={() => setSummaryMonths(range.months)}
-                  >
-                    <Text style={[styles.segmentButtonText, selected && styles.segmentButtonTextActive]}>
-                      {rangeLabel}
-                    </Text>
-                  </Pressable>
-                )
-              })}
-            </View>
-
-            <LongTrendChart summaries={trendChartSummaries} t={t} onSelectPoint={setSelectedTrendDay} />
-
-            <View style={styles.chartSummaryRow}>
-              <View style={styles.chartSummaryPill}>
-                <Text style={styles.chartSummaryLabel}>{t.recordDays}</Text>
-                <Text style={styles.chartSummaryValue}>{trendSummary.totalDays}</Text>
-              </View>
-              <View style={styles.chartSummaryPill}>
-                <Text style={styles.chartSummaryLabel}>{t.highRisk}</Text>
-                <Text style={styles.chartSummaryValue}>{trendSummary.danger.days}</Text>
-              </View>
-              <View style={styles.chartSummaryPill}>
-                <Text style={styles.chartSummaryLabel}>{t.warning}</Text>
-                <Text style={styles.chartSummaryValue}>{trendSummary.warning.days}</Text>
-              </View>
-            </View>
-
-            <View style={styles.adviceBox}>
-              <Text style={styles.adviceText}>{getHealthAdvice(trendRecords, t)}</Text>
-            </View>
-
-            {trendPulseRecords.length ? (
-              <View style={styles.pulseSummaryBox}>
-                <View style={styles.pulseSummaryItem}>
-                  <Text style={styles.pulseSummaryLabel}>{t.avgPulse}</Text>
-                  <Text style={styles.pulseSummaryValue}>{avgTrendPulse} bpm</Text>
-                </View>
-                <View style={styles.pulseSummaryDivider} />
-                <View style={styles.pulseSummaryItem}>
-                  <Text style={styles.pulseSummaryLabel}>{t.recentPulse}</Text>
-                  <Text style={styles.pulseSummaryValue}>{latestTrendPulse} bpm</Text>
-                </View>
-              </View>
-            ) : null}
-
-            <View style={styles.macroSummaryBox}>
-              <Text style={styles.macroSummaryTitle}>{t.periodSummaryFn(summaryMonths)}</Text>
-              <Text style={styles.macroSummaryMeta}>{t.periodStats(trendSummary.totalDays)}</Text>
-              <View style={styles.macroSummaryRow}>
-                <View style={[styles.macroSummaryDot, styles.macroSummaryDotDanger]} />
-                <Text style={styles.macroSummaryText}>{t.highRiskDaysFn(trendSummary.danger.days, trendSummary.danger.percent)}</Text>
-              </View>
-              <View style={styles.macroSummaryRow}>
-                <View style={[styles.macroSummaryDot, styles.macroSummaryDotWarning]} />
-                <Text style={styles.macroSummaryText}>{t.warningDaysFn(trendSummary.warning.days, trendSummary.warning.percent)}</Text>
-              </View>
-              <View style={styles.macroSummaryRow}>
-                <View style={[styles.macroSummaryDot, styles.macroSummaryDotNormal]} />
-                <Text style={styles.macroSummaryText}>{t.normalDaysFn(trendSummary.normal.days, trendSummary.normal.percent)}</Text>
-              </View>
-              <Text style={styles.macroSummaryObservation}>{t[trendSummary.periodicObservationKey]}</Text>
-            </View>
-
-            <View style={styles.moodAnalysisBox}>
-              <Text style={styles.moodAnalysisTitle}>{t.moodStressTitle}</Text>
-              <Text style={styles.moodAnalysisText}>{getMoodStressAnalysis(trendRecords, t)}</Text>
-              <Text style={styles.moodSourceText}>{t.moodSourceNote}</Text>
-            </View>
-
-            <View style={styles.pulseAnalysisBox}>
-              <Text style={styles.pulseAnalysisTitle}>{t.pulseStressTitle}</Text>
-              <Text style={styles.pulseAnalysisText}>{getPulseMoodAnalysis(trendRecords, t)}</Text>
-              <Text style={styles.pulseSourceText}>{t.pulseSourceNote}</Text>
-            </View>
-          </View>
-        ) : null}
+        {activeTab === "trend" ? trendPanel : null}
 
         {activeTab === "diary" ? (
           <View style={styles.historyCard}>
@@ -2417,18 +2669,11 @@ export default function BloodPressureScreen({
               selectedRecords.map(record => (
                 <View key={record._id || `${record.dateKey}-${record.sys}-${record.dia}`} style={styles.diaryRecordItem}>
                   <View style={styles.recordLeft}>
-                    <Text style={styles.recordText}>{formatDateTime(record.measuredAt)}</Text>
+                    <Text style={styles.recordText}>{formatDateTime(record.measuredAt, langKey)}</Text>
                     <View style={styles.recordValueRow}>
                       <Text style={styles.recordVal}>{record.sys}/{record.dia} mmHg</Text>
-                      <MoodDot mood={record.mood} size={10} selected />
                     </View>
                     <Text style={styles.recordPulse}>{t.pulsePrefix} {record.pulse ?? "--"} bpm</Text>
-                    <MoodPicker
-                      value={record.mood}
-                      lang={langKey}
-                      compact
-                      onChange={(nextMood) => updateMood(record, nextMood)}
-                    />
                   </View>
                   <View style={[styles.levelTag, { backgroundColor: record.status.color }]}>
                     <Text style={styles.levelTagText}>{t[record.status.levelKey] || record.status.level}</Text>
@@ -2924,10 +3169,10 @@ const styles = StyleSheet.create({
     zIndex: 1
   },
   miniLineSegmentSys: {
-    backgroundColor: colors.pine
+    backgroundColor: "#5EEAD4"
   },
   miniLineSegmentDia: {
-    backgroundColor: "#17a36b"
+    backgroundColor: "#FBBF24"
   },
   miniLinePoint: {
     position: "absolute",
@@ -2940,14 +3185,14 @@ const styles = StyleSheet.create({
     zIndex: 3
   },
   miniLinePointSys: {
-    backgroundColor: colors.pine
+    backgroundColor: "#5EEAD4"
   },
   miniLinePointDia: {
     width: 10,
     height: 10,
     marginBottom: -5,
     borderRadius: 5,
-    backgroundColor: "#17a36b"
+    backgroundColor: "#FBBF24"
   },
   legendRow: {
     flexDirection: "row",
@@ -2956,17 +3201,17 @@ const styles = StyleSheet.create({
     marginTop: 8
   },
   legendSys: {
-    color: colors.pine,
+    color: "#5EEAD4",
     fontWeight: "800",
     fontSize: 12
   },
   legendDia: {
-    color: "#17a36b",
+    color: "#FBBF24",
     fontWeight: "800",
     fontSize: 12
   },
   legendLimit: {
-    color: "#b54708",
+    color: "#EF4444",
     fontWeight: "800",
     fontSize: 12
   },
@@ -3058,7 +3303,7 @@ const styles = StyleSheet.create({
     fontWeight: "700"
   },
   bodyText: {
-    color: "#4f6682",
+    color: colors.textMuted,
     lineHeight: 21,
     marginTop: 6
   },
@@ -3070,20 +3315,21 @@ const styles = StyleSheet.create({
   summaryBox: {
     flex: 1,
     borderWidth: 1,
-    borderColor: "#e1ebf8",
-    backgroundColor: "#f8fbff",
-    borderRadius: 10,
+    borderColor: colors.border,
+    backgroundColor: colors.bg,
+    borderRadius: 16,
+    borderCurve: "continuous",
     padding: 10
   },
   summaryBoxPressable: {
-    borderColor: "#f5b8b8",
-    backgroundColor: "#fff8f8"
+    borderColor: "rgba(224,90,71,0.45)",
+    backgroundColor: "rgba(224,90,71,0.12)"
   },
   summaryBoxPressed: {
-    backgroundColor: "#fff0f0"
+    backgroundColor: "rgba(224,90,71,0.2)"
   },
   summaryLabel: {
-    color: "#607990",
+    color: colors.textMuted,
     fontSize: 11,
     fontWeight: "800"
   },
@@ -3095,7 +3341,7 @@ const styles = StyleSheet.create({
   },
   summaryMeta: {
     marginTop: 2,
-    color: "#7890a6",
+    color: colors.textMuted,
     fontSize: 12
   },
   adviceBox: {
@@ -3111,47 +3357,55 @@ const styles = StyleSheet.create({
   pulseBox: {
     marginTop: 12,
     borderLeftWidth: 4,
-    borderLeftColor: "#2f54eb",
-    backgroundColor: "#f0f5ff",
-    borderRadius: 10,
+    borderLeftColor: "#10B981",
+    backgroundColor: "#13231B",
+    borderRadius: 16,
     padding: 12
   },
   moodAnalysisBox: {
     marginTop: 12,
     borderLeftWidth: 4,
-    borderLeftColor: "#faad14",
-    backgroundColor: "#fff7e6",
-    borderRadius: 10,
+    borderLeftColor: "#10B981",
+    backgroundColor: "#13231B",
+    borderRadius: 16,
     padding: 12
   },
   pulseAnalysisBox: {
     marginTop: 12,
     borderLeftWidth: 4,
-    borderLeftColor: "#2f54eb",
-    backgroundColor: "#f0f5ff",
-    borderRadius: 10,
-    padding: 12
+    borderLeftColor: "#10B981",
+    backgroundColor: "#13231B",
+    borderRadius: 16,
+    borderCurve: "continuous",
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "rgba(16,185,129,0.28)",
+    gap: 6
   },
   recommendationBox: {
     marginTop: 12,
     borderLeftWidth: 4,
     borderLeftColor: colors.pine,
-    backgroundColor: "#f8fbff",
-    borderRadius: 10,
-    padding: 12
+    backgroundColor: colors.bg,
+    borderRadius: 16,
+    borderCurve: "continuous",
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.border
   },
   alertBanner: {
     borderLeftWidth: 5,
-    borderRadius: 12,
+    borderRadius: 16,
+    borderCurve: "continuous",
     borderWidth: 1,
-    borderColor: "#ffd8d2",
-    backgroundColor: "#fff7f6",
+    borderColor: "rgba(224,90,71,0.35)",
+    backgroundColor: "rgba(224,90,71,0.14)",
     padding: 12,
     marginTop: 12
   },
   alertBannerCritical: {
-    backgroundColor: "#fff1f0",
-    borderColor: "#ff9c8f"
+    backgroundColor: "rgba(224,90,71,0.22)",
+    borderColor: "rgba(224,90,71,0.55)"
   },
   alertHeaderRow: {
     flexDirection: "row",
@@ -3174,7 +3428,7 @@ const styles = StyleSheet.create({
     flex: 1
   },
   alertTitle: {
-    color: "#b42318",
+    color: colors.text,
     fontWeight: "900",
     fontSize: 16
   },
@@ -3185,16 +3439,17 @@ const styles = StyleSheet.create({
   },
   alertBodyText: {
     marginTop: 8,
-    color: "#7a271a",
+    color: colors.textMuted,
     lineHeight: 21,
     fontWeight: "800"
   },
   warningBox: {
     marginTop: 12,
-    borderRadius: 10,
-    backgroundColor: "#fff7e6",
+    borderRadius: 16,
+    borderCurve: "continuous",
+    backgroundColor: "rgba(245,158,11,0.14)",
     borderWidth: 1,
-    borderColor: "#fedf89",
+    borderColor: "rgba(245,158,11,0.35)",
     padding: 12
   },
   adviceTitle: {
@@ -3216,25 +3471,26 @@ const styles = StyleSheet.create({
     gap: 8
   },
   familyInfoText: {
-    color: "#4f6682",
+    color: colors.textMuted,
     fontWeight: "800",
     fontSize: 12
   },
   connectionBox: {
-    backgroundColor: "#f8fbff",
+    backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
+    borderRadius: 16,
+    borderCurve: "continuous",
     padding: 12
   },
   connectionTitle: {
-    color: "#174a7c",
+    color: colors.textMuted,
     fontSize: 13,
-    fontWeight: "900"
+    fontWeight: "800"
   },
   connectionText: {
     marginTop: 4,
-    color: "#526b88",
+    color: colors.text,
     fontWeight: "800"
   },
   statsGrid: {
@@ -3262,7 +3518,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12
   },
   alertRecordPressed: {
-    backgroundColor: "#f3f8ff"
+    backgroundColor: "rgba(255,255,255,0.06)"
   },
   alertRecordStatus: {
     marginTop: 6,
@@ -3276,19 +3532,19 @@ const styles = StyleSheet.create({
   dateChip: {
     minWidth: 58,
     borderWidth: 1,
-    borderColor: "#d8e1ed",
+    borderColor: colors.border,
     borderRadius: 10,
-    backgroundColor: "#fafcff",
+    backgroundColor: colors.card,
     paddingVertical: 8,
     paddingHorizontal: 10,
     alignItems: "center"
   },
   dateChipSelected: {
     borderColor: colors.pine,
-    backgroundColor: "#edf6ff"
+    backgroundColor: "rgba(133,159,120,0.18)"
   },
   dateChipAbnormal: {
-    borderColor: "#cf1322"
+    borderColor: "#E05A47"
   },
   dateChipText: {
     color: colors.text,
@@ -3296,7 +3552,7 @@ const styles = StyleSheet.create({
   },
   dateChipMeta: {
     marginTop: 2,
-    color: "#70839d",
+    color: colors.textMuted,
     fontSize: 11
   },
   selectedDateTitle: {
@@ -3321,7 +3577,7 @@ const styles = StyleSheet.create({
   },
   recordMood: {
     marginTop: 8,
-    color: "#4f6682",
+    color: colors.textMuted,
     fontWeight: "800"
   },
   refreshText: {
@@ -3329,7 +3585,7 @@ const styles = StyleSheet.create({
     fontWeight: "900"
   },
   emptyText: {
-    color: "#6a7e99",
+    color: colors.textMuted,
     paddingVertical: 12
   },
   analysisTitle: {
@@ -3340,7 +3596,7 @@ const styles = StyleSheet.create({
   },
   segmentedControl: {
     flexDirection: "row",
-    backgroundColor: "#eef6ff",
+    backgroundColor: "#121418",
     borderRadius: 8,
     padding: 3,
     marginBottom: 12
@@ -3356,7 +3612,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.pine
   },
   segmentButtonText: {
-    color: "#4f6682",
+    color: "#8E95A3",
     fontWeight: "900",
     fontSize: 13
   },
@@ -3366,14 +3622,149 @@ const styles = StyleSheet.create({
   longChartFrame: {
     position: "relative",
     borderRadius: 12,
-    backgroundColor: "#f7fbff",
+    backgroundColor: "#121418",
     borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 10,
+    borderColor: "rgba(255,255,255,0.1)",
+    paddingHorizontal: 8,
     paddingTop: 20,
     paddingBottom: 10,
     overflow: "visible"
   },
+  longChartBody: {
+    flexDirection: "row",
+    minHeight: LONG_CHART_HEIGHT + LONG_CHART_LABEL_SPACE
+  },
+  chartYAxis: {
+    width: 28,
+    position: "relative"
+  },
+  chartYLabel: {
+    position: "absolute",
+    left: 0,
+    width: 26,
+    color: colors.textMuted,
+    fontSize: 9,
+    fontWeight: "700"
+  },
+  trendSpanText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "600",
+    marginBottom: 8
+  },
+  bpChartCard: {
+    borderRadius: 16,
+    borderCurve: "continuous",
+    backgroundColor: "#121418",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    padding: 12,
+    overflow: "hidden"
+  },
+  bpChartReadout: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+    fontSize: 14,
+    marginBottom: 8
+  },
+  bpChartReadoutMuted: {
+    color: colors.textMuted,
+    fontWeight: "700",
+    fontSize: 12,
+    marginBottom: 8
+  },
+  bpChartRow: { flexDirection: "row" },
+  bpYCol: { width: 28, position: "relative" },
+  bpYLabel: {
+    position: "absolute",
+    left: 0,
+    width: 26,
+    color: colors.textMuted,
+    fontSize: 10,
+    fontWeight: "700"
+  },
+  bpPlot: {
+    flex: 1,
+    overflow: "hidden",
+    position: "relative"
+  },
+  bpGuide: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    borderTopWidth: 1,
+    borderStyle: "dashed"
+  },
+  bpSeg: {
+    position: "absolute",
+    height: 2,
+    borderRadius: 2,
+    transformOrigin: "left center"
+  },
+  bpSegSys: { backgroundColor: "#5EEAD4" },
+  bpSegDia: { backgroundColor: "#FBBF24" },
+  bpDotSys: {
+    position: "absolute",
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#5EEAD4",
+    borderWidth: 2,
+    borderColor: "#FFFFFF"
+  },
+  bpDotDia: {
+    position: "absolute",
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#FBBF24",
+    borderWidth: 2,
+    borderColor: "#FFFFFF"
+  },
+  bpXRow: { flexDirection: "row", marginTop: 8, marginLeft: 28 },
+  bpXLabel: {
+    flex: 1,
+    color: colors.textMuted,
+    fontSize: 10,
+    fontWeight: "700",
+    textAlign: "center"
+  },
+  bpLogCard: {
+    marginTop: 8,
+    gap: 8
+  },
+  bpLogRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.08)"
+  },
+  bpLogWhen: { flex: 1, color: colors.textMuted, fontSize: 12, fontWeight: "600" },
+  bpLogVal: { fontSize: 14, fontWeight: "800", width: 88, textAlign: "right", color: "#FFFFFF" },
+  bpLogSys: { color: "#5EEAD4", fontWeight: "800" },
+  bpLogDia: { color: "#FBBF24", fontWeight: "800" },
+  bpLogPulse: { color: "#A8E6CF", fontSize: 12, fontWeight: "700", width: 44, textAlign: "right" },
+  bpLogHead: { color: "#8E95A3", fontWeight: "800", fontSize: 11 },
+  bpLogPager: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 12,
+    paddingTop: 8
+  },
+  bpLogPageBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#1C1F27"
+  },
+  bpLogPageBtnOff: { opacity: 0.35 },
+  bpLogPageText: { color: "#FFFFFF", fontSize: 18, fontWeight: "800" },
+  bpLogPageMeta: { color: "#A8E6CF", fontSize: 13, fontWeight: "700" },
   chartAxisTag: {
     position: "absolute",
     top: 6,
@@ -3394,6 +3785,7 @@ const styles = StyleSheet.create({
   },
   lineChart: {
     position: "relative",
+    flex: 1,
     height: 222,
     flexDirection: "row",
     justifyContent: "space-between",
@@ -3500,7 +3892,7 @@ const styles = StyleSheet.create({
     borderColor: "#17a36b"
   },
   adviceText: {
-    color: "#1f507f",
+    color: "#C8CDD4",
     lineHeight: 21,
     fontWeight: "700"
   },
@@ -3512,15 +3904,15 @@ const styles = StyleSheet.create({
   chartSummaryPill: {
     flex: 1,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: "#f8fbff",
+    borderColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "#121418",
     borderRadius: 10,
     paddingVertical: 9,
     paddingHorizontal: 8,
     alignItems: "center"
   },
   chartSummaryLabel: {
-    color: "#607990",
+    color: "#8E95A3",
     fontSize: 11,
     fontWeight: "900"
   },
@@ -3533,7 +3925,7 @@ const styles = StyleSheet.create({
   pulseSummaryBox: {
     marginTop: 12,
     padding: 12,
-    backgroundColor: "#fff7e6",
+    backgroundColor: "#2A2110",
     borderRadius: 10,
     borderLeftWidth: 5,
     borderLeftColor: "#f59e0b",
@@ -3546,17 +3938,17 @@ const styles = StyleSheet.create({
   pulseSummaryDivider: {
     width: 1,
     height: 38,
-    backgroundColor: "#fedf89",
+    backgroundColor: "rgba(245,158,11,0.35)",
     marginHorizontal: 10
   },
   pulseSummaryLabel: {
-    color: "#8c5a00",
+    color: "#FBBF24",
     fontSize: 12,
     fontWeight: "900"
   },
   pulseSummaryValue: {
     marginTop: 4,
-    color: "#ad6800",
+    color: "#FFFFFF",
     fontSize: 18,
     fontWeight: "900"
   },
@@ -3564,7 +3956,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     padding: 14,
     borderRadius: 10,
-    backgroundColor: "#f7fbff",
+    backgroundColor: "#121418",
     borderLeftWidth: 5,
     borderLeftColor: "#17a36b"
   },
@@ -3576,7 +3968,7 @@ const styles = StyleSheet.create({
   macroSummaryMeta: {
     marginTop: 6,
     marginBottom: 10,
-    color: "#4f6682",
+    color: "#8E95A3",
     lineHeight: 19,
     fontWeight: "700"
   },
@@ -3662,17 +4054,17 @@ const styles = StyleSheet.create({
     marginBottom: 4
   },
   pulseAnalysisTitle: {
-    color: colors.text,
+    color: "#A8E6CF",
     fontSize: 15,
     fontWeight: "900"
   },
   pulseAnalysisText: {
-    color: "#1f507f",
+    color: "#FFFFFF",
     lineHeight: 20,
     fontWeight: "700"
   },
   pulseSourceText: {
-    color: "#4f6682",
+    color: "#8E95A3",
     lineHeight: 18,
     fontSize: 12
   },
@@ -3689,7 +4081,7 @@ const styles = StyleSheet.create({
     fontSize: 15
   },
   detailMeta: {
-    color: "#607990",
+    color: colors.textMuted,
     fontWeight: "800"
   },
   emptyDayText: {
@@ -3783,7 +4175,7 @@ const styles = StyleSheet.create({
     justifyContent: "center"
   },
   detailModalCloseText: {
-    color: "#174a7c",
+    color: colors.text,
     fontSize: 24,
     fontWeight: "900",
     lineHeight: 28
@@ -3792,7 +4184,7 @@ const styles = StyleSheet.create({
     marginTop: 14,
     borderWidth: 1,
     borderRadius: 12,
-    backgroundColor: "#fff7f6",
+    backgroundColor: "rgba(224,90,71,0.14)",
     paddingHorizontal: 12,
     paddingVertical: 10,
     flexDirection: "row",
@@ -3809,14 +4201,14 @@ const styles = StyleSheet.create({
   detailStablePill: {
     marginTop: 14,
     borderRadius: 12,
-    backgroundColor: "#f0f9f5",
+    backgroundColor: "rgba(16,185,129,0.14)",
     borderWidth: 1,
-    borderColor: "#b7ebd0",
+    borderColor: "rgba(16,185,129,0.35)",
     paddingHorizontal: 12,
     paddingVertical: 10
   },
   detailStableText: {
-    color: "#067647",
+    color: colors.mint,
     fontWeight: "900"
   },
   detailGrid: {
@@ -3829,12 +4221,12 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: "#f8fbff",
+    backgroundColor: colors.bg,
     padding: 10,
     alignItems: "center"
   },
   detailLabel: {
-    color: "#607990",
+    color: colors.textMuted,
     fontSize: 11,
     fontWeight: "900"
   },
@@ -3845,12 +4237,12 @@ const styles = StyleSheet.create({
     fontWeight: "900"
   },
   detailUnit: {
-    color: "#7890a6",
+    color: colors.textMuted,
     fontSize: 11
   },
   detailModalMeta: {
     marginTop: 12,
-    color: "#4f6682",
+    color: colors.textMuted,
     fontWeight: "800"
   },
   detailAdvice: {

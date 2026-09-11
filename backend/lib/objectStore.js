@@ -29,6 +29,9 @@ function extFromContentType(contentType, mediaType) {
   if (ct.includes("jpeg") || ct.includes("jpg")) return ".jpg"
   if (ct.includes("webp")) return ".webp"
   if (ct.includes("mp4")) return ".mp4"
+  if (ct.includes("wav")) return ".wav"
+  if (ct.includes("mpeg") || ct.includes("mp3")) return ".mp3"
+  if (ct.includes("m4a") || ct.includes("mp4") || ct.includes("aac")) return ".m4a"
   if (ct.includes("webm")) return ".webm"
   return mediaType === "clip" ? ".mp4" : ".jpg"
 }

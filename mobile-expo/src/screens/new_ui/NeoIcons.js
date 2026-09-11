@@ -63,10 +63,17 @@ const ICONS = {
   "emoticon-confused": require("./icons/emoticon-confused.png"),
   "emoticon-dizzy": require("./icons/emoticon-dizzy.png"),
   call: require("./icons/call.png"),
+  "sos-help": require("./icons/sos-help.png"),
+  "sos-fell": require("./icons/sos-fell.png"),
+  "sos-run": require("./icons/sos-run.png"),
   "heart-fill": require("./icons/heart-fill.png"),
   "heart-circle": require("./icons/heart-circle.png"),
   "play-fill": require("./icons/play-fill.png"),
-  "ion-radio": require("./icons/ion-radio.png")
+  "ion-radio": require("./icons/ion-radio.png"),
+  pill: require("./icons/pill.png"),
+  shower: require("./icons/shower.png"),
+  sun: require("./icons/sun.png"),
+  sunrise: require("./icons/sunrise.png")
 }
 
 export function NeoIcon({
@@ -74,6 +81,7 @@ export function NeoIcon({
   size = 20,
   color = ICON_MINT,
   glow = false,
+  tint = true,
   style
 }) {
   const src = ICONS[name]
@@ -83,7 +91,7 @@ export function NeoIcon({
       source={src}
       resizeMode="contain"
       style={[
-        { width: size, height: size, tintColor: color },
+        { width: size, height: size, tintColor: tint ? color : undefined },
         glow
           ? {
               shadowColor: color,

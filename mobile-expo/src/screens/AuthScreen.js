@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import {
   ActivityIndicator,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -13,12 +14,15 @@ import {
   ApiError,
   TEST_ACCOUNT_PASSWORD,
   mobileLogin,
+  mobileMe,
   mobileRegister
 } from "../lib/api"
 import { signInWithApple, signInWithGoogle } from "../lib/socialAuth"
-import { LANG_OPTIONS, DEFAULT_LANG } from "../i18n/languages"
+import GoogleAuthSheet from "../components/GoogleAuthSheet"
+import { LANG_OPTIONS, LANG_SHORT, DEFAULT_LANG } from "../i18n/languages"
 import { useI18n } from "../i18n/I18nContext"
 import { colors } from "./new_ui/tokens"
+import { NeoIcon } from "./new_ui/NeoIcons"
 
 function errorText(err, t, fallbackKey) {
   const msg = String(err?.message || "")
@@ -45,6 +49,9 @@ export default function AuthScreen({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const [info, setInfo] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
+  const [googleUrl, setGoogleUrl] = useState("")
+  const [langOpen, setLangOpen] = useState(false)
 
   const quickAccounts = [
     { email: "patient@test.com", name: "受顧者測試", label: t("auth.quickPatient") },
@@ -110,7 +117,8 @@ export default function AuthScreen({
       const data = await mobileLogin({
         apiBaseUrl: normalizedApiBaseUrl,
         email: normalizedEmail,
-        password: normalizedPassword
+        password: normalizedPassword,
+        lang: registerLang
       })
       onAuthenticated({
         apiBaseUrl: normalizedApiBaseUrl,
@@ -154,6 +162,22 @@ export default function AuthScreen({
     }
   }
 
+  const finishOauthToken = async (parsed) => {
+    const base = apiBaseUrl.trim() || defaultApiBaseUrl
+    try {
+      const me = await mobileMe({ apiBaseUrl: base, token: parsed.token })
+      onAuthenticated({
+        apiBaseUrl: base,
+        token: me.token || parsed.token,
+        user: me.user,
+        role: me.role || me.user?.role || null,
+        needsRole: Boolean(me.needsRole || parsed.needsRole || !me.role)
+      })
+    } catch (err) {
+      setError(errorText(err, t, "auth.googleFail"))
+    }
+  }
+
   const handleGoogle = async () => {
     setBusy(true)
     setError("")
@@ -162,6 +186,11 @@ export default function AuthScreen({
       const result = await signInWithGoogle({
         apiBaseUrl: apiBaseUrl.trim() || defaultApiBaseUrl
       })
+      if (result?.mode === "cancelled") return
+      if (result?.mode === "webview" && result.url) {
+        setGoogleUrl(result.url)
+        return
+      }
       finishSocial(result)
     } catch (err) {
       setError(errorText(err, t, "auth.googleFail"))
@@ -187,7 +216,14 @@ export default function AuthScreen({
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+    <>
+    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+      <View style={styles.langTop}>
+        <Pressable style={styles.langBtn} onPress={() => setLangOpen(true)} accessibilityRole="button">
+          <Text style={styles.langBtnText}>{LANG_SHORT[registerLang] || "中文"}</Text>
+          <NeoIcon name="chevron-down" size={14} color="#A8E6CF" />
+        </Pressable>
+      </View>
       <View style={styles.brandBlock}>
         <View style={styles.logoMark}>
           <Text style={styles.logoMarkText}>T</Text>
@@ -198,7 +234,7 @@ export default function AuthScreen({
         </Text>
       </View>
 
-      <View style={styles.modeRow}>
+      <View style={styles.modeTrack}>
         <Pressable
           style={[styles.modeChip, mode === "login" && styles.modeChipActive]}
           onPress={() => setMode("login")}
@@ -222,7 +258,7 @@ export default function AuthScreen({
           autoCapitalize="none"
           keyboardType="email-address"
           placeholder="name@example.com"
-          placeholderTextColor="#8aa0b8"
+          placeholderTextColor={colors.textMuted}
         />
 
         {mode === "register" ? (
@@ -233,47 +269,37 @@ export default function AuthScreen({
               value={name}
               onChangeText={setName}
               placeholder={t("auth.namePlaceholder")}
-              placeholderTextColor="#8aa0b8"
+              placeholderTextColor={colors.textMuted}
             />
           </>
         ) : null}
 
         <Text style={styles.label}>{t("auth.password")}</Text>
-        <TextInput
-          style={styles.input}
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          placeholder={t("auth.passwordHint")}
-          placeholderTextColor="#8aa0b8"
-        />
-
-        {mode === "register" ? (
-          <View style={styles.langBlock}>
-            <Text style={styles.label}>{t("auth.pickLanguage")}</Text>
-            <Text style={styles.langHint}>{t("auth.languageHint")}</Text>
-            <View style={styles.langRow}>
-              {LANG_OPTIONS.map((l) => (
-                <Pressable
-                  key={l.code}
-                  style={[styles.langChip, registerLang === l.code && styles.langChipActive]}
-                  onPress={() => pickLang(l.code)}
-                >
-                  <Text style={[styles.langChipText, registerLang === l.code && styles.langChipTextActive]}>
-                    {l.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        ) : null}
+        <View style={styles.passWrap}>
+          <TextInput
+            style={[styles.input, styles.passInput]}
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry={!showPassword}
+            placeholder={t("auth.passwordHint")}
+            placeholderTextColor={colors.textMuted}
+          />
+          <Pressable
+            onPress={() => setShowPassword((prev) => !prev)}
+            style={styles.eyeBtn}
+            hitSlop={8}
+            accessibilityRole="button"
+          >
+            <NeoIcon name="eye" size={20} color="#8E95A3" />
+          </Pressable>
+        </View>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
         {info ? <Text style={styles.info}>{info}</Text> : null}
 
         <Pressable style={[styles.primaryBtn, busy && styles.btnDisabled]} onPress={handleSubmit} disabled={busy}>
           {busy ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color="#000000" />
           ) : (
             <Text style={styles.primaryBtnText}>{mode === "login" ? t("auth.login") : t("auth.registerSubmit")}</Text>
           )}
@@ -286,13 +312,21 @@ export default function AuthScreen({
         <View style={styles.dividerLine} />
       </View>
 
-      <Pressable style={[styles.socialBtn, styles.googleBtn, busy && styles.btnDisabled]} onPress={handleGoogle} disabled={busy}>
-        <Text style={styles.googleBtnText}>{t("auth.google")}</Text>
+      <Pressable style={[styles.socialBtn, busy && styles.btnDisabled]} onPress={handleGoogle} disabled={busy}>
+        <View style={styles.socialInner}>
+          <View style={styles.googleBadge}>
+            <Text style={styles.googleGBlue}>G</Text>
+          </View>
+          <Text style={styles.socialText}>{t("auth.google")}</Text>
+        </View>
       </Pressable>
 
       {Platform.OS === "ios" ? (
-        <Pressable style={[styles.socialBtn, styles.appleBtn, busy && styles.btnDisabled]} onPress={handleApple} disabled={busy}>
-          <Text style={styles.appleBtnText}>{t("auth.apple")}</Text>
+        <Pressable style={[styles.socialBtn, busy && styles.btnDisabled]} onPress={handleApple} disabled={busy}>
+          <View style={styles.socialInner}>
+            <Text style={styles.appleMark}>{"\uF8FF"}</Text>
+            <Text style={styles.socialText}>{t("auth.apple")}</Text>
+          </View>
         </Pressable>
       ) : (
         <Text style={styles.appleHint}>{t("auth.appleHint")}</Text>
@@ -342,11 +376,45 @@ export default function AuthScreen({
             onChangeText={setApiBaseUrl}
             autoCapitalize="none"
             placeholder="http://localhost:5000"
-            placeholderTextColor="#8aa0b8"
+            placeholderTextColor={colors.textMuted}
           />
         </View>
       ) : null}
+
+      <Modal visible={langOpen} transparent animationType="fade" onRequestClose={() => setLangOpen(false)}>
+        <Pressable style={styles.langMask} onPress={() => setLangOpen(false)}>
+          <View style={styles.langPicker}>
+            <Text style={styles.langPickerTitle}>{t("lang.pickerTitle")}</Text>
+            {LANG_OPTIONS.map((l) => (
+              <Pressable
+                key={l.code}
+                style={[styles.langOption, registerLang === l.code && styles.langOptionOn]}
+                onPress={() => {
+                  pickLang(l.code)
+                  setLangOpen(false)
+                }}
+              >
+                <Text style={[styles.langOptionText, registerLang === l.code && styles.langOptionTextOn]}>
+                  {l.label}
+                </Text>
+                {registerLang === l.code ? <Text style={styles.langCheck}>✓</Text> : null}
+              </Pressable>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
     </ScrollView>
+    <GoogleAuthSheet
+      visible={Boolean(googleUrl)}
+      startUrl={googleUrl}
+      apiBaseUrl={apiBaseUrl.trim() || defaultApiBaseUrl}
+      onClose={() => setGoogleUrl("")}
+      onToken={(parsed) => {
+        setGoogleUrl("")
+        finishOauthToken(parsed)
+      }}
+    />
+    </>
   )
 }
 
@@ -355,81 +423,139 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     backgroundColor: colors.bg,
     padding: 24,
-    paddingTop: 48
+    paddingTop: 48,
+    gap: 4
   },
-  brandBlock: { alignItems: "center", marginBottom: 20 },
+  brandBlock: { alignItems: "center", marginBottom: 20, gap: 6 },
   logoMark: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    backgroundColor: colors.pine,
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    borderCurve: "continuous",
+    backgroundColor: "#10B981",
     alignItems: "center",
     justifyContent: "center"
   },
-  logoMarkText: { color: "#fff", fontSize: 32, fontWeight: "900" },
-  brand: { marginTop: 12, fontSize: 28, fontWeight: "900", color: colors.text },
-  tagline: { marginTop: 6, color: "#526b88", fontWeight: "600", textAlign: "center" },
-  modeRow: { flexDirection: "row", gap: 8, marginBottom: 14 },
+  logoMarkText: { color: "#000000", fontSize: 28, fontWeight: "900" },
+  brand: { marginTop: 8, fontSize: 24, fontWeight: "900", color: "#FFFFFF" },
+  tagline: { marginTop: 6, color: colors.textMuted, fontWeight: "600", textAlign: "center" },
+  modeTrack: {
+    height: 48,
+    flexDirection: "row",
+    backgroundColor: "#16181D",
+    borderRadius: 999,
+    padding: 4,
+    marginBottom: 14
+  },
   modeChip: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: "center"
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center"
   },
-  modeChipActive: { backgroundColor: colors.text, borderColor: colors.text },
-  modeChipText: { color: "#526b88", fontWeight: "800" },
-  modeChipTextActive: { color: "#fff" },
-  langBlock: { marginTop: 4, marginBottom: 8 },
-  langHint: { color: "#8aa0b8", fontSize: 12, marginBottom: 8, fontWeight: "600" },
-  langRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  langChip: {
+  modeChipActive: { backgroundColor: "#10B981" },
+  modeChipText: { color: "#8E95A3", fontWeight: "700" },
+  modeChipTextActive: { color: "#000000", fontWeight: "700" },
+  langTop: {
+    alignSelf: "stretch",
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginBottom: 8
+  },
+  langBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: colors.bg,
     borderWidth: 1,
-    borderColor: colors.border
+    borderColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "#16181D"
   },
-  langChipActive: { backgroundColor: colors.pine, borderColor: colors.pine },
-  langChipText: { color: "#526b88", fontWeight: "700", fontSize: 12 },
-  langChipTextActive: { color: "#fff" },
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 16,
+  langBtnText: { color: "#A8E6CF", fontWeight: "800", fontSize: 13 },
+  langMask: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    justifyContent: "flex-start",
+    alignItems: "flex-end",
+    paddingTop: 80,
+    paddingRight: 16
+  },
+  langPicker: {
+    backgroundColor: "#16181D",
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: "rgba(255,255,255,0.1)",
+    minWidth: 180,
+    overflow: "hidden"
+  },
+  langPickerTitle: {
+    color: "#8E95A3",
+    fontSize: 11,
+    fontWeight: "800",
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 6
+  },
+  langOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.1)"
+  },
+  langOptionOn: { backgroundColor: "rgba(16,185,129,0.18)" },
+  langOptionText: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
+  langOptionTextOn: { color: "#A8E6CF", fontWeight: "900" },
+  langCheck: { color: "#A8E6CF", fontWeight: "900", fontSize: 14 },
+  card: {
+    backgroundColor: "#16181D",
+    borderRadius: 16,
+    borderCurve: "continuous",
+    padding: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
     gap: 4
   },
-  label: { marginTop: 10, color: "#334155", fontWeight: "800", fontSize: 13 },
+  label: { marginTop: 10, color: colors.textMuted, fontWeight: "800", fontSize: 13 },
   input: {
     marginTop: 6,
     borderWidth: 1,
-    borderColor: "#c7d8ed",
+    borderColor: "rgba(255,255,255,0.1)",
     borderRadius: 12,
+    borderCurve: "continuous",
     paddingHorizontal: 14,
-    paddingVertical: 14,
-    minHeight: 50,
+    height: 50,
     color: colors.text,
-    backgroundColor: "#f8fbff",
+    backgroundColor: "#101215",
     fontSize: 16
   },
-  error: { marginTop: 10, color: "#b42318", fontWeight: "700" },
-  info: { marginTop: 10, color: "#1d4ed8", fontWeight: "700", lineHeight: 20 },
+  passWrap: { marginTop: 6, justifyContent: "center" },
+  passInput: { marginTop: 0, paddingRight: 44 },
+  eyeBtn: {
+    position: "absolute",
+    right: 12,
+    top: 0,
+    height: 50,
+    width: 22,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  error: { marginTop: 10, color: colors.clay, fontWeight: "700" },
+  info: { marginTop: 10, color: colors.mint, fontWeight: "700", lineHeight: 20 },
   primaryBtn: {
     marginTop: 16,
-    backgroundColor: colors.pine,
-    borderRadius: 12,
-    paddingVertical: 16,
+    backgroundColor: "#10B981",
+    borderRadius: 999,
+    height: 50,
     alignItems: "center",
-    minHeight: 52,
     justifyContent: "center"
   },
   btnDisabled: { opacity: 0.7 },
-  primaryBtnText: { color: "#fff", fontWeight: "900", fontSize: 16 },
+  primaryBtnText: { color: "#000000", fontWeight: "700", fontSize: 16 },
   dividerRow: {
     marginTop: 22,
     marginBottom: 12,
@@ -438,32 +564,39 @@ const styles = StyleSheet.create({
     gap: 10
   },
   dividerLine: { flex: 1, height: 1, backgroundColor: colors.border },
-  dividerText: { color: "#64748b", fontWeight: "700", fontSize: 12 },
+  dividerText: { color: colors.textMuted, fontWeight: "700", fontSize: 12 },
   socialBtn: {
-    borderRadius: 12,
-    paddingVertical: 14,
+    borderRadius: 16,
+    borderCurve: "continuous",
+    height: 56,
     alignItems: "center",
+    justifyContent: "center",
     marginBottom: 10,
-    minHeight: 50,
+    backgroundColor: "#16181D",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)"
+  },
+  socialInner: { flexDirection: "row", alignItems: "center", gap: 12 },
+  googleBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
     justifyContent: "center"
   },
-  googleBtn: {
-    backgroundColor: "#fff",
-    borderWidth: 1.5,
-    borderColor: "#cbd5e1"
-  },
-  googleBtnText: { color: "#111827", fontWeight: "900", fontSize: 15 },
-  appleBtn: { backgroundColor: "#111827" },
-  appleBtnText: { color: "#fff", fontWeight: "900", fontSize: 15 },
+  googleGBlue: { color: "#4285F4", fontWeight: "900", fontSize: 22 },
+  appleMark: { color: "#FFFFFF", fontSize: 32, width: 36, textAlign: "center", lineHeight: 34 },
+  socialText: { color: "#FFFFFF", fontWeight: "700", fontSize: 15 },
   appleHint: {
     textAlign: "center",
-    color: "#94a3b8",
+    color: colors.textMuted,
     fontWeight: "600",
     fontSize: 12,
     marginBottom: 8
   },
-  quickTitle: { marginTop: 20, color: "#667085", fontWeight: "800", fontSize: 12 },
-  quickHint: { marginTop: 4, color: "#98a2b3", fontSize: 12 },
+  quickTitle: { marginTop: 20, color: colors.textMuted, fontWeight: "800", fontSize: 12 },
+  quickHint: { marginTop: 4, color: colors.textMuted, fontSize: 12 },
   quickRow: { flexDirection: "row", gap: 8, marginTop: 8 },
   quickChip: {
     paddingHorizontal: 14,
@@ -473,17 +606,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border
   },
-  quickChipText: { color: colors.pine, fontWeight: "800" },
+  quickChipText: { color: colors.mint, fontWeight: "800" },
   devBtn: { marginTop: 16, alignItems: "center", padding: 10 },
-  devBtnText: { color: "#94a3b8", fontWeight: "700", fontSize: 12 },
+  devBtnText: { color: colors.textMuted, fontWeight: "700", fontSize: 12 },
   advancedToggle: { marginTop: 8, alignItems: "center", padding: 8 },
-  advancedToggleText: { color: colors.pine, fontWeight: "800" },
+  advancedToggleText: { color: colors.mint, fontWeight: "800" },
   advancedBox: {
     marginTop: 4,
-    backgroundColor: "#fff",
+    backgroundColor: colors.card,
     borderRadius: 12,
+    borderCurve: "continuous",
     padding: 14,
     borderWidth: 1,
-    borderColor: "#e4e7ec"
+    borderColor: colors.border
   }
 })

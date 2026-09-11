@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
+  AppState,
+  Dimensions,
   FlatList,
-  KeyboardAvoidingView,
+  Keyboard,
   Modal,
   Platform,
   Pressable,
@@ -16,19 +18,28 @@ import { io } from "socket.io-client"
 import { apiRequest, mobileCareCircle } from "../lib/api"
 import {
   loadChatNicknames,
-  loadHiddenChatPresets,
   saveChatNickname,
-  saveChatPartner,
-  saveHiddenChatPresets
+  saveChatPartner
 } from "../lib/storage"
 import { useI18n } from "../i18n/I18nContext"
+import { formatChatDayDivider, formatTimeShort } from "../i18n/dateLocale"
 import TranslatedUgcText from "../components/TranslatedUgcText"
 import FaceTalkSheet from "../components/FaceTalkSheet"
 import { ChatVoiceBubble, ChatVoiceRecorder } from "../components/ChatVoice"
+import { AvatarMark } from "../components/AvatarMark"
+import { saveAvatarUri } from "../lib/avatarStore"
 import { resolveCarePresetKey } from "../lib/presetResolve"
-import { chatPresetKeysForRole } from "../lib/chatPresets"
 import {
-  requestMicPermission
+  SPEECH_LOCALE,
+  bindUtteranceHandlers,
+  clearVoiceHandlers,
+  abortVoiceWav,
+  isVoiceAvailable,
+  polishSpeechText,
+  requestMicPermission,
+  startListening,
+  stopListening,
+  usesAppleOnDeviceSpeech
 } from "../lib/speechCare"
 import { colors } from "./new_ui/tokens"
 import { NeoIcon } from "./new_ui/NeoIcons"
@@ -57,6 +68,7 @@ function mapChatMessage(msg, me, i = 0) {
     id: String(msg._id || msg.clientMsgId || `${msg.timestamp || i}`),
     kind,
     audioUrl: msg.audioUrl || "",
+    durationSec: Number(msg.audioDurationSec || msg.durationSec) || 0,
     senderEmail: emailNorm(msg.senderEmail),
     targetEmail: emailNorm(msg.targetEmail),
     displayText: fromMe
@@ -98,16 +110,18 @@ export default function ChatScreen({
   apiBaseUrl,
   token,
   myEmail,
-  role,
+  role: _role,
   uiLang: _uiLang,
   onBack,
   embedded = false,
   onOpenCareCircle,
   onUnreadChange,
   pendingPartnerEmail,
-  onPendingPartnerConsumed
+  onPendingPartnerConsumed,
+  onThreadChange
 }) {
   const { t, lang } = useI18n()
+  const [kbPad, setKbPad] = useState(0)
 
   const [contacts, setContacts] = useState([])
   const [inboxLoading, setInboxLoading] = useState(true)
@@ -127,7 +141,6 @@ export default function ChatScreen({
   const [voiceHint, setVoiceHint] = useState("")
   const [shortcutDraft, setShortcutDraft] = useState("")
   const [shortcutEditId, setShortcutEditId] = useState("")
-  const [hiddenPresets, setHiddenPresets] = useState([])
   const [customPhrases, setCustomPhrases] = useState([])
   const [nicknames, setNicknames] = useState({})
   const [profileModal, setProfileModal] = useState(null) // { email, name, role, draft }
@@ -136,11 +149,42 @@ export default function ChatScreen({
   const flatListRef = useRef(null)
   const partnerRef = useRef(null)
   const pendingPhraseKeyRef = useRef("")
-  const SYSTEM_PRESET_KEYS = chatPresetKeysForRole(role)
+  const voiceTranscriptRef = useRef("")
+  const iosVoiceSessionRef = useRef(null)
+  const faceOpenRef = useRef(false)
 
   useEffect(() => {
     partnerRef.current = partner
-  }, [partner])
+    onThreadChange?.(Boolean(partner))
+  }, [partner, onThreadChange])
+
+  useEffect(() => {
+    faceOpenRef.current = faceOpen
+    if (!faceOpen) return
+    Keyboard.dismiss()
+    setRecording(false)
+    setVoiceHint("")
+    iosVoiceSessionRef.current = null
+    clearVoiceHandlers()
+    abortVoiceWav().catch(() => {})
+  }, [faceOpen])
+
+  useEffect(() => {
+    const showEvt = Platform.OS === "ios" ? "keyboardWillChangeFrame" : "keyboardDidShow"
+    const hideEvt = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide"
+    const onChange = (e) => {
+      const endY = e?.endCoordinates?.screenY
+      if (typeof endY !== "number") return
+      setKbPad(Math.max(0, Dimensions.get("window").height - endY))
+    }
+    const onHide = () => setKbPad(0)
+    const showSub = Keyboard.addListener(showEvt, onChange)
+    const hideSub = Keyboard.addListener(hideEvt, onHide)
+    return () => {
+      showSub.remove()
+      hideSub.remove()
+    }
+  }, [])
 
   const looksLikeEmail = (value) => /@/.test(String(value || "").trim())
 
@@ -194,6 +238,12 @@ export default function ChatScreen({
       const meta = inboxResult.status === "fulfilled" ? inboxResult.value : { threads: [], unreadTotal: 0 }
       const members = Array.isArray(circle?.members) ? circle.members : []
       const threads = Array.isArray(meta?.threads) ? meta.threads : []
+      members.forEach((m) => {
+        if (m?.email && m?.avatarData) saveAvatarUri(m.email, m.avatarData)
+      })
+      threads.forEach((row) => {
+        if (row?.partnerEmail && row?.avatarData) saveAvatarUri(row.partnerEmail, row.avatarData)
+      })
       const byPartner = Object.fromEntries(threads.map((row) => [emailNorm(row.partnerEmail), row]))
       const mapThreadBits = (hit = {}) => ({
         lastPreview: hit.lastPreview || "",
@@ -265,8 +315,8 @@ export default function ChatScreen({
     }
   }, [myEmail])
 
-  const loadHistory = async (pEmail) => {
-    setLoading(true)
+  const loadHistory = async (pEmail, { silent } = {}) => {
+    if (!silent) setLoading(true)
     const me = emailNorm(myEmail)
     try {
       const data = await apiRequest({
@@ -278,18 +328,33 @@ export default function ChatScreen({
       setMessages(
         list.map((msg, i) => mapChatMessage(msg, me, i))
       )
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 150)
+      requestAnimationFrame(() => {
+        try {
+          flatListRef.current?.scrollToOffset?.({ offset: 0, animated: false })
+        } catch {
+          // ignore
+        }
+      })
     } catch {
       const fallback = ensureFilled([], () => screenshotChatMessages(me, pEmail), 3)
       setMessages(fallback.map((msg, i) => mapChatMessage(msg, me, i)))
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
   useEffect(() => {
     if (partner?.email) loadHistory(partner.email)
   }, [partner?.email, apiBaseUrl, token, myEmail])
+
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state !== "active") return
+      const email = partnerRef.current?.email
+      if (email) loadHistory(email, { silent: true })
+    })
+    return () => sub.remove()
+  }, [apiBaseUrl, token, myEmail])
 
   useEffect(() => {
     if (partner?.email) loadPhrases()
@@ -323,14 +388,23 @@ export default function ChatScreen({
       const current = emailNorm(partnerRef.current?.email)
       const inThisThread = current && ((from === me && to === current) || (from === current && to === me))
       if (inThisThread) {
+        const incomingId = String(msg._id || msg.clientMsgId || "")
         setMessages((prev) => {
-          if (msg.clientMsgId && prev.some((m) => m.id === msg.clientMsgId)) return prev
+          if (incomingId && prev.some((m) => m.id === incomingId || (msg.clientMsgId && m.id === msg.clientMsgId))) {
+            return prev
+          }
           return [
             ...prev,
             mapChatMessage({ ...msg, clientMsgId: msg.clientMsgId }, me)
           ]
         })
-        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80)
+        requestAnimationFrame(() => {
+          try {
+            flatListRef.current?.scrollToOffset?.({ offset: 0, animated: true })
+          } catch {
+            // inverted list may not be mounted
+          }
+        })
         if (from !== me) {
           apiRequest({
             apiBaseUrl,
@@ -443,12 +517,10 @@ export default function ChatScreen({
       clientMsgId
     })
     setInputText("")
-    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80)
   }
 
   const openPhrases = () => {
     loadPhrases()
-    loadHiddenChatPresets(myEmail).then((keys) => setHiddenPresets(keys))
     setPhraseEditing(false)
     setShortcutDraft("")
     setShortcutEditId("")
@@ -462,9 +534,19 @@ export default function ChatScreen({
     setShortcutEditId("")
   }
 
+  const voiceLockUntilRef = useRef(0)
+
   const handleMic = async () => {
-    if (voiceBusy || !partner?.email) return
+    if (faceOpenRef.current || voiceBusy || !partner?.email) return
+    const now = Date.now()
     if (recording) {
+      if (now < voiceLockUntilRef.current) return
+      if (Platform.OS === "ios" && usesAppleOnDeviceSpeech(lang)) {
+        try { await stopListening() } catch { /* ignore */ }
+        iosVoiceSessionRef.current?.completeNow?.()
+        iosVoiceSessionRef.current = null
+        clearVoiceHandlers()
+      }
       setRecording(false)
       return
     }
@@ -477,17 +559,49 @@ export default function ChatScreen({
       setVoiceHint(t("phrase.permDenied"))
       return
     }
+    voiceTranscriptRef.current = ""
+    voiceLockUntilRef.current = now + 400
     setVoiceHint(t("chat.voiceRecording"))
     setRecording(true)
+    if (Platform.OS === "ios" && usesAppleOnDeviceSpeech(lang)) {
+      const available = await isVoiceAvailable()
+      if (available) {
+        iosVoiceSessionRef.current = bindUtteranceHandlers({
+          onHeard: (text) => {
+            if (faceOpenRef.current) return
+            voiceTranscriptRef.current = text
+            if (text) setVoiceHint(text)
+          },
+          onComplete: (text) => {
+            if (faceOpenRef.current) return
+            if (text) voiceTranscriptRef.current = text
+          },
+          onError: () => {}
+        })
+        try {
+          await startListening(lang, { silenceMs: 4000 })
+        } catch {
+          iosVoiceSessionRef.current = null
+        }
+      }
+    }
   }
 
-  const sendVoiceBlob = async ({ mime, b64 }) => {
+  const sendVoiceBlob = async ({ mime, b64, durationSec }) => {
     if (!partner?.email || !b64) return
     setVoiceBusy(true)
     setVoiceHint(t("chat.voiceSending"))
     const me = emailNorm(myEmail)
     const them = emailNorm(partner.email)
     const clientMsgId = `voice-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    // iOS 有蘋果語音的語才帶 transcript；菲律賓文等 Apple 不支援的語改由後端 Whisper 聽 WAV
+    let transcript = ""
+    if (Platform.OS === "ios" && usesAppleOnDeviceSpeech(lang)) {
+      transcript = String(voiceTranscriptRef.current || "").trim()
+      if (transcript) {
+        transcript = await polishSpeechText({ apiBaseUrl, token, text: transcript, lang })
+      }
+    }
     try {
       const data = await apiRequest({
         apiBaseUrl,
@@ -499,19 +613,29 @@ export default function ChatScreen({
           audioBase64: b64,
           mimeType: mime || "audio/webm",
           sourceLang: lang,
+          transcript,
           clientMsgId
         }
       })
       const saved = data?.message || {}
+      const merged = {
+        ...saved,
+        originalText: saved.originalText || transcript,
+        translatedText: saved.translatedText || saved.originalText || transcript,
+        audioDurationSec: saved.audioDurationSec || durationSec || 0,
+        clientMsgId
+      }
       setMessages((prev) => {
         if (prev.some((m) => m.id === clientMsgId || (saved._id && m.id === String(saved._id)))) return prev
-        return [...prev, mapChatMessage({ ...saved, clientMsgId }, me)]
+        return [...prev, mapChatMessage(merged, me)]
       })
       setVoiceHint("")
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80)
     } catch {
       setVoiceHint(t("chat.voiceFail"))
     } finally {
+      voiceTranscriptRef.current = ""
+      iosVoiceSessionRef.current = null
+      if (Platform.OS === "ios" && !faceOpenRef.current) clearVoiceHandlers()
       setVoiceBusy(false)
     }
   }
@@ -551,27 +675,10 @@ export default function ChatScreen({
     setPhraseEditing(true)
   }
 
-  const removePreset = (presetKey) => {
-    if (!presetKey) return
-    setHiddenPresets((prev) => {
-      if (prev.includes(presetKey)) return prev
-      const next = [...prev, presetKey]
-      saveHiddenChatPresets(myEmail, next).catch(() => {})
-      return next
-    })
-  }
-
-  const restorePresets = () => {
-    setHiddenPresets([])
-    saveHiddenChatPresets(myEmail, []).catch(() => {})
-  }
-
   const removeShortcutRow = (item) => {
     if (item?.custom) {
       deleteShortcut(item.id)
-      return
     }
-    removePreset(item?.presetKey)
   }
 
   const deleteShortcut = async (id) => {
@@ -604,32 +711,50 @@ export default function ChatScreen({
     closePhrases()
   }
 
-  const phraseRows = [
-    ...customPhrases.map((p) => ({
-      key: `c-${p.id || p._id || p.text}`,
-      id: p.id || p._id,
-      text: p.text,
-      custom: true
-    })),
-    ...SYSTEM_PRESET_KEYS.map((key) => ({
-      key: `s-${key}`,
-      presetKey: key,
-      text: t(`chat.preset.${key}`),
-      custom: false
-    }))
-  ]
-  const visibleRows = phraseRows.filter((row) => row.custom || !hiddenPresets.includes(row.presetKey))
+  const phraseRows = customPhrases.map((p) => ({
+    key: `c-${p.id || p._id || p.text}`,
+    id: p.id || p._id,
+    text: p.text,
+    custom: true
+  }))
+  const visibleRows = phraseRows
 
   const formatTime = (ts) => {
     if (!ts) return ""
-    try {
-      return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    } catch {
-      return ""
-    }
+    return formatTimeShort(ts, lang)
   }
 
+  const listData = useMemo(() => {
+    const chrono = messages.slice().sort((a, b) => {
+      const ta = new Date(a.timestamp || 0).getTime()
+      const tb = new Date(b.timestamp || 0).getTime()
+      return ta - tb
+    })
+    const rows = []
+    let lastDay = ""
+    chrono.forEach((msg) => {
+      const day = String(msg.timestamp || "").slice(0, 10)
+      if (day && day !== lastDay) {
+        rows.push({
+          rowType: "date",
+          id: `day-${day}`,
+          label: formatChatDayDivider(msg.timestamp, lang)
+        })
+        lastDay = day
+      }
+      rows.push({ rowType: "msg", ...msg })
+    })
+    return rows.reverse()
+  }, [messages, lang])
+
   const renderMessage = ({ item }) => {
+    if (item.rowType === "date") {
+      return (
+        <View style={styles.dateChipWrap}>
+          <Text style={styles.dateChip}>{item.label}</Text>
+        </View>
+      )
+    }
     const isMe = emailNorm(item.senderEmail) === emailNorm(myEmail)
     const incomingText = item.originalText || item.displayText || ""
     const contentKey = phraseContentKey(item.phraseKey)
@@ -638,34 +763,34 @@ export default function ChatScreen({
         ? `${item.audioUrl}${item.audioUrl.includes("?") ? "&" : "?"}access_token=${encodeURIComponent(token)}`
         : `${String(apiBaseUrl || "").replace(/\/+$/, "")}${item.audioUrl}?access_token=${encodeURIComponent(token)}`)
       : ""
-    const captionRaw = isMe ? (item.originalText || item.displayText || "") : (item.translatedText || item.displayText || "")
-    const voiceHasTranscript = item.kind === "voice" && !isVoicePlaceholder(captionRaw) && !isVoicePlaceholder(incomingText)
+    const captionRaw = item.originalText || item.displayText || ""
+    const voiceHasTranscript = item.kind === "voice" && !isVoicePlaceholder(captionRaw)
+    const timeLabel = formatTime(item.timestamp)
     return (
       <View style={[styles.bubbleRow, isMe ? styles.bubbleRowRight : styles.bubbleRowLeft]}>
+        {isMe && timeLabel ? <Text style={styles.timeOutside}>{timeLabel}</Text> : null}
         <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
           {item.kind === "voice" ? (
             <>
               <ChatVoiceBubble
                 audioUrl={voiceSrc}
-                caption={isMe && voiceHasTranscript ? captionRaw : ""}
+                caption=""
                 isMe={isMe}
                 playLabel={t("chat.voicePlay")}
+                pageOrigin={String(apiBaseUrl || "").replace(/\/+$/, "")}
+                durationSec={item.durationSec}
               />
-              {!isMe && voiceHasTranscript ? (
+              {voiceHasTranscript ? (
                 <TranslatedUgcText
-                  text={incomingText}
+                  text={item.originalText || item.displayText || ""}
                   sourceLang={item.sourceLang}
                   apiBaseUrl={apiBaseUrl}
                   token={token}
-                  style={[styles.bubbleText, styles.bubbleTextThem]}
+                  allowOriginal={!isMe}
+                  style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}
                 />
               ) : null}
-              {!isMe && !voiceHasTranscript ? (
-                <Text style={[styles.bubbleText, styles.bubbleTextThem]}>{t("chat.voiceMsg")}</Text>
-              ) : null}
             </>
-          ) : isMe ? (
-            <Text style={[styles.bubbleText, styles.bubbleTextMe]}>{item.displayText}</Text>
           ) : (
             <TranslatedUgcText
               text={incomingText}
@@ -674,13 +799,12 @@ export default function ChatScreen({
               messageKey={item.phraseKey}
               apiBaseUrl={apiBaseUrl}
               token={token}
-              style={[styles.bubbleText, styles.bubbleTextThem]}
+              allowOriginal={!isMe}
+              style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}
             />
           )}
-          <Text style={[styles.bubbleTime, isMe ? styles.bubbleTimeMe : styles.bubbleTimeThem]}>
-            {formatTime(item.timestamp)}
-          </Text>
         </View>
+        {!isMe && timeLabel ? <Text style={styles.timeOutside}>{timeLabel}</Text> : null}
       </View>
     )
   }
@@ -688,9 +812,6 @@ export default function ChatScreen({
   const renderContact = ({ item }) => {
     const title = displayTitle(item)
     const roleLabel = t(`roles.${item.role}`) || item.role || ""
-    const avatarChar = ROLE_AVATAR[item.role] || "?"
-    const avatarBg = ROLE_AVATAR_BG[item.role] || colors.mintSoft
-    const avatarFg = ROLE_AVATAR_FG[item.role] || colors.pine
     return (
       <Pressable
         style={styles.contactRow}
@@ -704,9 +825,7 @@ export default function ChatScreen({
           accessibilityRole="button"
           accessibilityLabel={t("chat.profileTitle")}
         >
-          <View style={[styles.avatar, { backgroundColor: avatarBg }]}>
-            <Text style={[styles.avatarText, { color: avatarFg }]}>{avatarChar}</Text>
-          </View>
+          <AvatarMark email={item.email} size={44} apiBaseUrl={apiBaseUrl} token={token} />
         </Pressable>
         <View style={styles.contactBody}>
           <Text style={styles.contactName} numberOfLines={1}>{title}</Text>
@@ -751,21 +870,7 @@ export default function ChatScreen({
         <View style={styles.nickSheet}>
           <Text style={styles.nickTitle}>{t("chat.profileTitle")}</Text>
           <View style={styles.profileAvatarRow}>
-            <View
-              style={[
-                styles.avatarLg,
-                { backgroundColor: ROLE_AVATAR_BG[profileModal.role] || colors.mintSoft }
-              ]}
-            >
-              <Text
-                style={[
-                  styles.avatarTextLg,
-                  { color: ROLE_AVATAR_FG[profileModal.role] || colors.pine }
-                ]}
-              >
-                {ROLE_AVATAR[profileModal.role] || "?"}
-              </Text>
-            </View>
+            <AvatarMark email={profileModal.email} size={56} apiBaseUrl={apiBaseUrl} token={token} inModal />
             <View style={styles.profileAvatarMeta}>
               <Text style={styles.profileHeroName} numberOfLines={2}>
                 {String(nicknames[profileModal.email] || "").trim() ||
@@ -915,7 +1020,14 @@ export default function ChatScreen({
           ) : null}
         </Pressable>
         <Pressable
-          onPress={() => setFaceOpen(true)}
+          onPress={() => {
+            Keyboard.dismiss()
+            faceOpenRef.current = true
+            clearVoiceHandlers()
+            abortVoiceWav().catch(() => {})
+            setVoiceHint("")
+            setFaceOpen(true)
+          }}
           style={styles.faceBtn}
           accessibilityRole="button"
           accessibilityLabel={t("chat.faceTalk")}
@@ -925,11 +1037,7 @@ export default function ChatScreen({
         </Pressable>
       </View>
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={0}
-      >
+      <View style={{ flex: 1 }}>
         {loading ? (
           <View style={styles.center}>
             <ActivityIndicator color={colors.pine} />
@@ -938,10 +1046,13 @@ export default function ChatScreen({
         ) : (
           <FlatList
             ref={flatListRef}
-            data={messages}
-            keyExtractor={(item, i) => item.id || String(i)}
+            data={listData}
+            inverted={listData.length > 0}
+            keyExtractor={(item, i) => item.id || item.rowType + String(i)}
             renderItem={renderMessage}
             contentContainerStyle={styles.messageList}
+            keyboardDismissMode="interactive"
+            keyboardShouldPersistTaps="handled"
             ListEmptyComponent={
               <View style={styles.center}>
                 <Text style={styles.emptyText}>{t("chat.noHistory")}</Text>
@@ -950,18 +1061,35 @@ export default function ChatScreen({
           />
         )}
 
-        <View style={styles.composer}>
+        <View style={[styles.composer, { paddingBottom: kbPad > 0 ? kbPad : (Platform.OS === "ios" ? 20 : 8) }]}>
           {recording || voiceHint ? (
             <Text style={styles.voiceHint}>{voiceHint || t("chat.voiceHint")}</Text>
           ) : null}
           <ChatVoiceRecorder
-            recording={recording}
+            recording={recording && !faceOpen}
+            locale={SPEECH_LOCALE[lang] || SPEECH_LOCALE.zh}
+            enableSpeech={false}
+            onStarted={() => {
+              if (faceOpenRef.current) return
+              setVoiceHint(t("chat.voiceRecording"))
+            }}
             onRecorded={(blob) => {
-              setRecording(false)
+              if (faceOpenRef.current) return
+              if (!blob?.b64) return
               sendVoiceBlob(blob)
             }}
-            onFail={() => {
+            onFail={(err) => {
+              if (faceOpenRef.current) return
               setRecording(false)
+              const code = String(err || "")
+              if (code === "TOO_SHORT" || /too short/i.test(code)) {
+                setVoiceHint(t("chat.voiceTooShort"))
+                return
+              }
+              if (code === "SILENCE" || /no sound/i.test(code)) {
+                setVoiceHint(t("chat.voiceSilent"))
+                return
+              }
               setVoiceHint(t("chat.voiceFail"))
             }}
           />
@@ -980,6 +1108,8 @@ export default function ChatScreen({
             <TextInput
               style={styles.messageInput}
               value={inputText}
+              editable={!faceOpen}
+              showSoftInputOnFocus={!faceOpen}
               onChangeText={(v) => {
                 pendingPhraseKeyRef.current = ""
                 setInputText(v)
@@ -998,7 +1128,7 @@ export default function ChatScreen({
             </Pressable>
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </View>
 
       <Modal visible={phraseOpen} animationType="slide" transparent onRequestClose={closePhrases}>
         <View style={styles.phraseMask}>
@@ -1033,14 +1163,8 @@ export default function ChatScreen({
               data={visibleRows}
               keyExtractor={(item) => item.key}
               style={styles.phraseList}
-              ListEmptyComponent={<Text style={styles.emptyText}>{t("chat.phraseEmpty")}</Text>}
-              ListFooterComponent={
-                phraseEditing && hiddenPresets.length > 0 ? (
-                  <Pressable style={styles.restoreBtn} onPress={restorePresets}>
-                    <Text style={styles.restoreBtnText}>{t("chat.restorePresets")}</Text>
-                  </Pressable>
-                ) : null
-              }
+              ListEmptyComponent={<Text style={styles.phraseEmpty}>{t("chat.phraseEmpty")}</Text>}
+              ListFooterComponent={null}
               renderItem={({ item }) => (
                 phraseEditing ? (
                   <View style={styles.phraseRow}>
@@ -1059,6 +1183,7 @@ export default function ChatScreen({
                 ) : (
                   <Pressable style={styles.phrasePickRow} onPress={() => insertPhrase(item.text, item.presetKey)}>
                     <Text style={styles.phrasePickText}>{item.text}</Text>
+                    <NeoIcon name="chevron-right" size={16} color="#6C727A" />
                   </Pressable>
                 )
               )}
@@ -1068,7 +1193,10 @@ export default function ChatScreen({
       </Modal>
       <FaceTalkSheet
         visible={faceOpen}
-        onClose={() => setFaceOpen(false)}
+        onClose={() => {
+          faceOpenRef.current = false
+          setFaceOpen(false)
+        }}
         apiBaseUrl={apiBaseUrl}
         token={token}
         myLang={lang}
@@ -1268,6 +1396,14 @@ const styles = StyleSheet.create({
   centerGrow: { flexGrow: 1, justifyContent: "center", padding: 24 },
   loadingText: { color: colors.textMuted, marginTop: 8 },
   emptyText: { color: colors.textMuted, fontSize: 14 },
+  phraseEmpty: {
+    color: colors.textMuted,
+    fontSize: 14,
+    textAlign: "center",
+    paddingVertical: 28,
+    paddingHorizontal: 16,
+    fontWeight: "600"
+  },
   emptyBox: { alignItems: "center", gap: 8, paddingHorizontal: 24 },
   emptyTitle: { color: colors.text, fontWeight: "800", fontSize: 16, textAlign: "center" },
   emptyHint: { color: colors.textMuted, fontSize: 14, textAlign: "center", lineHeight: 20 },
@@ -1281,9 +1417,9 @@ const styles = StyleSheet.create({
   },
   linkBtnText: { color: "#fff", fontWeight: "800" },
 
-  messageList: { padding: 12, gap: 8, flexGrow: 1 },
+  messageList: { padding: 12, gap: 8 },
 
-  bubbleRow: { flexDirection: "row", marginVertical: 3 },
+  bubbleRow: { flexDirection: "row", marginVertical: 3, alignItems: "flex-end", gap: 6 },
   bubbleRowRight: { justifyContent: "flex-end" },
   bubbleRowLeft: { justifyContent: "flex-start" },
 
@@ -1307,10 +1443,27 @@ const styles = StyleSheet.create({
   bubbleText: { fontSize: 15, lineHeight: 22 },
   bubbleTextMe: { color: "#fff" },
   bubbleTextThem: { color: colors.text },
-  bubbleOriginal: { color: "#93c5fd", fontSize: 11, lineHeight: 16 },
-  bubbleTime: { fontSize: 10, marginTop: 2 },
-  bubbleTimeMe: { color: "#bfdbfe", textAlign: "right" },
-  bubbleTimeThem: { color: "#9ca3af" },
+  timeOutside: {
+    fontSize: 10,
+    color: "#8E95A3",
+    fontWeight: "600",
+    marginBottom: 2,
+    maxWidth: 48
+  },
+  dateChipWrap: {
+    alignItems: "center",
+    marginVertical: 10
+  },
+  dateChip: {
+    color: "#8E95A3",
+    fontSize: 12,
+    fontWeight: "700",
+    backgroundColor: "rgba(255,255,255,0.06)",
+    overflow: "hidden",
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 999
+  },
 
   inputBar: {
     flexDirection: "row",
@@ -1366,10 +1519,10 @@ const styles = StyleSheet.create({
   sendBtnDisabled: { backgroundColor: "rgba(16,185,129,0.35)" },
   sendBtnText: { color: "#fff", fontWeight: "900" },
 
-  phraseMask: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(15,23,42,0.35)" },
+  phraseMask: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(11,13,14,0.55)" },
   phraseDismiss: { flex: 1 },
   phraseSheet: {
-    backgroundColor: colors.card,
+    backgroundColor: "#16181D",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 8,
@@ -1380,10 +1533,10 @@ const styles = StyleSheet.create({
   },
   sheetHandle: {
     alignSelf: "center",
-    width: 36,
+    width: 40,
     height: 4,
-    borderRadius: 2,
-    backgroundColor: "#d1d5db",
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.2)",
     marginBottom: 4
   },
   phraseHead: {
@@ -1393,30 +1546,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8
   },
-  phraseTitle: { fontSize: 17, fontWeight: "700", color: "#0f172a", flex: 1 },
-  phraseHeadBtn: { color: colors.pine, fontWeight: "600", fontSize: 16 },
+  phraseTitle: { fontSize: 18, fontWeight: "700", color: "#FFFFFF", flex: 1 },
+  phraseHeadBtn: { color: "#10B981", fontWeight: "700", fontSize: 14 },
   phraseList: { maxHeight: 400 },
   phrasePickRow: {
-    minHeight: 48,
-    justifyContent: "center",
+    height: 52,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: 16,
-    paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#e5e7eb"
+    borderBottomColor: "rgba(255,255,255,0.05)"
   },
-  phrasePickText: { color: "#0f172a", fontSize: 16, lineHeight: 22 },
+  phrasePickText: { color: "#FFFFFF", fontSize: 16, fontWeight: "400", flex: 1, marginRight: 8 },
   phraseRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    minHeight: 48,
+    height: 52,
     paddingHorizontal: 16,
-    paddingVertical: 10,
     gap: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#e5e7eb"
+    borderBottomColor: "rgba(255,255,255,0.05)"
   },
-  phraseText: { color: "#0f172a", fontSize: 16, flex: 1, lineHeight: 22 },
+  phraseText: { color: "#FFFFFF", fontSize: 16, flex: 1, lineHeight: 22 },
   phraseActions: { flexDirection: "row", alignItems: "center", gap: 16 },
   rowAction: { color: colors.pine, fontWeight: "600", fontSize: 15 },
   restoreBtn: { alignItems: "center", paddingVertical: 16 },

@@ -47,7 +47,6 @@ function Chip({ on, label, onPress, muted }) {
   )
 }
 
-/** 「無」放最後。點了收合；再點一次展開（誤點可改）。 */
 function ChipSection({ items, value, noneId, onChange, lang, otherValue, onOther, otherPlaceholder }) {
   const noneOn = value.includes(noneId)
   const groupIds = items.map((item) => item.id)
@@ -77,7 +76,7 @@ function ChipSection({ items, value, noneId, onChange, lang, otherValue, onOther
           value={otherValue}
           onChangeText={onOther}
           placeholder={otherPlaceholder}
-          placeholderTextColor="#98a2b3"
+          placeholderTextColor="#8E95A3"
         />
       )}
     </View>
@@ -268,40 +267,46 @@ const styles = StyleSheet.create({
   pad: { padding: 16, paddingBottom: 48, gap: 10 },
   error: { color: "#E05A47", fontWeight: "700" },
   ok: { color: colors.mint, fontWeight: "700" },
-  label: { color: colors.text, fontWeight: "800", fontSize: 14, marginTop: 8 },
+  label: { color: "#FFFFFF", fontWeight: "700", fontSize: 16, marginTop: 16, marginBottom: 10 },
   group: { gap: 6 },
   groupTitle: { color: colors.textMuted, fontWeight: "700", fontSize: 13 },
   sectionBody: { gap: 8 },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: {
-    borderWidth: 1,
-    borderColor: colors.border,
+    height: 42,
+    paddingHorizontal: 16,
     borderRadius: 12,
     borderCurve: "continuous",
-    backgroundColor: colors.card,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    minHeight: 44,
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "#181B22",
+    alignItems: "center",
     justifyContent: "center"
   },
-  chipOn: { borderColor: colors.pine, backgroundColor: colors.mintSoft },
-  chipMuted: { borderColor: colors.border, backgroundColor: colors.bg },
-  chipText: { color: colors.textMuted, fontWeight: "700", fontSize: 15 },
-  chipTextOn: { color: colors.mint },
-  chipTextMuted: { color: colors.textMuted, fontWeight: "700" },
+  chipOn: {
+    backgroundColor: "#12281E",
+    borderColor: "#10B981",
+    shadowColor: "#10B981",
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 }
+  },
+  chipMuted: { borderColor: "rgba(255,255,255,0.1)", backgroundColor: "#181B22" },
+  chipText: { color: "rgba(255,255,255,0.8)", fontWeight: "500", fontSize: 14 },
+  chipTextOn: { color: "#10B981", fontWeight: "700", fontSize: 14 },
+  chipTextMuted: { color: "rgba(255,255,255,0.8)", fontWeight: "500" },
   input: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: "rgba(255,255,255,0.1)",
     borderRadius: 12,
     borderCurve: "continuous",
     paddingHorizontal: 12,
-    paddingVertical: 12,
+    height: 48,
     fontSize: 16,
-    color: colors.text,
-    backgroundColor: colors.card,
-    minHeight: 48
+    color: "#FFFFFF",
+    backgroundColor: "#181B22"
   },
-  inputTall: { minHeight: 88, textAlignVertical: "top" },
+  inputTall: { height: 88, textAlignVertical: "top", paddingVertical: 12 },
   saveBtn: {
     marginTop: 12,
     backgroundColor: colors.pine,

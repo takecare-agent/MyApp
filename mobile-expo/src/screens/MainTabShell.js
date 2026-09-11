@@ -43,13 +43,18 @@ import NewPatientHome from "./new_ui/NewPatientHome"
 import { NightPills } from "./new_ui/NightPills"
 import { GlassCircle, IconLive, IconReload } from "./new_ui/GlassCircle"
 import { NeoIcon } from "./new_ui/NeoIcons"
-import { ensureFilled, fillValue, screenshotHomeReminders, screenshotBpLatest } from "./new_ui/screenshotFill"
+import { AvatarMark, AvatarPickModal } from "../components/AvatarMark"
+import { saveAvatarUri } from "../lib/avatarStore"
+import PatientMoodDiary from "./PatientMoodDiary"
+import { fillValue, screenshotBpLatest } from "./new_ui/screenshotFill"
+import { toBpSparkPoints } from "./new_ui/BpSparkline"
+import { carePresetLabel } from "../lib/presetResolve"
 
-function greetingByHour() {
+function greetingByHour(t) {
   const h = new Date().getHours()
-  if (h < 11) return "早安，祝您愉快！"
-  if (h < 17) return "午安，祝您愉快！"
-  return "晚安，祝您愉快！"
+  if (h < 11) return t("greet.morning")
+  if (h < 17) return t("greet.afternoon")
+  return t("greet.evening")
 }
 
 function elderLabel(user, linked) {
@@ -72,8 +77,21 @@ function isPendingAlert(record) {
   return record.status !== "Done"
 }
 
-function reminderTitle(record, fallback) {
-  return record?.title || record?.content || record?.text || fallback
+function reminderTitle(record, t, fallback) {
+  return carePresetLabel({
+    text: record?.title || record?.content || record?.text,
+    contentKey: record?.contentKey,
+    t,
+    fallback
+  })
+}
+
+function homeTodoStatus(role, openCount, t) {
+  const n = Number(openCount) || 0
+  const who = role === "family" || role === "patient" ? role : "caregiver"
+  return n > 0
+    ? t(`home.statusTodoOpen.${who}`, { n })
+    : t(`home.statusTodoDone.${who}`)
 }
 
 function TabBar({ tabs, active, onChange, badges = {}, nightSkin = false }) {
@@ -176,6 +194,7 @@ function HomePanel({
   const [pendingCount, setPendingCount] = useState(0)
   const [reminders, setReminders] = useState([])
   const [bpLatest, setBpLatest] = useState(null)
+  const [bpPoints, setBpPoints] = useState([])
   const [loadError, setLoadError] = useState("")
   const [healthOpen, setHealthOpen] = useState(false)
   const [healthLoading, setHealthLoading] = useState(false)
@@ -192,7 +211,7 @@ function HomePanel({
     const prefix = apiPrefixForRole(role)
     try {
       const tasks = [
-        apiRequest({ apiBaseUrl, path: `${prefix}/blood-pressure/history?limit=1`, token }),
+        apiRequest({ apiBaseUrl, path: `${prefix}/blood-pressure/history?limit=21`, token }),
         apiRequest({ apiBaseUrl, path: `${prefix}/reminders`, token })
       ]
       if (role === "caregiver" || role === "patient") {
@@ -225,6 +244,7 @@ function HomePanel({
 
       const bpRecords = Array.isArray(bpData?.records) ? bpData.records : []
       setBpLatest(fillValue(bpData?.latest || bpRecords[0] || null, screenshotBpLatest))
+      setBpPoints(toBpSparkPoints(bpRecords))
 
       const remList = Array.isArray(remData?.records)
         ? remData.records
@@ -246,15 +266,16 @@ function HomePanel({
           time: t.time,
           isCompleted: false
         }))
-      setReminders(ensureFilled([...openOnce, ...openTpl].slice(0, 5), screenshotHomeReminders, 3))
+      setReminders([...openOnce, ...openTpl].slice(0, 5))
 
       const alertList = Array.isArray(alertData?.records) ? alertData.records : []
       setPendingCount(alertList.filter(isPendingAlert).length)
       if (!silent) setLoadError("")
     } catch (e) {
       if (!silent) setLoadError(e.message || t("common.loadFailed"))
-      setReminders(ensureFilled([], screenshotHomeReminders, 3))
+      setReminders([])
       setBpLatest(fillValue(null, screenshotBpLatest))
+      setBpPoints([])
     } finally {
       if (!silent) setLoading(false)
     }
@@ -262,10 +283,6 @@ function HomePanel({
 
   useEffect(() => { loadHome() }, [loadHome])
   usePollingRefresh(loadHome, { intervalMs: 5000 })
-
-  const statusLine = role === "patient"
-    ? ""
-    : (pendingCount > 0 ? "" : t("home.noPending"))
 
   const linked = user?.linkedPatientEmail || user?.activePatientEmail || ""
   const bpText = bpLatest
@@ -276,9 +293,12 @@ function HomePanel({
     : ""
   const homeTodos = reminders.map((item, index) => ({
     id: item._id || item.id || `r-${index}`,
-    title: reminderTitle(item, t("reminders.item")),
+    title: reminderTitle(item, t, t("reminders.item")),
+    contentKey: item.contentKey || "",
+    sourceLang: item.sourceLang || "",
     done: Boolean(item.isCompleted)
   }))
+  const statusLine = homeTodoStatus(role, homeTodos.filter((item) => !item.done).length, t)
 
   const openHealthCard = async () => {
     if (!linked || !apiBaseUrl || !token) {
@@ -326,14 +346,17 @@ function HomePanel({
   )
 
   if (USE_MORANDI_UI && role === "patient") {
-    const hourWord = greetingByHour().split("，")[0]
-    const helloLine = `${hourWord}，${user?.name || t("roles.patient")}`
+    const helloLine = `${greetingByHour(t)} ${user?.name || t("roles.patient")}`
+    const patientTodoOpen = homeTodos.filter((item) => !item.done).length
     return (
       <View style={{ flex: 1, backgroundColor: morandi.bg }}>
         {loadError ? <Text style={[styles.homeError, { paddingHorizontal: 20, paddingTop: 8 }]}>{loadError}</Text> : null}
         <NewPatientHome
           helloLine={helloLine}
-          todos={homeTodos}
+          statusText={homeTodoStatus("patient", patientTodoOpen, t)}
+          avatarEmail={user?.email}
+          apiBaseUrl={apiBaseUrl}
+          token={token}
           bpText={bpTextOrEmpty}
           sosHint={t("home.sosHint")}
           refreshing={loading}
@@ -352,11 +375,16 @@ function HomePanel({
       <View style={{ flex: 1, backgroundColor: morandi.bg }}>
         {loadError ? <Text style={[styles.homeError, { paddingHorizontal: 20, paddingTop: 8 }]}>{loadError}</Text> : null}
         <NewCaregiverHome
-          elderName={elderLabel(user, linked) || t("home.careElder")}
-          greeting={greetingByHour()}
-          pendingCount={pendingCount}
+          elderName={user?.name || t(`roles.${role}`) || t("home.careElder")}
+          avatarEmail={user?.email}
+          apiBaseUrl={apiBaseUrl}
+          token={token}
+          greeting={greetingByHour(t)}
+          statusText={homeTodoStatus(role, homeTodos.filter((item) => !item.done).length, t)}
+          pendingCount={homeTodos.filter((item) => !item.done).length}
           todos={homeTodos}
           bpText={bpTextOrEmpty}
+          bpPoints={bpPoints}
           showEmergency={role === "caregiver"}
           refreshing={loading}
           onRefresh={loadHome}
@@ -367,7 +395,7 @@ function HomePanel({
           onWriteDaily={role === "caregiver" ? onWriteDaily : undefined}
           onOpenBp={onOpenBp}
           onRefreshBp={loadHome}
-          onPressStatus={pendingCount > 0 ? () => onOpenTab("watch", "activity") : undefined}
+          onPressStatus={() => onOpenTab("schedule")}
         />
         {healthModal}
       </View>
@@ -437,9 +465,9 @@ function HomePanel({
         {reminders.length ? (
           reminders.map((item, index) => (
             <View key={item._id || item.id || index} style={styles.reminderLine}>
-              {reminderTitle(item, "") ? (
+              {reminderTitle(item, t, "") ? (
                 <TranslatedUgcText
-                  text={reminderTitle(item, "")}
+                  text={reminderTitle(item, t, "")}
                   sourceLang={item.sourceLang}
                   contentKey={item.contentKey}
                   apiBaseUrl={apiBaseUrl}
@@ -633,29 +661,21 @@ function WatchPanel({ role, watchSeg, setWatchSeg, ...screenProps }) {
 
 function CarePanelPatient({ carePage, setCarePage, ...screenProps }) {
   const { t } = useI18n()
-  const seg =
-    carePage === "careDaily" ? "diary"
-      : carePage === "reminders" || !carePage ? "today"
-        : carePage
+  const seg = carePage === "careDaily" || carePage === "diary" ? "diary" : "today"
   return (
     <View style={[styles.flex, USE_MORANDI_UI ? { backgroundColor: morandi.bg } : null]}>
       <SegmentChips
         options={[
           { id: "today", label: t("reminders.todayTodos") },
-          { id: "diary", label: t("reminders.diary") },
-          { id: "bp", label: t("bp.title") }
+          { id: "diary", label: t("reminders.diary") }
         ]}
         value={seg}
         onChange={setCarePage}
       />
-      {seg === "bp" ? (
-        <BloodPressureScreen {...screenProps} embedded onBack={() => setCarePage("today")} />
-      ) : seg === "diary" ? (
-        <CareDailyRecordsScreen
+      {seg === "diary" ? (
+        <PatientMoodDiary
           apiBaseUrl={screenProps.apiBaseUrl}
           token={screenProps.token}
-          role="patient"
-          showSearch
         />
       ) : (
         <PatientRemindersScreen
@@ -680,6 +700,7 @@ function SettingsPanel({
 }) {
   const { t, langShort } = useI18n()
   const extras = getSettingsExtras(role)
+  const [avatarOpen, setAvatarOpen] = useState(false)
 
   if (settingsPage === "health-card") {
     return (
@@ -774,13 +795,18 @@ function SettingsPanel({
       >
       <View style={styles.settingsHero}>
         <View style={styles.settingsAvatarRing}>
-          <View style={styles.settingsAvatar}>
-            <NeoIcon name="user" size={28} color="#FFFFFF" />
-          </View>
+          <AvatarMark email={user?.email} size={72} onPress={() => setAvatarOpen(true)} apiBaseUrl={screenProps.apiBaseUrl} token={screenProps.token} />
         </View>
         <Text style={styles.settingsRole}>{t(`roles.${role}`)}</Text>
         <Text style={styles.settingsName}>{user?.name || t(`roles.${role}`)}</Text>
       </View>
+      <AvatarPickModal
+        visible={avatarOpen}
+        email={user?.email}
+        apiBaseUrl={screenProps.apiBaseUrl}
+        token={screenProps.token}
+        onClose={() => setAvatarOpen(false)}
+      />
       <Text style={styles.settingsGroupLabel}>{t("settings.profile")}</Text>
       <View style={styles.settingsCard}>
         <SettingsRow
@@ -863,7 +889,14 @@ export default function MainTabShell({
   const [firstAidOpen, setFirstAidOpen] = useState(false)
   const [patientSosModalVisible, setPatientSosModalVisible] = useState(false)
   const [langModalVisible, setLangModalVisible] = useState(false)
+  const [chatThreadOpen, setChatThreadOpen] = useState(false)
   const { t } = useI18n()
+
+  useEffect(() => {
+    if (user?.email && user?.avatarData) {
+      saveAvatarUri(user.email, user.avatarData)
+    }
+  }, [user?.email, user?.avatarData])
 
   const screenProps = { role, user, apiBaseUrl, token, uiLang }
 
@@ -930,6 +963,7 @@ export default function MainTabShell({
     setSettingsPage(null)
     setCarePage(null)
     setTab(nextTab)
+    if (nextTab !== "message") setChatThreadOpen(false)
     if (nextTab === "watch" && watchSub) setWatchSeg(watchSub)
     if (nextTab === "watch" && !watchSub) setWatchSeg("live")
   }
@@ -997,6 +1031,7 @@ export default function MainTabShell({
           apiBaseUrl={apiBaseUrl}
           token={token}
           role={role === "family" ? "family" : "caregiver"}
+          user={user}
           initialSeg={carePage === "diary" ? "diary" : "today"}
         />
       )
@@ -1021,6 +1056,7 @@ export default function MainTabShell({
         onUnreadChange={setChatUnread}
         pendingPartnerEmail={openChatWithEmail}
         onPendingPartnerConsumed={onOpenChatConsumed}
+        onThreadChange={setChatThreadOpen}
         onOpenCareCircle={() => {
           setTab("settings")
           setSettingsPage("care-circle")
@@ -1043,7 +1079,7 @@ export default function MainTabShell({
     )
   }
 
-  const hideTabBar = bpOpen || firstAidOpen
+  const hideTabBar = bpOpen || firstAidOpen || chatThreadOpen
 
   return (
     <View style={[styles.shell, USE_NIGHT_WATCH && tab === "watch" ? styles.shellNight : null]}>

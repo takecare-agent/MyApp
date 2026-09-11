@@ -1,11 +1,22 @@
 import { useEffect, useRef, useState } from "react"
-import { Pressable, StyleSheet, Text, View } from "react-native"
+import { Pressable, Platform, StyleSheet, Text, TextInput, View } from "react-native"
 import { apiRequest } from "../lib/api"
 import { resolveCarePresetKey } from "../lib/presetResolve"
 import { useI18n } from "../i18n/I18nContext"
 
 function looksMedical(text) {
   return /藥|劑量|mg\b|ml\b|mmHg|insulin|胰島素|血壓藥|降壓|禁忌|tablet/i.test(String(text || ""))
+}
+
+function textLooksLikeLang(text, lang) {
+  const s = String(text || "")
+  if (lang === "zh") return /[\u4e00-\u9fff]/.test(s)
+  if (lang === "vi") return /[ăâêôơưđĂÂÊÔƠƯĐáàảãạ]/i.test(s)
+  if (lang === "th") return /[\u0e00-\u0e7f]/.test(s)
+  if (lang === "en" || lang === "id" || lang === "tl") {
+    return /[a-zA-Z]/.test(s) && !/[\u4e00-\u9fff]/.test(s)
+  }
+  return true
 }
 
 /** 記憶體快取：避免列表重複打 /translate */
@@ -74,7 +85,7 @@ export default function TranslatedUgcText({
       setDisplay(original)
       return
     }
-    if (sourceLang && sourceLang === lang) {
+    if (sourceLang && sourceLang === lang && textLooksLikeLang(original, lang)) {
       setDisplay(original)
       return
     }
@@ -120,10 +131,27 @@ export default function TranslatedUgcText({
 
   return (
     <View style={compact ? styles.wrapCompact : styles.wrap}>
-      <Text style={style} numberOfLines={numberOfLines}>
-        {notePrefix ? notePrefix : ""}
-        {display}
-      </Text>
+      {compact ? (
+        <Text style={style} numberOfLines={numberOfLines}>
+          {notePrefix ? notePrefix : ""}
+          {display}
+        </Text>
+      ) : Platform.OS === "ios" ? (
+        <TextInput
+          value={`${notePrefix || ""}${display}`}
+          editable={false}
+          multiline
+          scrollEnabled={false}
+          showSoftInputOnFocus={false}
+          caretHidden
+          style={style}
+        />
+      ) : (
+        <Text style={style} selectable>
+          {notePrefix ? notePrefix : ""}
+          {display}
+        </Text>
+      )}
       {allowOriginal ? (
         <Pressable onPress={() => setShowOriginal((v) => !v)} hitSlop={10} style={styles.toggleHit}>
           <Text style={styles.toggle}>
@@ -132,7 +160,21 @@ export default function TranslatedUgcText({
         </Pressable>
       ) : null}
       {allowOriginal && showOriginal ? (
-        <Text style={styles.original}>{original}</Text>
+        Platform.OS === "ios" ? (
+          <TextInput
+            value={original}
+            editable={false}
+            multiline
+            scrollEnabled={false}
+            showSoftInputOnFocus={false}
+            caretHidden
+            style={styles.original}
+          />
+        ) : (
+          <Text style={styles.original} selectable>
+            {original}
+          </Text>
+        )
       ) : null}
       {!isPreset && !compact && looksMedical(original) ? (
         <Text style={styles.original}>{t("ugc.trustOriginal")}</Text>

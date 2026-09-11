@@ -30,9 +30,10 @@ export default function ComboboxField({
 }) {
   const { t } = useI18n()
   const shownLabel = label ?? t("reminders.content")
-  const shownPh = placeholder ?? t("reminders.contentPlaceholder")
+  const shownPh = placeholder === undefined ? t("reminders.contentPlaceholder") : placeholder
   const shownEmpty = emptyText ?? t("reminders.emptyPreset")
   const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState(false)
 
   const normalized = options.map((item) =>
     typeof item === "string"
@@ -70,8 +71,8 @@ export default function ComboboxField({
           style={styles.input}
           value={value}
           onChangeText={onChangeText}
-          placeholder={shownPh}
-          placeholderTextColor={colors.textMuted}
+          placeholder={shownPh || undefined}
+          placeholderTextColor={shownPh ? colors.textMuted : "transparent"}
         />
         <Pressable
           style={[styles.triBtn, open ? styles.triBtnOn : null]}
@@ -88,6 +89,14 @@ export default function ComboboxField({
 
       {open ? (
         <View style={styles.menu}>
+          <View style={styles.menuHead}>
+            <View />
+            {typeof onRemoveOption === "function" || typeof onAddCurrent === "function" ? (
+              <Pressable onPress={() => setEditing((v) => !v)} hitSlop={8}>
+                <Text style={[styles.editLink, editing ? styles.editLinkOn : null]}>{t("common.edit")}</Text>
+              </Pressable>
+            ) : null}
+          </View>
           {normalized.length === 0 ? (
             <Text style={styles.empty}>{shownEmpty}</Text>
           ) : (
@@ -109,7 +118,7 @@ export default function ComboboxField({
                       {opt.value}
                     </Text>
                   </Pressable>
-                  {opt.deletable && typeof onRemoveOption === "function" ? (
+                  {editing && opt.deletable && typeof onRemoveOption === "function" ? (
                     <Pressable
                       style={styles.removeBtn}
                       onPress={() => askRemove(opt)}
@@ -123,7 +132,7 @@ export default function ComboboxField({
               )
             })
           )}
-          {typeof onAddCurrent === "function" ? (
+          {editing && typeof onAddCurrent === "function" ? (
             <Pressable
               style={[styles.addRow, adding ? styles.addRowDisabled : null]}
               onPress={onAddCurrent}
@@ -179,6 +188,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     overflow: "hidden"
   },
+  menuHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    paddingHorizontal: 10,
+    paddingTop: 6,
+    paddingBottom: 2
+  },
+  editLink: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: colors.textMuted
+  },
+  editLinkOn: { color: colors.mint },
   optionRow: {
     flexDirection: "row",
     alignItems: "center",
