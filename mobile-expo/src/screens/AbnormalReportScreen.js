@@ -2,6 +2,7 @@ import { useMemo, useState } from "react"
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,6 +10,7 @@ import {
   TextInput,
   View
 } from "react-native"
+import { WebView } from "react-native-webview"
 import DropdownField from "../components/DropdownField"
 import { apiRequest } from "../lib/api"
 import {
@@ -18,6 +20,34 @@ import {
 import { resolveCarePresetKey } from "../lib/presetResolve"
 import { useI18n } from "../i18n/I18nContext"
 import { colors } from "./new_ui/tokens"
+
+function photoHtml(label) {
+  const safe = String(label || "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  }[c]))
+  return `<!DOCTYPE html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<style>
+html,body{margin:0;background:transparent;font-family:-apple-system,sans-serif}
+.btn{display:block;text-align:center;background:#12281E;color:#A8E6CF;font-weight:800;padding:12px;border-radius:14px;border:1px solid #10B981}
+input{position:absolute;left:-9999px}
+</style></head><body>
+<label class="btn">${safe}<input id="f" type="file" accept="image/*"></label>
+<script>
+document.getElementById("f").onchange=function(){
+  var file=this.files&&this.files[0];
+  if(!file){ window.ReactNativeWebView.postMessage(JSON.stringify({error:"empty"})); return; }
+  var reader=new FileReader();
+  reader.onload=function(){ window.ReactNativeWebView.postMessage(JSON.stringify({uri:reader.result})); };
+  reader.onerror=function(){ window.ReactNativeWebView.postMessage(JSON.stringify({error:"read"})); };
+  reader.readAsDataURL(file);
+};
+</script></body></html>`
+}
 
 const SEV = [
   { code: "Low", color: "#10B981", bg: "rgba(16,185,129,0.12)", border: "rgba(16,185,129,0.35)" },
@@ -32,6 +62,7 @@ export default function AbnormalReportScreen({ apiBaseUrl, token, onBack }) {
   const [custom, setCustom] = useState("")
   const [note, setNote] = useState("")
   const [severity, setSeverity] = useState("Medium")
+  const [photo, setPhoto] = useState("")
   const [saving, setSaving] = useState(false)
 
   const typeOptions = useMemo(() => reportTypeOptions(t), [t])
@@ -48,7 +79,7 @@ export default function AbnormalReportScreen({ apiBaseUrl, token, onBack }) {
     }
     setSaving(true)
     try {
-      await apiRequest({
+      const created = await apiRequest({
         apiBaseUrl,
         path: "/caregiver/alerts",
         method: "POST",
@@ -63,6 +94,20 @@ export default function AbnormalReportScreen({ apiBaseUrl, token, onBack }) {
           status: "Pending"
         }
       })
+      const alertId = created?.record?._id
+      if (alertId && photo) {
+        await apiRequest({
+          apiBaseUrl,
+          path: `/caregiver/alerts/${encodeURIComponent(alertId)}/evidence`,
+          method: "POST",
+          token,
+          body: {
+            mediaType: "snapshot",
+            contentType: "image/jpeg",
+            dataBase64: photo
+          }
+        })
+      }
       Alert.alert(t("report.okTitle"), t("report.okMsg"), [
         { text: t("common.done"), onPress: onBack }
       ])
@@ -81,7 +126,6 @@ export default function AbnormalReportScreen({ apiBaseUrl, token, onBack }) {
         <View style={{ width: 48 }} />
       </View>
       <ScrollView contentContainerStyle={styles.pad} keyboardShouldPersistTaps="handled">
-        <Text style={styles.h1}>{t("report.leadTitle")}</Text>
         <Text style={styles.sub}>{t("report.lead")}</Text>
         <View style={styles.card}>
           <DropdownField
@@ -116,6 +160,32 @@ export default function AbnormalReportScreen({ apiBaseUrl, token, onBack }) {
               multiline
             />
           ) : null}
+          <Text style={styles.label}>{t("report.photo")}</Text>
+          {photo ? (
+            <View style={styles.photoBox}>
+              <Image source={{ uri: photo }} style={styles.photo} resizeMode="cover" />
+              <Pressable onPress={() => setPhoto("")}>
+                <Text style={styles.photoClear}>{t("report.photoClear")}</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <WebView
+              source={{ html: photoHtml(t("report.photoAdd")), baseUrl: "https://localhost/" }}
+              style={styles.photoWeb}
+              javaScriptEnabled
+              originWhitelist={["*"]}
+              allowFileAccess
+              allowFileAccessFromFileURLs
+              onMessage={(e) => {
+                try {
+                  const data = JSON.parse(e.nativeEvent.data || "{}")
+                  if (data.uri) setPhoto(data.uri)
+                } catch {
+                  /* ignore */
+                }
+              }}
+            />
+          )}
           <Text style={styles.label}>{t("reminders.noteOptional")}</Text>
           <TextInput
             style={[styles.input, styles.multi]}
@@ -164,7 +234,11 @@ const styles = StyleSheet.create({
   navTitle: { fontSize: 16, fontWeight: "800", color: colors.text },
   pad: { padding: 16, paddingBottom: 40 },
   h1: { fontSize: 22, fontWeight: "800", color: colors.text },
-  sub: { marginTop: 6, fontSize: 13, color: colors.textMuted, lineHeight: 20 },
+  sub: { marginTop: 0, fontSize: 13, color: colors.textMuted, lineHeight: 20 },
+  photoWeb: { height: 56, backgroundColor: "transparent", marginTop: 4 },
+  photoBox: { marginTop: 8, gap: 8 },
+  photo: { width: "100%", height: 180, borderRadius: 14, backgroundColor: "#12141A" },
+  photoClear: { color: "#FF5C5C", fontWeight: "700", fontSize: 13 },
   card: {
     marginTop: 16,
     backgroundColor: colors.card,

@@ -1,5 +1,6 @@
 # 明天實機 Demo 流程（Mac 跑服務 + 組員 Android 手機）
 
+> **2026-09-12**：現行說明改看 `Fall_Detection_Lab/docs/CURRENT_現行這包_2026-09-12.md`。帳號有密碼 `Test1234!`。鏡頭用 `./start-cam.sh`（cam 0）。  
 > 適用情境：組員 Windows 本機影像跑不起來，改由**你的 Mac** 跑後端與影像，手機透過 Wi‑Fi 連你的 Mac 測試。
 
 ---

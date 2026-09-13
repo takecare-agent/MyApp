@@ -131,6 +131,16 @@ function startOfTodayMs(now = Date.now()) {
   return startOfDayMs(now, 0)
 }
 
+const AXIS_DAY_SPAN = 14
+
+function dayOffsetFromMs(at, now = Date.now()) {
+  const today0 = startOfDayMs(now, 0)
+  const target0 = startOfDayMs(at, 0)
+  const diff = Math.round((target0 - today0) / (24 * 60 * 60 * 1000))
+  if (!Number.isFinite(diff)) return 0
+  return Math.min(0, Math.max(-AXIS_DAY_SPAN, diff))
+}
+
 function formatAxisHm(ts) {
   const date = new Date(ts)
   if (Number.isNaN(date.getTime())) return ""
@@ -215,7 +225,6 @@ function gapKindAt(ts, { sessions, ringSpansMs, ringStartMs, ringEndMs, now }) {
   return "offline"
 }
 
-const AXIS_DAY_SPAN = 14
 const LIVE_SNAP_MS = 800
 const TICK_SLOT_PX = 26
 const TICK_STEP_MS = 5 * 60 * 1000
@@ -250,7 +259,8 @@ function EventStrip({
   prevDayLabel,
   nextDayLabel,
   docked = false,
-  clockLabel
+  clockLabel,
+  goLiveLabel
 }) {
   const scrollRef = useRef(null)
   const viewWRef = useRef(0)
@@ -321,9 +331,48 @@ function EventStrip({
   const canNext = dayOffset < 0
   const clockText = clockLabel || formatScrubTime(targetTs)
   const pad = viewW > 0 ? viewW / 2 : 0
+  const playable = useMemo(
+    () => playableIntervals({ ringSpansMs, ringStartMs, ringEndMs, from: start, to: end }),
+    [ringSpansMs, ringStartMs, ringEndMs, start, end]
+  )
+  const axisW = Math.max(ticks.length * TICK_SLOT_PX, TICK_SLOT_PX)
+
+  const dayNav = (
+    <View style={styles.rulerDayRow}>
+      <Pressable
+        onPress={canPrev ? onDayPrev : undefined}
+        hitSlop={10}
+        style={styles.rulerDayBtn}
+        accessibilityLabel={prevDayLabel || "前一天"}
+      >
+        <NeoIcon name="chevron-left" size={18} color={canPrev ? "#8E95A3" : "rgba(142,149,163,0.28)"} />
+      </Pressable>
+      <Text style={styles.rulerDayLabel}>{title}</Text>
+      <Pressable
+        onPress={canNext ? onDayNext : undefined}
+        hitSlop={10}
+        style={styles.rulerDayBtn}
+        accessibilityLabel={nextDayLabel || "後一天"}
+      >
+        <NeoIcon name="chevron-right" size={18} color={canNext ? "#8E95A3" : "rgba(142,149,163,0.28)"} />
+      </Pressable>
+    </View>
+  )
 
   const tickRow = (
-    <View style={styles.scrubTicks}>
+    <View style={[styles.scrubTicks, { width: axisW }]}>
+      <View style={[styles.scrubColorRail, { width: axisW }]} pointerEvents="none" />
+      {playable.map((seg) => {
+        const left = ((seg.start - tick0) / TICK_STEP_MS) * TICK_SLOT_PX
+        const width = Math.max(3, ((seg.end - seg.start) / TICK_STEP_MS) * TICK_SLOT_PX)
+        return (
+          <View
+            key={`${seg.start}-${seg.end}`}
+            pointerEvents="none"
+            style={[styles.scrubColorSeg, { left, width }]}
+          />
+        )
+      })}
       {ticks.map((tick) => (
         <View key={tick.ts} style={styles.scrubTickCol} pointerEvents="none">
           <View style={tick.major ? styles.scrubTickMajor : styles.scrubTickMinor} />
@@ -380,27 +429,12 @@ function EventStrip({
   if (docked) {
     return (
       <View style={styles.scrubDock}>
-        <Pressable onPress={onLive} hitSlop={8} accessibilityLabel="回到即時">
+        {dayNav}
+        <Pressable onPress={onLive} hitSlop={8} accessibilityLabel={goLiveLabel || clockLabel || "Live"}>
           <Text style={styles.scrubClock}>{clockText}</Text>
         </Pressable>
         <View style={styles.scrubRow}>
-          <Pressable
-            onPress={canPrev ? onDayPrev : undefined}
-            hitSlop={10}
-            style={styles.rulerDayBtn}
-            accessibilityLabel={prevDayLabel || "前一天"}
-          >
-            <NeoIcon name="chevron-left" size={18} color={canPrev ? "#8E95A3" : "rgba(142,149,163,0.28)"} />
-          </Pressable>
           {scroller}
-          <Pressable
-            onPress={canNext ? onDayNext : undefined}
-            hitSlop={10}
-            style={styles.rulerDayBtn}
-            accessibilityLabel={nextDayLabel || "後一天"}
-          >
-            <NeoIcon name="chevron-right" size={18} color={canNext ? "#8E95A3" : "rgba(142,149,163,0.28)"} />
-          </Pressable>
         </View>
       </View>
     )
@@ -408,25 +442,7 @@ function EventStrip({
 
   return (
     <View style={styles.rulerDock}>
-      <View style={styles.rulerDayRow}>
-        <Pressable
-          onPress={canPrev ? onDayPrev : undefined}
-          hitSlop={10}
-          style={styles.rulerDayBtn}
-          accessibilityLabel={prevDayLabel || "前一天"}
-        >
-          <NeoIcon name="chevron-left" size={18} color={canPrev ? "#8E95A3" : "rgba(142,149,163,0.28)"} />
-        </Pressable>
-        <Text style={styles.rulerDayLabel}>{title}</Text>
-        <Pressable
-          onPress={canNext ? onDayNext : undefined}
-          hitSlop={10}
-          style={styles.rulerDayBtn}
-          accessibilityLabel={nextDayLabel || "後一天"}
-        >
-          <NeoIcon name="chevron-right" size={18} color={canNext ? "#8E95A3" : "rgba(142,149,163,0.28)"} />
-        </Pressable>
-      </View>
+      {dayNav}
       {scroller}
     </View>
   )
@@ -520,7 +536,10 @@ function OverlayLayer({
   skipBackLabel,
   skipFwdLabel,
   nightSkin = false,
-  captionTitle = ""
+  captionTitle = "",
+  goLiveLabel,
+  fullscreenLabel,
+  exitFullscreenLabel
 }) {
   const strip = (
     <EventStrip
@@ -543,6 +562,7 @@ function OverlayLayer({
       yesterdayLabel={yesterdayLabel}
       prevDayLabel={prevDayLabel}
       nextDayLabel={nextDayLabel}
+      goLiveLabel={goLiveLabel}
     />
   )
 
@@ -558,7 +578,7 @@ function OverlayLayer({
         <View style={styles.nightFabRow} pointerEvents="box-none">
           <GlassCircle
             onPress={showFullscreenBtn ? onFullscreen : onExitFullscreen}
-            accessibilityLabel={showFullscreenBtn ? "打橫觀看" : "離開全螢幕"}
+            accessibilityLabel={showFullscreenBtn ? (fullscreenLabel || "Fullscreen") : (exitFullscreenLabel || "Exit")}
             size={36}
           >
             <IconExpand color="#FFFFFF" />
@@ -620,11 +640,11 @@ function OverlayLayer({
 
 const UI_TEXT = {
   zh: { back: "返回", caregiverTitle: "看護視覺偵測", patientTitle: "長輩視覺偵測", refresh: "重新整理", history: "歷史紀錄", noRecords: "尚無紀錄。", live: "即時影像監控", liveHint: "監視器橫向全畫面，不裁切。", severityFilter: "嚴重度篩選", sevAll: "全部", sevHigh: "高", sevMedium: "中", sevLow: "低", liveStatus: "目前狀態", fallProb: "跌倒機率", statusNormal: "正常監測中", statusSuspected: "疑似摔倒", statusFall: "確認摔倒", statusSuggestDismiss: "已站起，請至活動確認解除", statusOffline: "影像服務未連線", statusSquat: "蹲下（僅紀錄）", statusBend: "彎腰（僅紀錄）", poseStand: "站", poseLie: "躺", autoNote: "系統自動即時監測，偵測到跌倒會自動記錄並通知家屬，無需手動操作。", writeFail: "跌倒紀錄寫入失敗", fullscreen: "打橫觀看", exitFullscreen: "離開全螢幕", rotateHint: "把手機打橫＝監視器全屏", axisToday: "今天", axisYesterday: "昨天", skipBack: "倒退 10 秒", skipFwd: "前進 10 秒", prevDay: "前一天", nextDay: "後一天", toggleChrome: "顯示或隱藏控制列" },
-  en: { back: "Back", caregiverTitle: "Caregiver vision", patientTitle: "Elder vision", refresh: "Refresh", history: "History", noRecords: "No records yet.", live: "Live monitoring", liveHint: "Full camera frame, no crop. Rotate for a larger view.", severityFilter: "Severity", sevAll: "All", sevHigh: "High", sevMedium: "Medium", sevLow: "Low", liveStatus: "Status", fallProb: "Fall chance", statusNormal: "Monitoring — normal", statusSuspected: "Possible fall — watching…", statusFall: "⚠️ Fall detected. Family notified", statusSuggestDismiss: "Stand-up detected. Confirm dismiss in Activity.", statusOffline: "Vision service offline", statusSquat: "Squat detected (logged only, not a fall)", statusBend: "Bend detected (logged only, not a fall)", autoNote: "Falls are logged and the care circle is notified automatically.", writeFail: "Could not save the fall record", fullscreen: "Landscape view", exitFullscreen: "Exit fullscreen", axisToday: "Today", axisYesterday: "Yesterday", skipBack: "Back 10 seconds", skipFwd: "Forward 10 seconds", prevDay: "Previous day", nextDay: "Next day", toggleChrome: "Show or hide controls" },
-  id: { back: "Kembali", caregiverTitle: "Deteksi visual pengasuh", patientTitle: "Deteksi visual lansia", refresh: "Muat ulang", history: "Riwayat", noRecords: "Belum ada catatan.", live: "Pemantauan langsung", liveHint: "Bingkai kamera utuh, tidak dipotong.", severityFilter: "Tingkat", sevAll: "Semua", sevHigh: "Tinggi", sevMedium: "Sedang", sevLow: "Rendah", liveStatus: "Status", fallProb: "Peluang jatuh", statusNormal: "Memantau — normal", statusSuspected: "Mungkin jatuh — diamati…", statusFall: "⚠️ Jatuh terdeteksi. Keluarga diberitahu", statusSuggestDismiss: "Berdiri terdeteksi. Konfirmasi di Aktivitas.", statusOffline: "Layanan visual offline", statusSquat: "Jongkok (hanya dicatat, bukan jatuh)", statusBend: "Membungkuk (hanya dicatat, bukan jatuh)", autoNote: "Jatuh dicatat dan lingkaran perawatan diberitahu otomatis.", writeFail: "Gagal menyimpan catatan jatuh", fullscreen: "Tampilan mendatar", exitFullscreen: "Keluar layar penuh", axisToday: "Hari ini", axisYesterday: "Kemarin", skipBack: "Mundur 10 detik", skipFwd: "Maju 10 detik", prevDay: "Hari sebelumnya", nextDay: "Hari berikutnya", toggleChrome: "Tampilkan atau sembunyikan kontrol" },
-  vi: { back: "Quay lại", caregiverTitle: "Giám sát hình ảnh (người chăm)", patientTitle: "Giám sát hình ảnh (người cao tuổi)", refresh: "Làm mới", history: "Lịch sử", noRecords: "Chưa có bản ghi.", live: "Giám sát trực tiếp", liveHint: "Toàn khung hình, không cắt. Xoay ngang để phóng to.", severityFilter: "Mức độ", sevAll: "Tất cả", sevHigh: "Cao", sevMedium: "Trung bình", sevLow: "Thấp", liveStatus: "Trạng thái", fallProb: "Khả năng ngã", statusNormal: "Đang theo dõi — bình thường", statusSuspected: "Có thể ngã — đang quan sát…", statusFall: "⚠️ Phát hiện ngã. Đã báo gia đình", statusSuggestDismiss: "Phát hiện đứng dậy. Xác nhận trong Hoạt động.", statusOffline: "Dịch vụ hình ảnh ngoại tuyến", statusSquat: "Phát hiện ngồi xổm (chỉ ghi, không phải ngã)", statusBend: "Phát hiện cúi (chỉ ghi, không phải ngã)", autoNote: "Ngã được ghi và vòng chăm sóc được báo tự động.", writeFail: "Không ghi được sự kiện ngã", fullscreen: "Xem ngang", exitFullscreen: "Thoát toàn màn hình", axisToday: "Hôm nay", axisYesterday: "Hôm qua", skipBack: "Lùi 10 giây", skipFwd: "Tới 10 giây", prevDay: "Ngày trước", nextDay: "Ngày sau", toggleChrome: "Hiện hoặc ẩn điều khiển" },
-  tl: { back: "Bumalik", caregiverTitle: "Vision ng caregiver", patientTitle: "Vision ng nakatatanda", refresh: "I-refresh", history: "Kasaysayan", noRecords: "Wala pang talaan.", live: "Live na pagbantay", liveHint: "Buong frame, hindi tinatabas.", severityFilter: "Antas", sevAll: "Lahat", sevHigh: "Mataas", sevMedium: "Katamtaman", sevLow: "Mababa", liveStatus: "Status", fallProb: "Tsansa ng hulog", statusNormal: "Nagbabantay — normal", statusSuspected: "Posibleng hulog — minamasdan…", statusFall: "⚠️ May hulog. Naabisuhan ang pamilya", statusSuggestDismiss: "Tumayo. Kumpirmahin sa Activity.", statusOffline: "Offline ang vision service", statusSquat: "Nakadapa/squat (tala lang, hindi hulog)", statusBend: "Yuko (tala lang, hindi hulog)", autoNote: "Ang hulog ay nala-log at inaabisuhan ang care circle.", writeFail: "Hindi naisave ang tala ng hulog", fullscreen: "Landscape", exitFullscreen: "Lumabas sa fullscreen", axisToday: "Ngayon", axisYesterday: "Kahapon", skipBack: "I-rewind ng 10 segundo", skipFwd: "I-forward ng 10 segundo", prevDay: "Nakaraang araw", nextDay: "Susunod na araw", toggleChrome: "Ipakita o itago ang kontrol" },
-  th: { back: "กลับ", caregiverTitle: "ตรวจจับภาพผู้ดูแล", patientTitle: "ตรวจจับภาพผู้สูงอายุ", refresh: "รีเฟรช", history: "ประวัติ", noRecords: "ยังไม่มีบันทึก", live: "เฝ้าดูสด", liveHint: "ภาพเต็ม ไม่ครอป หมุนแนวนอนเพื่อขยาย", severityFilter: "ระดับ", sevAll: "ทั้งหมด", sevHigh: "สูง", sevMedium: "กลาง", sevLow: "ต่ำ", liveStatus: "สถานะ", fallProb: "โอกาสล้ม", statusNormal: "กำลังเฝ้า — ปกติ", statusSuspected: "อาจล้ม — กำลังดู…", statusFall: "⚠️ พบการล้ม แจ้งครอบครัวแล้ว", statusSuggestDismiss: "พบการลุกยืน ยืนยันในกิจกรรม", statusOffline: "บริการภาพออฟไลน์", statusSquat: "พบการนั่งยอง (บันทึกอย่างเดียว ไม่ใช่ล้ม)", statusBend: "พบการก้ม (บันทึกอย่างเดียว ไม่ใช่ล้ม)", autoNote: "การล้มถูกบันทึกและแจ้งวงการดูแลอัตโนมัติ", writeFail: "บันทึกการล้มไม่สำเร็จ", fullscreen: "ดูแนวนอน", exitFullscreen: "ออกเต็มจอ", axisToday: "วันนี้", axisYesterday: "เมื่อวาน", skipBack: "ถอย 10 วินาที", skipFwd: "ไปหน้า 10 วินาที", prevDay: "วันก่อน", nextDay: "วันถัดไป", toggleChrome: "แสดงหรือซ่อนแถบควบคุม" },
+  en: { back: "Back", caregiverTitle: "Caregiver vision", patientTitle: "Elder vision", refresh: "Refresh", history: "History", noRecords: "No records yet.", live: "Live monitoring", liveHint: "Full camera frame, no crop. Rotate for a larger view.", severityFilter: "Severity", sevAll: "All", sevHigh: "High", sevMedium: "Medium", sevLow: "Low", liveStatus: "Status", fallProb: "Fall chance", statusNormal: "Monitoring — normal", statusSuspected: "Possible fall — watching…", statusFall: "⚠️ Fall detected. Family notified", statusSuggestDismiss: "Stand-up detected. Confirm dismiss in Activity.", statusOffline: "Vision service offline", statusSquat: "Low stance detected (logged only, not a fall)", statusBend: "Bend detected (logged only, not a fall)", autoNote: "Falls are logged and the care circle is notified automatically.", writeFail: "Could not save the fall record", fullscreen: "Landscape view", exitFullscreen: "Exit fullscreen", axisToday: "Today", axisYesterday: "Yesterday", skipBack: "Back 10 seconds", skipFwd: "Forward 10 seconds", prevDay: "Previous day", nextDay: "Next day", toggleChrome: "Show or hide controls" },
+  id: { back: "Kembali", caregiverTitle: "Deteksi visual pengasuh", patientTitle: "Deteksi visual lansia", refresh: "Muat ulang", history: "Riwayat", noRecords: "Belum ada catatan.", live: "Pemantauan langsung", liveHint: "Bingkai kamera utuh, tidak dipotong.", severityFilter: "Tingkat", sevAll: "Semua", sevHigh: "Tinggi", sevMedium: "Sedang", sevLow: "Rendah", liveStatus: "Status", fallProb: "Peluang jatuh", statusNormal: "Memantau — normal", statusSuspected: "Mungkin jatuh — diamati…", statusFall: "⚠️ Jatuh terdeteksi. Keluarga diberitahu", statusSuggestDismiss: "Berdiri terdeteksi. Konfirmasi di Aktivitas.", statusOffline: "Layanan visual offline", statusSquat: "Postur rendah (hanya dicatat, bukan jatuh)", statusBend: "Membungkuk (hanya dicatat, bukan jatuh)", autoNote: "Jatuh dicatat dan lingkaran perawatan diberitahu otomatis.", writeFail: "Gagal menyimpan catatan jatuh", fullscreen: "Tampilan mendatar", exitFullscreen: "Keluar layar penuh", axisToday: "Hari ini", axisYesterday: "Kemarin", skipBack: "Mundur 10 detik", skipFwd: "Maju 10 detik", prevDay: "Hari sebelumnya", nextDay: "Hari berikutnya", toggleChrome: "Tampilkan atau sembunyikan kontrol" },
+  vi: { back: "Quay lại", caregiverTitle: "Giám sát hình ảnh (người chăm)", patientTitle: "Giám sát hình ảnh (người cao tuổi)", refresh: "Làm mới", history: "Lịch sử", noRecords: "Chưa có bản ghi.", live: "Giám sát trực tiếp", liveHint: "Toàn khung hình, không cắt. Xoay ngang để phóng to.", severityFilter: "Mức độ", sevAll: "Tất cả", sevHigh: "Cao", sevMedium: "Trung bình", sevLow: "Thấp", liveStatus: "Trạng thái", fallProb: "Khả năng ngã", statusNormal: "Đang theo dõi — bình thường", statusSuspected: "Có thể ngã — đang quan sát…", statusFall: "⚠️ Phát hiện ngã. Đã báo gia đình", statusSuggestDismiss: "Phát hiện đứng dậy. Xác nhận trong Hoạt động.", statusOffline: "Dịch vụ hình ảnh ngoại tuyến", statusSquat: "Phát hiện tư thế thấp (chỉ ghi, không phải ngã)", statusBend: "Phát hiện cúi (chỉ ghi, không phải ngã)", autoNote: "Ngã được ghi và vòng chăm sóc được báo tự động.", writeFail: "Không ghi được sự kiện ngã", fullscreen: "Xem ngang", exitFullscreen: "Thoát toàn màn hình", axisToday: "Hôm nay", axisYesterday: "Hôm qua", skipBack: "Lùi 10 giây", skipFwd: "Tới 10 giây", prevDay: "Ngày trước", nextDay: "Ngày sau", toggleChrome: "Hiện hoặc ẩn điều khiển" },
+  tl: { back: "Bumalik", caregiverTitle: "Vision ng caregiver", patientTitle: "Vision ng nakatatanda", refresh: "I-refresh", history: "Kasaysayan", noRecords: "Wala pang talaan.", live: "Live na pagbantay", liveHint: "Buong frame, hindi tinatabas.", severityFilter: "Antas", sevAll: "Lahat", sevHigh: "Mataas", sevMedium: "Katamtaman", sevLow: "Mababa", liveStatus: "Status", fallProb: "Tsansa ng hulog", statusNormal: "Nagbabantay — normal", statusSuspected: "Posibleng hulog — minamasdan…", statusFall: "⚠️ May hulog. Naabisuhan ang pamilya", statusSuggestDismiss: "Tumayo. Kumpirmahin sa Activity.", statusOffline: "Offline ang vision service", statusSquat: "Mababang tindig (tala lang, hindi hulog)", statusBend: "Yuko (tala lang, hindi hulog)", autoNote: "Ang hulog ay nala-log at inaabisuhan ang care circle.", writeFail: "Hindi naisave ang tala ng hulog", fullscreen: "Landscape", exitFullscreen: "Lumabas sa fullscreen", axisToday: "Ngayon", axisYesterday: "Kahapon", skipBack: "I-rewind ng 10 segundo", skipFwd: "I-forward ng 10 segundo", prevDay: "Nakaraang araw", nextDay: "Susunod na araw", toggleChrome: "Ipakita o itago ang kontrol" },
+  th: { back: "กลับ", caregiverTitle: "ตรวจจับภาพผู้ดูแล", patientTitle: "ตรวจจับภาพผู้สูงอายุ", refresh: "รีเฟรช", history: "ประวัติ", noRecords: "ยังไม่มีบันทึก", live: "เฝ้าดูสด", liveHint: "ภาพเต็ม ไม่ครอป หมุนแนวนอนเพื่อขยาย", severityFilter: "ระดับ", sevAll: "ทั้งหมด", sevHigh: "สูง", sevMedium: "กลาง", sevLow: "ต่ำ", liveStatus: "สถานะ", fallProb: "โอกาสล้ม", statusNormal: "กำลังเฝ้า — ปกติ", statusSuspected: "อาจล้ม — กำลังดู…", statusFall: "⚠️ พบการล้ม แจ้งครอบครัวแล้ว", statusSuggestDismiss: "พบการลุกยืน ยืนยันในกิจกรรม", statusOffline: "บริการภาพออฟไลน์", statusSquat: "พบท่าทางต่ำ (บันทึกอย่างเดียว ไม่ใช่ล้ม)", statusBend: "พบการก้ม (บันทึกอย่างเดียว ไม่ใช่ล้ม)", autoNote: "การล้มถูกบันทึกและแจ้งวงการดูแลอัตโนมัติ", writeFail: "บันทึกการล้มไม่สำเร็จ", fullscreen: "ดูแนวนอน", exitFullscreen: "ออกเต็มจอ", axisToday: "วันนี้", axisYesterday: "เมื่อวาน", skipBack: "ถอย 10 วินาที", skipFwd: "ไปหน้า 10 วินาที", prevDay: "วันก่อน", nextDay: "วันถัดไป", toggleChrome: "แสดงหรือซ่อนแถบควบคุม" },
 }
 
 export default function VisionScreen({ role, apiBaseUrl, token, uiLang, onBack, embedded = false, seekRef, reloadRef, goLiveRef, fullscreenRef, nightSkin = false }) {
@@ -655,6 +675,8 @@ export default function VisionScreen({ role, apiBaseUrl, token, uiLang, onBack, 
   const [gapKind, setGapKind] = useState(null)
   const [nowMs, setNowMs] = useState(() => Date.now())
   const [dayOffset, setDayOffset] = useState(0)
+  const dayOffsetRef = useRef(0)
+  dayOffsetRef.current = dayOffset
   const pendingSeekRef = useRef(null)
   const windowRef = useRef({ start: 0, end: 0, ringStart: 0, ringEnd: 0, ringSpans: [], sessions: [], liveOnline: false })
   const liveStreamUrl = streamUrl
@@ -702,31 +724,28 @@ export default function VisionScreen({ role, apiBaseUrl, token, uiLang, onBack, 
     setDayOffset((prev) => Math.min(0, Math.max(-AXIS_DAY_SPAN, prev + delta)))
   }, [pokeChrome])
   const dayInitRef = useRef(true)
-  useEffect(() => {
-    if (dayInitRef.current) {
-      dayInitRef.current = false
+  const startReplay = useCallback((ts) => {
+    const raw = toMs(ts)
+    if (!raw) return
+    const want = dayOffsetFromMs(raw)
+    if (want !== dayOffsetRef.current) {
+      pendingSeekRef.current = raw
+      setDayOffset(want)
       return
     }
-    pendingSeekRef.current = null
-    setDragTs(null)
-    setPlayFrom(null)
-    setPlayheadTs(null)
-    setGapKind(dayOffset === 0 ? null : "offline")
-  }, [dayOffset])
-  const startReplay = useCallback((ts) => {
-    let at = toMs(ts)
-    if (!at) return
+    const dayStart = startOfDayMs(raw, 0)
+    const now = Date.now()
+    const dayEnd = want === 0 ? now : dayStart + 24 * 60 * 60 * 1000
+    let at = raw
+    if (at < dayStart) at = dayStart
+    if (at > dayEnd) at = dayEnd
     const win = windowRef.current
-    const start = win.start || startOfTodayMs()
-    const end = win.end || Date.now()
-    if (at < start) at = start
-    if (at > end) at = end
     const kind = gapKindAt(at, {
       sessions: win.sessions,
       ringSpansMs: win.ringSpans,
       ringStartMs: win.ringStart,
       ringEndMs: win.ringEnd,
-      now: end
+      now: want === 0 ? now : dayEnd
     })
     setDragTs(null)
     setPlayheadTs(at)
@@ -741,6 +760,22 @@ export default function VisionScreen({ role, apiBaseUrl, token, uiLang, onBack, 
     setPlayFrom(at)
     setSeekNonce((n) => n + 1)
   }, [])
+  useEffect(() => {
+    if (dayInitRef.current) {
+      dayInitRef.current = false
+      return
+    }
+    setDragTs(null)
+    const pending = pendingSeekRef.current
+    if (pending != null && dayOffsetFromMs(pending) === dayOffset) {
+      startReplay(pending)
+      return
+    }
+    pendingSeekRef.current = null
+    setPlayFrom(null)
+    setPlayheadTs(null)
+    setGapKind(null)
+  }, [dayOffset, startReplay])
   useEffect(() => {
     if (!seekRef) return undefined
     seekRef.current = startReplay
@@ -786,7 +821,7 @@ export default function VisionScreen({ role, apiBaseUrl, token, uiLang, onBack, 
       setError("")
     }
     try {
-      const params = new URLSearchParams({ limit: "30" })
+      const params = new URLSearchParams({ limit: "100" })
       if (severityRef.current !== "all") params.set("severity", severityRef.current)
       const [visionData, sosData] = await Promise.all([
         apiRequest({
@@ -985,10 +1020,18 @@ export default function VisionScreen({ role, apiBaseUrl, token, uiLang, onBack, 
     if (playFrom == null || dragTs != null) return undefined
     const origin = playFrom
     const t0 = Date.now()
+    const dayEnd = startOfDayMs(origin, 0) + 24 * 60 * 60 * 1000
     const id = setInterval(() => {
       const next = origin + (Date.now() - t0)
-      if (next >= Date.now() - 400) {
+      const now = Date.now()
+      if (next >= now - 400) {
         goLive()
+        return
+      }
+      if (next >= dayEnd) {
+        setPlayFrom(null)
+        setPlayheadTs(dayEnd - 1000)
+        setGapKind("offline")
         return
       }
       setPlayheadTs(next)
@@ -1081,6 +1124,9 @@ export default function VisionScreen({ role, apiBaseUrl, token, uiLang, onBack, 
     chromeLabel: t.toggleChrome || "顯示或隱藏控制列",
     skipBackLabel: t.skipBack || "倒退 10 秒",
     skipFwdLabel: t.skipFwd || "前進 10 秒",
+    goLiveLabel: t.live || "Live",
+    fullscreenLabel: t.fullscreen,
+    exitFullscreenLabel: t.exitFullscreen,
     nightSkin,
     captionTitle: t.live || "即時監看"
   }
@@ -1428,7 +1474,7 @@ const styles = StyleSheet.create({
     marginBottom: 0
   },
   scrubDock: {
-    height: 68,
+    minHeight: 92,
     width: "100%",
     paddingHorizontal: 16,
     justifyContent: "center"
@@ -1457,6 +1503,21 @@ const styles = StyleSheet.create({
   scrubScroll: {
     flex: 1,
     height: 40
+  },
+  scrubColorRail: {
+    position: "absolute",
+    left: 0,
+    top: 18,
+    height: 3,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderRadius: 2
+  },
+  scrubColorSeg: {
+    position: "absolute",
+    top: 16,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#22D3EE"
   },
   scrubTicks: {
     flexDirection: "row",

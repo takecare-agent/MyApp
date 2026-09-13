@@ -71,8 +71,10 @@ export function groupTodayTasks(tasks) {
         groups.push({
           type: "multi",
           id: t.templateId,
-          title: t.title || t.content || "",
+          title: t.content || t.title || "",
+          content: t.content || t.title || "",
           contentKey: t.contentKey || "",
+          sourceLang: t.sourceLang || "",
           category: t.category || "med",
           createdByRole: t.createdByRole || "",
           createdByName: t.createdByName || "",

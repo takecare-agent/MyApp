@@ -21,7 +21,6 @@ import { colors } from "./new_ui/tokens"
 import NewTodoScreen from "./new_ui/NewTodoScreen"
 import MarDoseSheet from "./new_ui/MarDoseSheet"
 import { formatGivenAt, nowHhmm } from "../lib/marGroups"
-import { carePresetLabel } from "../lib/presetResolve"
 
 const CAT_ICON = {
   med: "Rx",
@@ -324,12 +323,10 @@ export default function CaregiverTodayRemindersScreen({
       const cat = toReminderCatCode(item.category)
       return {
         id: item.id,
-        title: carePresetLabel({
-          text: item.content || t("reminders.item"),
-          contentKey: item.contentKey,
-          t
-        }),
+        title: item.content || t("reminders.item"),
+        content: item.content || "",
         contentKey: item.contentKey || "",
+        sourceLang: item.sourceLang || "",
         time: item.time,
         done: status === "done",
         skipped: status === "skip",
@@ -365,6 +362,8 @@ export default function CaregiverTodayRemindersScreen({
           <NewTodoScreen
             tab="today"
             hideTabs
+            apiBaseUrl={apiBaseUrl}
+            token={token}
             todos={todos}
             refreshing={refreshing}
             onRefresh={() => { setRefreshing(true); load() }}
@@ -372,7 +371,7 @@ export default function CaregiverTodayRemindersScreen({
               const full = tasks.find((row) => row.id === slot.id)
               if (!full) return
               setMarOpen({
-                task: { ...full, title: carePresetLabel({ text: group?.title || full.content, contentKey: full.contentKey || group?.contentKey, t }), done: full.isCompleted },
+                task: { ...full, title: full.content, content: full.content, sourceLang: full.sourceLang || "", done: full.isCompleted },
                 slotLabel: slot.slotKey && slot.slotKey !== "once" ? t(`mar.${slot.slotKey}`) : ""
               })
             }}
@@ -380,7 +379,7 @@ export default function CaregiverTodayRemindersScreen({
               const full = tasks.find((row) => row.id === item.id)
               if (!full) return
               setMarOpen({
-                task: { ...full, title: carePresetLabel({ text: full.content, contentKey: full.contentKey, t }), done: full.isCompleted },
+                task: { ...full, title: full.content, content: full.content, sourceLang: full.sourceLang || "", done: full.isCompleted },
                 slotLabel: ""
               })
             }}
@@ -392,6 +391,8 @@ export default function CaregiverTodayRemindersScreen({
           slotLabel={marOpen?.slotLabel || ""}
           patientName={patientName}
           submitting={submitting}
+          apiBaseUrl={apiBaseUrl}
+          token={token}
           onClose={() => setMarOpen(null)}
           onConfirm={submitMar}
         />

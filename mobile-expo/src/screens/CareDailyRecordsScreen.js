@@ -430,7 +430,7 @@ export default function CareDailyRecordsScreen({
             style={[styles.tab, tab === "add" ? styles.tabOn : null]}
             onPress={() => setTab("add")}
           >
-            <Text style={[styles.tabText, tab === "add" ? styles.tabTextOn : null]} numberOfLines={1}>
+            <Text style={[styles.tabText, tab === "add" ? styles.tabTextOn : null]}>
               {editingId ? t("daily.edit") : t("daily.tabAdd")}
             </Text>
           </Pressable>
@@ -438,7 +438,7 @@ export default function CareDailyRecordsScreen({
             style={[styles.tab, tab === "list" ? styles.tabOn : null]}
             onPress={() => setTab("list")}
           >
-            <Text style={[styles.tabText, tab === "list" ? styles.tabTextOn : null]} numberOfLines={1}>
+            <Text style={[styles.tabText, tab === "list" ? styles.tabTextOn : null]}>
               {t("daily.tabList")}
             </Text>
           </Pressable>

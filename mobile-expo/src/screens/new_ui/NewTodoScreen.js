@@ -1,7 +1,7 @@
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native"
 import { useI18n } from "../../i18n/I18nContext"
+import TranslatedUgcText from "../../components/TranslatedUgcText"
 import { extraSummary, firstOpenSlotIndex, groupTodayTasks, iconForTask } from "../../lib/marGroups"
-import { carePresetLabel } from "../../lib/presetResolve"
 import { NeoIcon } from "./NeoIcons"
 import { colors, font, radius, spacing } from "./tokens"
 
@@ -14,7 +14,9 @@ export default function NewTodoScreen({
   hideTabs = false,
   tabsOnly = false,
   refreshing = false,
-  onRefresh
+  onRefresh,
+  apiBaseUrl,
+  token
 }) {
   const { t } = useI18n()
   const list = Array.isArray(todos) ? todos : []
@@ -34,7 +36,7 @@ export default function NewTodoScreen({
             onPress={() => onChangeTab && onChangeTab("today")}
           >
             <NeoIcon name="check" size={15} color={isToday ? "#FFFFFF" : colors.textMuted} />
-            <Text style={[styles.tabText, isToday ? styles.tabTextActive : null]} numberOfLines={1}>
+            <Text style={[styles.tabText, isToday ? styles.tabTextActive : null]}>
               {t("reminders.todayTodos")}
             </Text>
           </Pressable>
@@ -43,7 +45,7 @@ export default function NewTodoScreen({
             onPress={() => onChangeTab && onChangeTab("diary")}
           >
             <NeoIcon name="list" size={15} color={!isToday ? "#FFFFFF" : colors.textMuted} />
-            <Text style={[styles.tabText, !isToday ? styles.tabTextActive : null]} numberOfLines={1}>
+            <Text style={[styles.tabText, !isToday ? styles.tabTextActive : null]}>
               {t("reminders.careDaily")}
             </Text>
           </Pressable>
@@ -69,6 +71,8 @@ export default function NewTodoScreen({
                   group={g}
                   t={t}
                   onOpenSlot={onOpenSlot}
+                  apiBaseUrl={apiBaseUrl}
+                  token={token}
                 />
               ) : (
                 <SingleCard
@@ -76,6 +80,8 @@ export default function NewTodoScreen({
                   task={g.task}
                   t={t}
                   onOpen={onOpenSingle}
+                  apiBaseUrl={apiBaseUrl}
+                  token={token}
                 />
               )
             ))
@@ -93,7 +99,7 @@ function slotStateText(slot, t) {
   return t("mar.pendingAt", { time: slot.time })
 }
 
-function MultiCard({ group, t, onOpenSlot }) {
+function MultiCard({ group, t, onOpenSlot, apiBaseUrl, token }) {
   const openIdx = firstOpenSlotIndex(group.slots)
   return (
     <View style={styles.card}>
@@ -102,12 +108,23 @@ function MultiCard({ group, t, onOpenSlot }) {
           <NeoIcon name={iconForTask({ category: group.category, title: group.title })} size={20} color="#10B981" />
         </View>
         <View style={styles.cardMid}>
-          <Text style={styles.cardTitle} numberOfLines={1}>
-            {carePresetLabel({ text: group.title, contentKey: group.contentKey, t })}
+          <View style={styles.titleRow}>
+            <View style={styles.titleGrow}>
+              <TranslatedUgcText
+                text={group.content || group.title}
+                sourceLang={group.sourceLang}
+                contentKey={group.contentKey}
+                apiBaseUrl={apiBaseUrl}
+                token={token}
+                compact
+                numberOfLines={1}
+                style={styles.cardTitle}
+              />
+            </View>
             {group.slots.some((s) => s.done) ? (
-              <Text style={styles.progress}> {t("mar.progress", { done: group.progressDone, total: group.progressTotal })}</Text>
+              <Text style={styles.progress}>{t("mar.progress", { done: group.progressDone, total: group.progressTotal })}</Text>
             ) : null}
-          </Text>
+          </View>
         </View>
       </View>
       <View style={styles.slotRow}>
@@ -158,7 +175,7 @@ function MultiCard({ group, t, onOpenSlot }) {
   )
 }
 
-function SingleCard({ task, t, onOpen }) {
+function SingleCard({ task, t, onOpen, apiBaseUrl, token }) {
   const icon = iconForTask(task)
   const done = !!task.done
   return (
@@ -171,9 +188,16 @@ function SingleCard({ task, t, onOpen }) {
           <NeoIcon name={icon} size={20} color="#10B981" />
         </View>
         <View style={styles.cardMid}>
-          <Text style={styles.cardTitle} numberOfLines={1}>
-            {carePresetLabel({ text: task.title || task.content, contentKey: task.contentKey, t })}
-          </Text>
+          <TranslatedUgcText
+            text={task.content || task.title}
+            sourceLang={task.sourceLang}
+            contentKey={task.contentKey}
+            apiBaseUrl={apiBaseUrl}
+            token={token}
+            compact
+            numberOfLines={1}
+            style={styles.cardTitle}
+          />
           {extraSummary(task) ? (
             <Text style={styles.extraLine} numberOfLines={1}>{extraSummary(task)}</Text>
           ) : null}
@@ -222,7 +246,7 @@ const styles = StyleSheet.create({
     minWidth: 0
   },
   tabActive: { backgroundColor: "#10B981" },
-  tabText: { fontSize: 14, color: colors.textMuted, fontWeight: "600" },
+  tabText: { fontSize: 14, color: colors.textMuted, fontWeight: "600", flexShrink: 1, textAlign: "center" },
   tabTextActive: { color: "#FFFFFF", fontWeight: "800" },
   scrollContent: { paddingHorizontal: 16, paddingBottom: spacing.xl, gap: 12 },
   emptyText: {
@@ -250,6 +274,8 @@ const styles = StyleSheet.create({
     justifyContent: "center"
   },
   cardMid: { flex: 1, minWidth: 0 },
+  titleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  titleGrow: { flex: 1, minWidth: 0 },
   cardTitle: { color: "#FFFFFF", fontSize: 16, fontWeight: "800" },
   progress: { color: "#10B981", fontWeight: "800" },
   slotRow: { flexDirection: "row", gap: 8 },

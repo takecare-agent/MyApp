@@ -100,6 +100,20 @@ export async function saveHiddenChatPresets(myEmail, keys) {
   await AsyncStorage.setItem(scopedKey(HIDDEN_PRESET_KEY, me), JSON.stringify(list))
 }
 
+const ACTIVITY_SEEN_KEY = "TAKECARE_WATCH_ACTIVITY_SEEN_V1"
+
+export async function loadActivitySeenAt() {
+  const raw = await AsyncStorage.getItem(ACTIVITY_SEEN_KEY)
+  const n = Number(raw)
+  return Number.isFinite(n) && n > 0 ? n : 0
+}
+
+export async function saveActivitySeenAt(ts) {
+  const n = Number(ts)
+  if (!Number.isFinite(n) || n <= 0) return
+  await AsyncStorage.setItem(ACTIVITY_SEEN_KEY, String(n))
+}
+
 export async function saveChatNickname(myEmail, partnerEmail, nickname) {
   const me = String(myEmail || "").trim().toLowerCase()
   const partner = String(partnerEmail || "").trim().toLowerCase()

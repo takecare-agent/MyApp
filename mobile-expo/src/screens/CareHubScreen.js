@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react"
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native"
-import CareCircleSearch from "../components/CareCircleSearch"
 import { AvatarMark } from "../components/AvatarMark"
 import FamilyRemindersScreen from "./FamilyRemindersScreen"
 import CaregiverTodayRemindersScreen from "./CaregiverTodayRemindersScreen"
@@ -112,15 +111,6 @@ export default function CareHubScreen({ apiBaseUrl, token, role, user, initialSe
         </Pressable>
         <AvatarMark email={user?.email} size={36} apiBaseUrl={apiBaseUrl} token={token} />
       </View>
-      <CareCircleSearch
-        apiBaseUrl={apiBaseUrl}
-        token={token}
-        role={role}
-        onOpenResult={(item) => {
-          if (item?.type === "daily") setSeg("diary")
-          else setSeg("today")
-        }}
-      />
       {USE_MORANDI_UI ? (
         <NewTodoScreen
           tab={seg}

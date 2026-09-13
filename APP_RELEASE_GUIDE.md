@@ -1,8 +1,9 @@
 # React Native CLI 手機測試指南（組員 0→1 完整版）
 
+> **2026-09-12 現行口徑改看這兩份**：`Fall_Detection_Lab/APP_PROGRESS.md` ⭐、`Fall_Detection_Lab/docs/CURRENT_現行這包_2026-09-12.md`  
+> 下面舊段可能過時：**現在有密碼**（`Test1234!`），不是「只用 Email」。驗收是 **真機兩台**，不要預設開三台模擬器。Release APK **不需要 Metro**。鏡頭鎖 **cam 0**。勿裝 `_Archive_TakeCare_過期勿改` 裡的舊包。  
 > **分支：`vision-integration`（不要抓 `main`）**  
-> **本 repo 已包含 App + 後端 + 影像辨識執行包（`vision-runtime/`）**  
-> 照本文件逐步操作即可，不需另外下載模型 zip。
+> **本 repo 已包含 App + 後端 + 影像辨識執行包（`vision-runtime/`）**
 
 ---
 

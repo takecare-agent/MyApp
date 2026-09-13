@@ -13,6 +13,7 @@ import {
 } from "react-native"
 import { io } from "socket.io-client"
 import { apiRequest, mobileGetHealthCard } from "../lib/api"
+import { loadActivitySeenAt, saveActivitySeenAt } from "../lib/storage"
 import {
   ROLE_LABELS,
   getAlertsFeature,
@@ -48,8 +49,6 @@ import { saveAvatarUri } from "../lib/avatarStore"
 import PatientMoodDiary from "./PatientMoodDiary"
 import { fillValue, screenshotBpLatest } from "./new_ui/screenshotFill"
 import { toBpSparkPoints } from "./new_ui/BpSparkline"
-import { carePresetLabel } from "../lib/presetResolve"
-
 function greetingByHour(t) {
   const h = new Date().getHours()
   if (h < 11) return t("greet.morning")
@@ -75,15 +74,6 @@ function isPendingAlert(record) {
   if (record.recordKind === "vision-event" || record.alertBuilt === false) return false
   if (record.resolveKind === "superseded") return false
   return record.status !== "Done"
-}
-
-function reminderTitle(record, t, fallback) {
-  return carePresetLabel({
-    text: record?.title || record?.content || record?.text,
-    contentKey: record?.contentKey,
-    t,
-    fallback
-  })
 }
 
 function homeTodoStatus(role, openCount, t) {
@@ -129,7 +119,7 @@ function TabBar({ tabs, active, onChange, badges = {}, nightSkin = false }) {
                 styles.tabLabelNeo,
                 selected ? styles.tabLabelActiveNeo : null
               ]}
-              numberOfLines={1}
+              numberOfLines={2}
             >
               {label}
             </Text>
@@ -293,7 +283,7 @@ function HomePanel({
     : ""
   const homeTodos = reminders.map((item, index) => ({
     id: item._id || item.id || `r-${index}`,
-    title: reminderTitle(item, t, t("reminders.item")),
+    title: item.content || item.title || t("reminders.item"),
     contentKey: item.contentKey || "",
     sourceLang: item.sourceLang || "",
     done: Boolean(item.isCompleted)
@@ -465,9 +455,9 @@ function HomePanel({
         {reminders.length ? (
           reminders.map((item, index) => (
             <View key={item._id || item.id || index} style={styles.reminderLine}>
-              {reminderTitle(item, t, "") ? (
+              {item.content || item.title ? (
                 <TranslatedUgcText
-                  text={reminderTitle(item, t, "")}
+                  text={item.content || item.title}
                   sourceLang={item.sourceLang}
                   contentKey={item.contentKey}
                   apiBaseUrl={apiBaseUrl}
@@ -540,11 +530,53 @@ function WatchPanel({ role, watchSeg, setWatchSeg, ...screenProps }) {
     }
   }, [role])
   const [activityCount, setActivityCount] = useState(0)
+  const seenAtRef = useRef(0)
+  const rowsRef = useRef([])
+  const segRef = useRef(watchSeg)
+  segRef.current = watchSeg === "sos" ? "activity" : watchSeg
+  useEffect(() => {
+    let live = true
+    loadActivitySeenAt().then((at) => {
+      if (!live) return
+      seenAtRef.current = at
+      const list = rowsRef.current
+      if (segRef.current === "activity") return
+      const n = list.filter((row) => {
+        const atMs = new Date(row?.happenedAt || row?.triggeredAt || row?.detectedAt || row?.createdAt || 0).getTime()
+        return Number.isFinite(atMs) && atMs > at
+      }).length
+      setActivityCount(n)
+    })
+    return () => { live = false }
+  }, [])
+  const markActivitySeen = useCallback(() => {
+    const now = Date.now()
+    seenAtRef.current = now
+    saveActivitySeenAt(now)
+    setActivityCount(0)
+  }, [])
+  const applyLedgerRows = useCallback((rows) => {
+    const list = Array.isArray(rows) ? rows : []
+    rowsRef.current = list
+    if (segRef.current === "activity") {
+      markActivitySeen()
+      return
+    }
+    const seen = seenAtRef.current
+    const n = list.filter((row) => {
+      const t = new Date(row?.happenedAt || row?.triggeredAt || row?.detectedAt || row?.createdAt || 0).getTime()
+      return Number.isFinite(t) && t > seen
+    }).length
+    setActivityCount(n)
+  }, [markActivitySeen])
   const segments = [
     { id: "live", label: t("watch.live") },
     ...(alerts ? [{ id: "activity", label: t("watch.activity"), badge: activityCount }] : [])
   ]
   const seg = watchSeg === "sos" ? "activity" : watchSeg
+  useEffect(() => {
+    if (seg === "activity") markActivitySeen()
+  }, [seg, markActivitySeen])
   const nightSkin = USE_NIGHT_WATCH
 
   const pills = nightSkin ? (
@@ -583,7 +615,7 @@ function WatchPanel({ role, watchSeg, setWatchSeg, ...screenProps }) {
       embedded
       layout="liveFeed"
       skin={nightSkin ? "night" : undefined}
-      onCountChange={setActivityCount}
+      onRecordsChange={applyLedgerRows}
       onJumpToTime={(ts) => {
         if (typeof seekRef.current === "function") seekRef.current(ts)
       }}
@@ -608,6 +640,7 @@ function WatchPanel({ role, watchSeg, setWatchSeg, ...screenProps }) {
       embedded
       layout="history"
       skin={nightSkin ? "night" : undefined}
+      onRecordsChange={applyLedgerRows}
       onJumpToTime={jumpLive}
     />
   ) : null
@@ -1189,7 +1222,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: "#dc2626"
   },
-  tabLabel: { color: "#4b5563", fontSize: 11, fontWeight: "700" },
+  tabLabel: { color: "#4b5563", fontSize: 11, fontWeight: "700", textAlign: "center", paddingHorizontal: 2 },
   tabLabelNight: { color: night.textMuted },
   tabLabelActive: { color: USE_MORANDI_UI ? morandi.pine : "#1f74d1" },
   tabLabelActiveNight: { color: night.live },

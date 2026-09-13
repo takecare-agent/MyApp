@@ -2,10 +2,22 @@ import { useEffect, useState } from "react"
 import { Image, Modal, Pressable, StyleSheet, Text, View } from "react-native"
 import { WebView } from "react-native-webview"
 import { apiRequest } from "../lib/api"
+import { useI18n } from "../i18n/I18nContext"
 import { loadAvatarUri, saveAvatarUri, subscribeAvatars } from "../lib/avatarStore"
 import { NeoIcon } from "../screens/new_ui/NeoIcons"
 
-const PICK_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8">
+function escHtml(s) {
+  return String(s || "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  }[c]))
+}
+
+function pickHtml(t) {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <style>
 html,body{margin:0;background:#16181D;font-family:-apple-system,sans-serif;color:#fff}
@@ -18,15 +30,15 @@ input{position:absolute;left:-9999px}
 #img{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform;user-select:none;-webkit-user-drag:none}
 </style></head><body>
 <div class="wrap" id="pick">
-  <label class="btn">從相簿選擇<input id="alb" type="file" accept="image/*"></label>
-  <label class="btn">拍照<input id="cam" type="file" accept="image/*" capture="environment"></label>
-  <div class="hint">選完可自己拖移、縮放裁切，不會自動縮小</div>
+  <label class="btn">${escHtml(t("avatar.album"))}<input id="alb" type="file" accept="image/*"></label>
+  <label class="btn">${escHtml(t("avatar.camera"))}<input id="cam" type="file" accept="image/*" capture="environment"></label>
+  <div class="hint">${escHtml(t("avatar.pickHint"))}</div>
 </div>
 <div class="wrap" id="crop" style="display:none">
   <div id="vp"><img id="img" alt=""></div>
-  <div class="hint">拖移調整、雙指縮放。完成後才儲存。</div>
-  <div class="btn" id="ok">完成裁切</div>
-  <div class="btn ghost" id="back">重選</div>
+  <div class="hint">${escHtml(t("avatar.cropHint"))}</div>
+  <div class="btn" id="ok">${escHtml(t("avatar.cropDone"))}</div>
+  <div class="btn ghost" id="back">${escHtml(t("avatar.reselect"))}</div>
 </div>
 <script>
 function send(obj){ window.ReactNativeWebView.postMessage(JSON.stringify(obj)); }
@@ -102,6 +114,7 @@ document.getElementById("ok").onclick=function(){
   send({uri:c.toDataURL("image/jpeg",0.88)});
 };
 </script></body></html>`
+}
 
 export function AvatarMark({ email, size = 52, onPress, apiBaseUrl, token, inModal = false }) {
   const [uri, setUri] = useState("")
@@ -172,6 +185,7 @@ export function AvatarMark({ email, size = 52, onPress, apiBaseUrl, token, inMod
 }
 
 export function AvatarPickModal({ visible, email, apiBaseUrl, token, onClose }) {
+  const { t } = useI18n()
   const [hint, setHint] = useState("")
   if (!visible || !email) return null
 
@@ -187,7 +201,7 @@ export function AvatarPickModal({ visible, email, apiBaseUrl, token, onClose }) 
           body: { dataUrl: uri }
         })
       } catch {
-        setHint("已存在本機，伺服器稍後再同步")
+        setHint(t("avatar.syncPending"))
       }
     }
     onClose()
@@ -197,10 +211,10 @@ export function AvatarPickModal({ visible, email, apiBaseUrl, token, onClose }) 
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.mask}>
         <View style={styles.sheet}>
-          <Text style={styles.title}>更換頭貼</Text>
+          <Text style={styles.title}>{t("avatar.title")}</Text>
           {hint ? <Text style={styles.hint}>{hint}</Text> : null}
           <WebView
-            source={{ html: PICK_HTML, baseUrl: "https://localhost/" }}
+            source={{ html: pickHtml(t), baseUrl: "https://localhost/" }}
             style={styles.web}
             javaScriptEnabled
             originWhitelist={["*"]}
@@ -211,9 +225,9 @@ export function AvatarPickModal({ visible, email, apiBaseUrl, token, onClose }) 
               try {
                 const data = JSON.parse(e.nativeEvent.data || "{}")
                 if (data.uri) persist(data.uri)
-                else if (data.error) setHint("選取失敗，請再試一次")
+                else if (data.error) setHint(t("avatar.pickFail"))
               } catch {
-                setHint("選取失敗，請再試一次")
+                setHint(t("avatar.pickFail"))
               }
             }}
           />
@@ -234,10 +248,10 @@ export function AvatarPickModal({ visible, email, apiBaseUrl, token, onClose }) 
               })
             }}
           >
-            <Text style={styles.clearText}>移除頭貼</Text>
+            <Text style={styles.clearText}>{t("avatar.remove")}</Text>
           </Pressable>
           <Pressable onPress={onClose} style={styles.closeBtn}>
-            <Text style={styles.closeText}>取消</Text>
+            <Text style={styles.closeText}>{t("google.cancel")}</Text>
           </Pressable>
         </View>
       </View>

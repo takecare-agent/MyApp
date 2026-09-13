@@ -87,7 +87,7 @@ export default function NewCaregiverHome({
                 {...(onPressStatus ? { accessibilityRole: "button" } : {})}
               >
                 <View style={[styles.statusDot, pendingCount > 0 ? styles.statusDotWarn : null]} />
-                <Text style={styles.statusText} numberOfLines={1}>
+                <Text style={styles.statusText}>
                   {summary}
                 </Text>
               </StatusWrap>
@@ -119,10 +119,10 @@ export default function NewCaregiverHome({
           <Pressable style={[styles.card, styles.sideCard]} onPress={onOpenFirstAid}>
             <View style={styles.sideTop}>
               <View style={styles.sideCopy}>
-                <Text style={styles.sideTitle} numberOfLines={1}>
+                <Text style={styles.sideTitle}>
                   {t("home.emergencyGuide")}
                 </Text>
-                <Text style={styles.sideSub} numberOfLines={1}>
+                <Text style={styles.sideSub}>
                   {t("home.guideRescue")}
                 </Text>
               </View>
@@ -133,12 +133,7 @@ export default function NewCaregiverHome({
 
           <Pressable style={[styles.card, styles.sideCard]} onPress={onOpenHealthCard}>
             <View style={styles.sideTop}>
-              <Text
-                style={styles.sideTitleOne}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.72}
-              >
+              <Text style={styles.sideTitleOne}>
                 {t("home.healthCardElder")}
               </Text>
               <IconUserPlus size={20} />
@@ -153,7 +148,7 @@ export default function NewCaregiverHome({
         <View style={styles.todoLeft}>
           <View style={styles.todoTitleRow}>
             <IconCalendar size={18} />
-            <Text style={styles.todoTitle} numberOfLines={1}>
+            <Text style={styles.todoTitle}>
               {t("home.todayCareLog")}
             </Text>
           </View>
@@ -182,12 +177,12 @@ export default function NewCaregiverHome({
           )}
           <View style={styles.todoActions}>
             <Pressable style={styles.pillBtn} onPress={onOpenTodo}>
-              <Text style={styles.pillBtnText} numberOfLines={1}>
+              <Text style={styles.pillBtnText}>
                 {t("common.all")}
               </Text>
             </Pressable>
             <Pressable style={styles.pillBtnFill} onPress={onWriteDaily || onOpenTodo}>
-              <Text style={styles.pillBtnText} numberOfLines={1}>
+              <Text style={styles.pillBtnText}>
                 {t("home.writeDailyArrow")}
               </Text>
             </Pressable>
@@ -311,7 +306,8 @@ const styles = StyleSheet.create({
     borderCurve: "continuous",
     padding: 14,
     minHeight: 196,
-    justifyContent: "space-between"
+    justifyContent: "space-between",
+    overflow: "visible"
   },
   sosTop: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
   sosTitle: { fontSize: 48, fontWeight: "800", color: "#FFF", lineHeight: 52 },
@@ -323,8 +319,8 @@ const styles = StyleSheet.create({
     paddingVertical: 3
   },
   sosBadgeText: { color: "#FF4D4D", fontSize: 11, fontWeight: "800" },
-  sosSubtitle: { fontSize: 17, color: "#FFF", fontWeight: "700" },
-  sosHint: { fontSize: 12, color: "rgba(255,255,255,0.86)", fontWeight: "600" },
+  sosSubtitle: { fontSize: 17, color: "#FFF", fontWeight: "700", flexShrink: 1 },
+  sosHint: { fontSize: 12, color: "rgba(255,255,255,0.86)", fontWeight: "600", flexShrink: 1 },
   sosBottom: {
     flexDirection: "row",
     alignItems: "center",
@@ -343,7 +339,8 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 92,
     padding: 12,
-    justifyContent: "space-between"
+    justifyContent: "space-between",
+    overflow: "visible"
   },
   sideTop: {
     flexDirection: "row",
@@ -352,19 +349,20 @@ const styles = StyleSheet.create({
     gap: 6
   },
   sideCopy: { flex: 1, paddingRight: 4 },
-  sideTitle: { fontSize: 14, fontWeight: "700", color: colors.text },
-  sideSub: { fontSize: 12, fontWeight: "600", color: colors.textMuted, marginTop: 2 },
+  sideTitle: { fontSize: 14, fontWeight: "700", color: colors.text, flexShrink: 1 },
+  sideSub: { fontSize: 12, fontWeight: "600", color: colors.textMuted, marginTop: 2, flexShrink: 1 },
   sideTitleOne: {
     flex: 1,
     fontSize: 13,
     fontWeight: "700",
     color: colors.text,
-    paddingRight: 4
+    paddingRight: 4,
+    flexShrink: 1
   },
-  todoCard: { flexDirection: "row", minHeight: 186, gap: 6, padding: 14 },
+  todoCard: { flexDirection: "row", minHeight: 186, gap: 6, padding: 14, alignItems: "stretch" },
   todoLeft: { flex: 1, minWidth: 0 },
-  todoTitleRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
-  todoTitle: { flex: 1, fontSize: 18, fontWeight: "700", color: colors.text },
+  todoTitleRow: { flexDirection: "row", alignItems: "flex-start", gap: 8, marginBottom: 12 },
+  todoTitle: { flex: 1, fontSize: 18, fontWeight: "700", color: colors.text, flexShrink: 1 },
   todoList: { marginBottom: 12, gap: 10 },
   todoRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   checkDot: {
@@ -380,7 +378,7 @@ const styles = StyleSheet.create({
   todoText: { flex: 1, fontSize: 13, color: colors.text },
   todoTextDone: { color: colors.textMuted },
   emptyText: { fontSize: font.body, color: colors.textMuted, marginBottom: spacing.md },
-  todoActions: { flexDirection: "row", flexWrap: "nowrap", gap: 8, marginTop: "auto", alignItems: "center" },
+  todoActions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: "auto", alignItems: "center" },
   pillBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -391,7 +389,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7
   },
   pillBtnFill: {
-    flex: 1,
+    flexGrow: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -402,7 +400,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     minWidth: 0
   },
-  pillBtnText: { fontSize: 12, color: colors.text, fontWeight: "600" },
+  pillBtnText: { fontSize: 12, color: colors.text, fontWeight: "600", flexShrink: 1, textAlign: "center" },
   todoRight: { width: 108, alignItems: "center", justifyContent: "center" },
   ringWrap: {
     width: 108,

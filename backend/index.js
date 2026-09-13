@@ -1,4 +1,5 @@
 require("dotenv").config()
+console.log("[boot] 載入套件中（第一次可能要 1～2 分鐘，看到 [whisper] ready 才算好）")
 
 const express = require("express")
 const cors = require("cors")
@@ -25,7 +26,7 @@ const { transcribeWavBuffer, warmupWhisper, wavDurationSec, detectLangFromText }
 const { resolveCarePresetKey } = require("./lib/carePresetKey")
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "")
-const geminiModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" })
+const geminiModel = genAI.getGenerativeModel({ model: "gemini-flash-latest" })
 const GOOGLE_STT_API_KEY = process.env.GOOGLE_API_KEY || ""
 
 function getFirebaseCredential() {
@@ -143,6 +144,7 @@ app.use(express.json({ limit: "20mb" }))
 app.use(passport.initialize())
 
 const objectStore = require("./lib/objectStore")
+const fileTypeValidate = require("./lib/fileTypeValidate")
 
 // ================= Schemas =================
 const userSchema = new mongoose.Schema({
@@ -471,6 +473,13 @@ const chatMessageSchema = new mongoose.Schema({
   timestamp: { type: Date, default: Date.now, expires: "30d" }
 })
 
+/** 語音 objectKey 登記簿：ChatMessage TTL 到期不會觸發 middleware，靠排程刪 R2／本機檔 */
+const chatVoiceAssetSchema = new mongoose.Schema({
+  objectKey: { type: String, required: true, unique: true, index: true },
+  chatMessageId: { type: mongoose.Schema.Types.ObjectId, index: true },
+  createdAt: { type: Date, default: Date.now, index: true }
+})
+
 const dangerLogSchema = new mongoose.Schema({
   senderEmail: String,
   senderName: String,
@@ -565,7 +574,20 @@ const CameraSession = mongoose.model("CameraSession", cameraSessionSchema)
 const CAMERA_HEARTBEAT_STALE_MS = 90 * 1000
 const FamilyCareRecord = mongoose.model("FamilyCareRecord", familyCareRecordSchema)
 const FamilyEvent = mongoose.model("FamilyEvent", familyEventSchema)
+
+chatMessageSchema.pre("findOneAndDelete", async function () {
+  const doc = await this.model.findOne(this.getFilter()).lean()
+  if (doc?.audioObjectKey) {
+    await objectStore.deleteObject(doc.audioObjectKey)
+    try {
+      await mongoose.model("ChatVoiceAsset").deleteOne({ objectKey: doc.audioObjectKey })
+    } catch { /* ignore */ }
+  }
+})
+
 const ChatMessage = mongoose.model("ChatMessage", chatMessageSchema)
+const ChatVoiceAsset = mongoose.model("ChatVoiceAsset", chatVoiceAssetSchema)
+const CHAT_VOICE_ASSET_KEEP_MS = 31 * 24 * 60 * 60 * 1000
 const DangerLog = mongoose.model("DangerLog", dangerLogSchema)
 const CustomPhrase = mongoose.model("CustomPhrase", customPhraseSchema)
 
@@ -889,13 +911,7 @@ async function resolveAbnormalEvent(record, user, role, note) {
  */
 async function supersedeOlderOpenAlerts(resolvedRecord, user, note) {
   const winnerId = String(resolvedRecord._id)
-  const winnerEventId = resolvedRecord.eventId || winnerId
-  const noteSnippet = typeof note === "string" && note.trim()
-    ? note.trim().slice(0, 80)
-    : ""
-  const supersededNote = noteSnippet
-    ? `被後續事件覆蓋／一併結案（參照 ${winnerEventId}：${noteSnippet}）`
-    : `被後續事件覆蓋／一併結案（參照 ${winnerEventId}）`
+  const supersededNote = "已查看"
 
   const openRows = await AbnormalEvent.find({
     patientUserId: resolvedRecord.patientUserId,
@@ -940,10 +956,18 @@ function publicEvidenceViews(evidenceList = []) {
 }
 
 async function attachEvidenceToTargets({ patientUserId, alertId, eventKey, mediaType, contentType, buffer, durationSec, startAt }) {
+  const normalizedMedia = mediaType === "clip" ? "clip" : "snapshot"
+  const typeCheck = await fileTypeValidate.validateEvidenceUpload(buffer, normalizedMedia)
+  if (!typeCheck.ok) {
+    const e = new Error(typeCheck.message)
+    e.statusCode = 400
+    throw e
+  }
+  const verifiedContentType = typeCheck.mime || contentType
   const stored = await objectStore.putObject({
     patientUserId: String(patientUserId),
-    mediaType: mediaType === "clip" ? "clip" : "snapshot",
-    contentType,
+    mediaType: normalizedMedia,
+    contentType: verifiedContentType,
     buffer
   })
   const entry = {
@@ -1075,6 +1099,20 @@ async function purgeExpiredEvidence() {
     }
   }
   if (removed) console.log(`evidence purge: removed ${removed} (snap ${EVIDENCE_SNAP_KEEP_DAYS}d / clip ${EVIDENCE_CLIP_KEEP_DAYS}d)`)
+  return removed
+}
+
+async function purgeExpiredChatVoiceAssets() {
+  const cutoff = new Date(Date.now() - CHAT_VOICE_ASSET_KEEP_MS)
+  const stale = await ChatVoiceAsset.find({ createdAt: { $lt: cutoff } }).limit(200).lean()
+  let removed = 0
+  for (const row of stale) {
+    if (row.objectKey) await objectStore.deleteObject(row.objectKey)
+    await ChatVoiceAsset.deleteOne({ _id: row._id })
+    removed += 1
+  }
+  if (removed) console.log(`chat voice purge: removed ${removed} orphan object(s)`)
+  return removed
 }
 
 /** G3：異常列表＝Alert（已回報）＋僅紀錄的 Vision Event（alertBuilt=false）；附處理人標籤 */
@@ -1870,9 +1908,10 @@ function cacheKeyFor(text, targetLang) {
 
 function repairCareSpeech(text) {
   return String(text || "")
-    .replace(/huy[eệ]t\s*t[aáàạ]p/gi, "huyết áp")
-    .replace(/huy[eệ]t\s*ap\b/gi, "huyết áp")
+    .replace(/huy[eệếê]t\s*t[aáàạ]p/gi, "huyết áp")
+    .replace(/huy[eệếê]t\s*ap\b/gi, "huyết áp")
     .replace(/đò\s+huyết/gi, "đo huyết")
+    .replace(/màu\s*trang\b/gi, "màu trắng")
     .replace(/\b(bad|blog|blad|blod)\s+pressure\b/gi, "blood pressure")
     .replace(/\bpresyon\s+ng\s+dugo\b/gi, "blood pressure")
     .replace(/良血壓|良血压/g, "量血壓")
@@ -1880,6 +1919,9 @@ function repairCareSpeech(text) {
     .replace(/วัตความดัน/g, "วัดความดัน")
     .replace(/กวามดัน/g, "ความดัน")
     .replace(/ลังอาหาร/g, "หลังอาหาร")
+    .replace(/สักบายดี/g, "สบายดี")
+    .replace(/พยา?ยุ่ง|พายุ่ง/g, "พยุง")
+    .replace(/na\s*hi+hi+\s*lupo|no\s*hi+hi+\s*lupo|nahihilupo|hihilupo|nohihilo/gi, "nahihilo")
 }
 
 function foldCarePhrase(s) {
@@ -1945,6 +1987,83 @@ const CARE_PHRASE_BANK = [
       "uminom ng gamot sa blood pressure pagkatapos kumain",
       "inumin ang gamot pagkatapos kumain"
     ]
+  },
+  {
+    zh: "今天感覺怎麼樣？還好嗎？",
+    en: "How are you feeling today? Are you okay?",
+    vi: "Hôm nay cảm thấy thế nào? Ổn chứ?",
+    id: "Hari ini rasanya bagaimana? Baik-baik saja?",
+    tl: "Kumusta po kayo ngayon? Ayos lang ba?",
+    th: "วันนี้รู้สึกเป็นอย่างไรบ้างครับ สบายดีไหม",
+    aliases: [
+      "วันนี้รู้สึกเป็นอย่างไรบ้างครับสบายดีไหม",
+      "วันนี้รู้สึกเป็นอย่างไรบ้างครับสักบายดีมั้ย",
+      "how are you feeling today are you okay",
+      "you today feeling how are you"
+    ]
+  },
+  {
+    zh: "記得午飯後吃那顆白色的藥。",
+    en: "Remember to take the white pill after lunch.",
+    vi: "Bác nhớ uống viên thuốc màu trắng sau khi ăn trưa nhé.",
+    id: "Ingat minum obat putih setelah makan siang.",
+    tl: "Tandaan uminom ng puting tableta pagkatapos ng tanghalian.",
+    th: "อย่าลืมกินยาเม็ดสีขาวหลังข้าวเที่ยง",
+    aliases: [
+      "hãy nhớ uống viên thuốc màu trắng đó sau",
+      "bác nhớ uống viên thuốc màu trắng sau",
+      "uống viên thuốc màu trắng sau khi ăn"
+    ]
+  },
+  {
+    zh: "長輩從床上起來時請扶著他的手。",
+    en: "Hold his hand when he gets up from bed.",
+    vi: "Hãy nắm tay ông khi ông ngồi dậy khỏi giường.",
+    id: "Pegang tangan kakek saat dia bangun dari tempat tidur.",
+    tl: "Hawakan ang kamay niya kapag siya'y bumangon sa kama.",
+    th: "ตอนลุกจากเตียงช่วยจับมือท่านด้วย",
+    aliases: [
+      "pegang tangan kakek saat dia bangun",
+      "pegang tangan nenek saat beliau bangkit",
+      "tolong pegang tangan nenek",
+      "pegang tangan kakak saat dia bangun"
+    ]
+  },
+  {
+    zh: "有沒有頭暈或想吐？",
+    en: "Are you dizzy or nauseous?",
+    vi: "Có thấy chóng mặt hoặc buồn nôn không?",
+    id: "Apa pusing atau mual?",
+    tl: "Nahihilo po ba kayo o nasusuka?",
+    th: "เวียนหัวหรือคลื่นไส้ไหม",
+    aliases: [
+      "nahihilo po ba kayo o nasusuka",
+      "na hihilo po ba kayo o na susuka",
+      "nahihilo ba kayo o nasusuka",
+      "nohihilupubakayaw kung nasusuka"
+    ]
+  },
+  {
+    zh: "我扶您去上廁所。",
+    en: "I will help you to the bathroom.",
+    vi: "Để cháu đỡ bác đi vệ sinh nhé.",
+    id: "Saya bantu menuju kamar mandi.",
+    tl: "Tutulungan kita papunta sa banyo.",
+    th: "เดี๋ยวผมช่วยพยุงไปเข้าห้องน้ำนะครับ",
+    aliases: [
+      "ช่วยพยุงไปเข้าห้องน้ำ",
+      "để cháu đỡ bác đi vệ sinh",
+      "để chấu đỡ bác đi vệ sinh"
+    ]
+  },
+  {
+    zh: "現在該吃藥了。",
+    en: "It is time to take the medicine.",
+    vi: "Đến giờ uống thuốc rồi.",
+    id: "Sekarang waktunya minum obat.",
+    tl: "Oras na para uminom ng gamot.",
+    th: "ถึงเวลากินยาแล้ว",
+    aliases: ["sekarang waktunya minum obat"]
   }
 ]
 
@@ -1956,9 +2075,9 @@ function lookupCarePhrase(text, targetLang) {
     const pool = [row.zh, row.en, row.vi, row.id, row.tl, row.th, ...(row.aliases || [])]
     if (pool.some((p) => foldCarePhrase(p) === fold)) return row[want] || row.zh
   }
-  const hasBp = /bloodpressure|presyon|huy[eệ]tá?p|tekanandarah|ความดัน|血壓/.test(fold)
+  const hasBp = /bloodpressure|presyon|huy[eêếệ]tá?p|tekanandarah|ความดัน|血壓/.test(fold)
   const hasLunch = /tanghalian|lunch|ăntrưa|makansiang|ข้าวเที่ยง|午餐/.test(fold)
-  const hasMed = /gamot|thuốc|obat|ยา|藥|medicine/.test(fold)
+  const hasMed = /gamot|thuốc|obat|ยา|藥|medicine|tableta|viênthuốc/.test(fold)
   const afterMeal = /pagkatapos|after(the)?(meal|eating)|saubữa|setelahmakan|หลังอาหาร|飯後/.test(fold)
   const measure = /nasukat|sinukat|sukat|đo|ukur|วัด|量|check/.test(fold)
   const remember = /pakisukat|tandaan|nhớ|ingat|อย่าลืม|記得|pleaseremember/.test(fold)
@@ -1966,7 +2085,10 @@ function lookupCarePhrase(text, targetLang) {
   if (hasMed && afterMeal) return CARE_PHRASE_BANK[3][want] || CARE_PHRASE_BANK[3].zh
   if (hasBp && remember) return CARE_PHRASE_BANK[1][want] || CARE_PHRASE_BANK[1].zh
   if (hasBp && (measure || ask)) return CARE_PHRASE_BANK[0][want] || CARE_PHRASE_BANK[0].zh
-  if (hasLunch || (/kumainkana/.test(fold) && !hasBp && !hasMed)) {
+  if (hasLunch && !hasBp && !hasMed && !remember) {
+    return CARE_PHRASE_BANK[2][want] || CARE_PHRASE_BANK[2].zh
+  }
+  if (/kumainkana/.test(fold) && !hasBp && !hasMed) {
     return CARE_PHRASE_BANK[2][want] || CARE_PHRASE_BANK[2].zh
   }
   return ""
@@ -2016,6 +2138,14 @@ function splitCareUtterances(text) {
   return parts.length > 1 ? parts : [raw]
 }
 
+function withTimeout(promise, ms, label) {
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timeout ${ms}ms`)), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
+
 async function translateOnce(text, code) {
   const source = repairCareSpeech(text)
   const phraseHit = lookupCarePhrase(source, code)
@@ -2043,7 +2173,7 @@ async function translateOnce(text, code) {
       `nhớ + verb = remember to / please (記得要), not "I don't remember".\n` +
       `Must-use glossary (left source forms → right ${targetName}):\n${glossary}\n\n` +
       `Source:\n${source}`
-    const geminiResult = await geminiModel.generateContent(prompt)
+    const geminiResult = await withTimeout(geminiModel.generateContent(prompt), 8000, "gemini")
     let resultText = String(geminiResult.response.text() || "").trim()
     if (code === "zh") resultText = guardZhCareTranslation(source, resultText)
     if (resultText && !looksLikeWrongScript(resultText, code)) {
@@ -2052,7 +2182,7 @@ async function translateOnce(text, code) {
     }
     console.log(`[translateToLang] gemini rejected (wrong script) target=${code}`)
   } catch (e) {
-    console.log(`[translateToLang] gemini fail: ${e.message?.slice(0, 60)}`)
+    console.log(`[translateToLang] gemini fail: ${e.status || ""} ${e.message?.slice(0, 80)}`)
   }
 
   try {
@@ -5660,31 +5790,17 @@ app.post("/speech-to-text", async (req, res) => {
   }
 })
 
-/** 語音辨識後校正：不翻譯、只修口語／同音錯字 */
+/** 語音辨識後校正：只做本機用詞修復，不再打 Gemini（省一輪、也避免 429） */
 app.post("/stt-polish", async (req, res) => {
   const decoded = verifyToken(req)
   if (!decoded) return res.status(401).json({ message: "Invalid token" })
   const text = String(req.body?.text || "").trim()
   const code = TRANSLATE_LANG_MAP[req.body?.lang] ? req.body.lang : "zh"
   if (!text) return res.json({ text: "" })
-  const targetName = TRANSLATE_LANG_NAMES[code] || TRANSLATE_LANG_NAMES.zh
-  try {
-    const prompt =
-      `You correct speech-to-text errors for home elder-care in ${targetName}.\n` +
-      `Do NOT translate. Do NOT add new meaning. Keep numbers, times, mmHg/mg/ml, and Latin medicine names.\n` +
-      `Fix only obvious homophones / missing particles. If already correct, return it unchanged.\n` +
-      `Output ONLY the corrected sentence in ${targetName}.\n` +
-      `Care glossary:\n${glossaryLines(code)}\n\n` +
-      `Speech-to-text:\n${text}`
-    const geminiResult = await geminiModel.generateContent(prompt)
-    const out = String(geminiResult.response.text() || "").trim()
-    if (out && !looksLikeWrongScript(out, code)) {
-      return res.json({ text: out, polished: true })
-    }
-  } catch (e) {
-    console.log(`[stt-polish] fail: ${e.message?.slice(0, 60)}`)
-  }
-  return res.json({ text, polished: false })
+  const repaired = repairCareSpeech(text)
+  const canon = canonicalizeCareSpeech(repaired, code)
+  const out = String(canon || repaired || text).trim()
+  return res.json({ text: out, polished: out !== text })
 })
 
 /** R98：把口述對到既有狀況。不准發明急救步驟。 */
@@ -6074,10 +6190,13 @@ app.post("/chat/voice", async (req, res) => {
   if (!buffer.length || buffer.length > 12 * 1024 * 1024) {
     return res.status(400).json({ message: "語音太短或太大" })
   }
+  const voiceCheck = await fileTypeValidate.validateChatVoiceUpload(buffer)
+  if (!voiceCheck.ok) return res.status(400).json({ message: voiceCheck.message })
+  const verifiedMime = voiceCheck.mime || mimeType
   const stored = await objectStore.putObject({
     patientUserId: from.replace(/[^a-z0-9]/g, "_"),
     mediaType: "clip",
-    contentType: mimeType,
+    contentType: verifiedMime,
     buffer
   })
   const langMap = { zh: "zh-TW", en: "en-US", id: "id-ID", vi: "vi-VN", tl: "fil-PH", th: "th-TH" }
@@ -6117,9 +6236,12 @@ app.post("/chat/voice", async (req, res) => {
     targetLang,
     kind: "voice",
     audioObjectKey: stored.objectKey,
-    audioContentType: mimeType,
+    audioContentType: verifiedMime,
     audioDurationSec: wavDurationSec(buffer),
     timestamp: new Date()
+  })
+  await ChatVoiceAsset.create({ objectKey: stored.objectKey, chatMessageId: saved._id }).catch((err) => {
+    console.log("ChatVoiceAsset register failed:", err.message)
   })
   emitSavedChat(saved, clientMsgId)
   notifyChatPush({
@@ -6264,6 +6386,11 @@ io.on("connection", (socket) => {
 const PORT = Number(process.env.PORT) || 5000
 server.listen(PORT, async () => {
   console.log(`Backend running on http://localhost:${PORT}`)
+  const storeStatus = objectStore.getStoreStatus()
+  console.log(`[objectStore] driver=${storeStatus.driver} bucket=${storeStatus.bucket || "-"} local=${storeStatus.localRoot}`)
+  if (!process.env.GEMINI_API_KEY) {
+    console.log("[translate] GEMINI_API_KEY missing → fallback google-translate-api-x (care glossary off)")
+  }
   warmupWhisper().catch((e) => console.log("[whisper] warmup skip:", e.message))
   try {
     await mobileAuthApi.ensureTestAccounts()
@@ -6275,7 +6402,13 @@ server.listen(PORT, async () => {
   } catch (err) {
     console.log("evidence purge failed:", err.message)
   }
+  try {
+    await purgeExpiredChatVoiceAssets()
+  } catch (err) {
+    console.log("chat voice purge failed:", err.message)
+  }
   setInterval(() => {
     purgeExpiredEvidence().catch((err) => console.log("evidence purge failed:", err.message))
+    purgeExpiredChatVoiceAssets().catch((err) => console.log("chat voice purge failed:", err.message))
   }, 6 * 60 * 60 * 1000)
 })

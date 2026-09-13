@@ -178,22 +178,26 @@ def upload_evidence(
     content_type: str,
     raw_bytes: bytes,
     duration_sec: float | None = None,
+    start_at: float | None = None,
 ):
     if not backend_url or not shared_token or not patient_email or not raw_bytes:
         print("  ⚠️  evidence 上傳跳過：缺少設定或空資料")
         return
     try:
+        payload = {
+            "patientEmail": patient_email,
+            "eventKey": event_key,
+            "mediaType": media_type,
+            "contentType": content_type,
+            "dataBase64": base64.b64encode(raw_bytes).decode("ascii"),
+            "durationSec": duration_sec,
+        }
+        if start_at:
+            payload["startAt"] = start_at
         resp = requests.post(
             f"{backend_url.rstrip('/')}/vision/evidence",
             headers={"X-Vision-Token": shared_token, "Content-Type": "application/json"},
-            json={
-                "patientEmail": patient_email,
-                "eventKey": event_key,
-                "mediaType": media_type,
-                "contentType": content_type,
-                "dataBase64": base64.b64encode(raw_bytes).decode("ascii"),
-                "durationSec": duration_sec,
-            },
+            json=payload,
             timeout=20,
         )
         if resp.status_code in (200, 201):
@@ -238,6 +242,7 @@ def finalize_and_upload_clip(ring: EvidenceRingBuffer, event_key: str, backend_u
             content_type="video/mp4",
             raw_bytes=mp4,
             duration_sec=len(frames) / max(1.0, TARGET_FPS),
+            start_at=frames[0][0],
         )
     else:
         print(f"  ⚠️  短片編碼失敗，不改傳截圖  eventKey={event_key}")

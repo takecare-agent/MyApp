@@ -189,44 +189,17 @@ function formatStampParts(value) {
   return { dateLine: `${y}/${m}/${d}`, timeLine: `${hh}:${mm}:${ss}`, timeShort: `${hh}:${mm}` }
 }
 
-const CRITICAL_WAVE_LABEL = {
-  1: "未起 2分",
-  2: "未起 5分",
-  3: "未起 15分",
-  4: "未起 35分"
-}
-
-function criticalWaveLabel(record, lang) {
-  const wave = Number(record?.escalationWave) || 0
-  if (wave >= 1 && wave <= 4) {
-    return lookupI18n(lang, `alert.wave.${wave}`, CRITICAL_WAVE_LABEL[wave])
-  }
-  return lookupI18n(lang, "alert.severity.Critical", "極高")
-}
-
 function ledgerEventTitle(record, t, uiLang) {
   if (isSosRecord(record)) return lookupI18n(uiLang, "alert.type.sos", "呼叫")
   const typeLabel = getTypeLabel(record?.type, uiLang)
   if (isRecordOnlyEvent(record)) return typeLabel
   const sev = getDisplaySeverity(record)
-  if (sev === "Critical") {
-    return `${typeLabel} · ${lookupI18n(uiLang, "alert.severity.Critical", "極高")} · ${criticalWaveLabel(record, uiLang)}`
-  }
+  if (sev === "Critical") return `${typeLabel} · ${lookupI18n(uiLang, "alert.severity.Critical", "極高")}`
   if (sev === "High") return `${typeLabel} · ${lookupI18n(uiLang, "alert.severity.High", "高")}`
   return typeLabel
 }
 
-function ledgerFollowLine(record, t, uiLang) {
-  if (isSosRecord(record) || isRecordOnlyEvent(record)) return ""
-  const sev = getDisplaySeverity(record)
-  const log = Array.isArray(record?.escalationLog) ? record.escalationLog : []
-  const extra = log.filter((row) => Number(row.wave) > 0).length || (sev === "Critical" ? (Number(record?.escalationWave) || 0) : 0)
-  if (sev === "Critical" && extra > 0) {
-    return t.fallWatchLine
-      ? t.fallWatchLine(extra)
-      : `持續關注 · 再通知 ${extra} 次`
-  }
-  if (sev === "High") return t.fallHighHint || lookupI18n(uiLang, "alert.fallHighHint", "5秒未起")
+function ledgerFollowLine() {
   return ""
 }
 
@@ -258,17 +231,37 @@ function sentryCardName(record, uiLang) {
   return getTypeLabel(record?.type, uiLang)
 }
 
+function eventSeekMs(record) {
+  const key = String(record?.sourceEventKey || record?.frameTag || record?.eventKey || "")
+  const tagged = key.match(/vision-(\d{11,13})/)
+  if (tagged) {
+    const n = Number(tagged[1])
+    if (Number.isFinite(n) && n > 1e12) return n
+  }
+  const clips = Array.isArray(record?.evidence) ? record.evidence : []
+  const start = clips
+    .map((item) => new Date(item?.startAt || 0).getTime())
+    .find((n) => Number.isFinite(n) && n > 0)
+  if (start) return start + 5000
+  const at = new Date(getRecordTime(record)).getTime()
+  return Number.isFinite(at) ? at : 0
+}
+
 function sentryTimeRange(record) {
-  const start = formatStampParts(getRecordTime(record)).timeShort
-  const endRaw = record?.resolvedAt || record?.endedAt || record?.clipEndedAt || record?.updatedAt
-  const end = endRaw ? formatStampParts(endRaw).timeShort : ""
-  if (start && end && end !== start) return `${start} — ${end}`
-  return start || ""
+  const when = eventSeekMs(record) || getRecordTime(record)
+  const parts = formatStampParts(when)
+  const clock = parts.timeShort || ""
+  const recMs = new Date(when).getTime()
+  if (Number.isFinite(recMs) && recMs < startOfTodayMs()) {
+    const md = String(parts.dateLine || "").replace(/^\d{4}\//, "")
+    return md && clock ? `${md} ${clock}` : (clock || md)
+  }
+  return clock
 }
 
 function getTypeLabel(type, lang) {
   if (!type) return "—"
-  const key = String(type).trim().toLowerCase()
+  const key = String(type).trim().toLowerCase().replace(/_/g, "-")
   const i18nKey = TYPE_I18N[key] || TYPE_I18N[String(type)]
   if (i18nKey) return lookupI18n(lang, i18nKey, String(type))
   return String(type)
@@ -279,22 +272,51 @@ function isManualAlertSource(record) {
   return src.includes("manual")
 }
 
-function isCameraAlertSource(record) {
-  if (record?.recordKind === "vision-event") return true
-  const src = String(record?.source || "").toLowerCase()
-  return src.includes("vision")
-}
-
 function getSourcedTypeLabel(record, lang) {
   const base = getTypeLabel(record?.type, lang)
   if (isSosRecord(record) || !isFallLikeType(record?.type)) return base
   if (isManualAlertSource(record)) {
     return `${base}（${lookupI18n(lang, "alert.sourceManual", "手動")}）`
   }
-  if (isCameraAlertSource(record)) {
-    return `${base}（${lookupI18n(lang, "alert.sourceCamera", "鏡頭")}）`
-  }
   return base
+}
+
+function isCoverNote(text) {
+  return /被後續|覆蓋／一併|覆蓋結案|一併歸|一併結案/.test(String(text || ""))
+}
+
+function isSystemDetectCopy(text) {
+  return /偵測到|僅紀錄|僅記錄|不推播/.test(String(text || ""))
+}
+
+function detectNoteForType(record, lang) {
+  const key = String(record?.type || "").trim().toLowerCase().replace(/_/g, "-")
+  if (key === "squat" || key.includes("squat") || key.includes("蹲")) {
+    return lookupI18n(lang, "alert.detect.squat", "偵測到蹲下（僅記錄、不推播）")
+  }
+  if (key.includes("bend") || key.includes("彎")) {
+    return lookupI18n(lang, "alert.detect.bendOver", "偵測到彎腰（僅記錄、不推播）")
+  }
+  if (isFallLikeType(record?.type)) {
+    return lookupI18n(lang, "alert.detect.fallRecordOnly", "偵測到跌倒（僅記錄、不推播）")
+  }
+  return lookupI18n(lang, "alert.detect.recordOnly", "僅記錄、不推播")
+}
+
+function publicEventNote(record, lang) {
+  const note = typeof record?.resolvedNote === "string" ? record.resolvedNote.trim() : ""
+  if (note && !isCoverNote(note)) return note
+  const desc = typeof record?.description === "string" ? record.description.trim() : ""
+  if (isSystemDetectCopy(desc) || ((!desc || isCoverNote(desc)) && isRecordOnlyEvent(record) && !isSosRecord(record))) {
+    return detectNoteForType(record, lang)
+  }
+  if (!desc || isCoverNote(desc)) return ""
+  return desc
+    .replace(/（觸發條件[^）]*）/g, "")
+    .replace(/[，,]?\s*目前跌倒機率[^。]*/g, "")
+    .replace(/[，,]?\s*跌倒機率[^。]*/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
 }
 
 function getSeverityLabel(severity, lang) {
@@ -360,7 +382,8 @@ function getHandlerLabel(record, lang) {
 
 function getResolveNoteLabel(record) {
   const note = typeof record?.resolvedNote === "string" ? record.resolvedNote.trim() : ""
-  return note || "—"
+  if (!note || isCoverNote(note)) return "—"
+  return note
 }
 
 function severityDotColor(severity) {
@@ -595,10 +618,12 @@ function asSosHistoryRow(item) {
   }
 }
 
-function isTodayRecord(record, now = Date.now()) {
+const LIVE_FEED_DAY_SPAN = 14
+
+function isRecentRecord(record, days = LIVE_FEED_DAY_SPAN, now = Date.now()) {
   const t = new Date(getRecordTime(record)).getTime()
   if (!Number.isFinite(t)) return false
-  return t >= startOfTodayMs(now)
+  return t >= startOfTodayMs(now) - days * 24 * 60 * 60 * 1000
 }
 
 function startOfTodayMs(now = Date.now()) {
@@ -655,10 +680,15 @@ const UI_TEXT = {
     markHandled: "已處理", handledBy: "已處理",
     resolveNotePlaceholder: "也可自由填寫處理說明…",
     resolvePickMethod: "選擇或填寫處理方式",
-    editNote: "修改說明", saveNote: "儲存說明",
+    editNote: "修改說明", addNote: "新增說明", saveNote: "儲存說明",
     recordOnlyHint: "僅紀錄（未推播），不必處理。",
     statusNoAction: "無需處理",
     expandDetail: "詳情", collapseDetail: "收合",
+    watchClip: "查看影片",
+    watchSnap: "查看截圖",
+    fallAlertShort: "跌倒通報",
+    dailyMoveShort: "蹲下／彎腰",
+    jumpToTime: "跳到該秒",
     notifiedShort: "已通知", recordOnlyShort: "僅紀錄",
     fallAlertShort: "跌倒通報", dailyMoveShort: "蹲下／彎腰",
     notEscalated: "未達通報",
@@ -745,10 +775,15 @@ const UI_TEXT = {
     resolveNotePlaceholder: "Resolution note (optional)",
     noAlert: "No alerts to review",
     resolvePickMethod: "Choose or type how it was handled",
-    editNote: "Edit note", saveNote: "Save note",
+    editNote: "Edit note", addNote: "Add note", saveNote: "Save note",
     recordOnlyHint: "Logged only (not pushed). No action needed.",
     statusNoAction: "No action needed",
     expandDetail: "Details", collapseDetail: "Hide",
+    watchClip: "View clip",
+    watchSnap: "View snapshot",
+    fallAlertShort: "Fall alert",
+    dailyMoveShort: "Low stance / bend",
+    jumpToTime: "Jump to that second",
     notifiedShort: "Notified", recordOnlyShort: "Logged only",
     notEscalated: "Not escalated",
     resolveWithSupersede: (n) => `Handled; ${n} related events also archived`,
@@ -757,7 +792,7 @@ const UI_TEXT = {
     rangeWeek: "7 days", rangeThisWeek: "This week", rangeMonth: "This month", rangeCustom: "Custom",
     statsToggleShow: "Show trend", statsToggleHide: "Hide trend",
     weekSummary: "This week", statsSos: "Call", statsDotsTitle: "What happened this week",
-    chipFall: "Fall alerts", chipDaily: "Squat / bend", chipSos: "Call",
+    chipFall: "Fall alerts", chipDaily: "Low stance / bend", chipSos: "Call",
     barCompare: "Compare alerts vs daily",
     calendarLegendAlerts: "Pick start, then end; same day = that day only",
     calendarDone: "Done", calendarRetap: "Reset range",
@@ -768,10 +803,10 @@ const UI_TEXT = {
     filterClassLabel: "Type",
     pickFilter: "Filter",
     manualReport: "Log manually",
-    statsAlert: "Fall alerts", statsDaily: "Squat / bend", statsResolved: "Reviewed",
+    statsAlert: "Fall alerts", statsDaily: "Low stance / bend", statsResolved: "Reviewed",
     statsAvg: "Avg. handling", statsDelta: "vs prior", statsMinutes: "min",
     statsBarTitle: "Events per day",
-    statsHint: "Red = fall   Grey = squat / bend (no action needed)",
+    statsHint: "Red = fall   Grey = low stance / bend (no action needed)",
     statsNoFall: "No fall alerts in this period",
     statsFallCount: "{n} fall alerts in this period",
     statsResolvedHint: "{n} already reviewed",
@@ -789,7 +824,7 @@ const UI_TEXT = {
     familyReadonlyHint: "Family can view only. Caregiver handles alerts.",
     plannedTitle: "Coming soon",
     plannedDesc: "This item is not live yet. Use blood pressure, alerts, SOS, reminders, and chat.",
-    completeReminder: "Mark done", reminderDone: "Done", reminderPending: "Open",
+    completeReminder: "Mark done", reminderDone: "Done", reminderPending: "Pending",
     resolveFalseAlarm: "False alarm", resolveStoodSelf: "Stood up alone",
     resolveHelpedUp: "Helped up", resolveHospital: "Taken to hospital", resolveOther: "Other",
   },
@@ -834,10 +869,15 @@ const UI_TEXT = {
     noAlert: "Tidak ada peringatan",
     markHandled: "Selesai",
     resolvePickMethod: "Pilih atau tulis cara penanganan",
-    editNote: "Ubah catatan", saveNote: "Simpan catatan",
+    editNote: "Ubah catatan", addNote: "Tambah catatan", saveNote: "Simpan catatan",
     recordOnlyHint: "Hanya tercatat (tidak dikirim). Tidak perlu ditindak.",
     statusNoAction: "Tidak perlu tindakan",
     expandDetail: "Detail", collapseDetail: "Tutup",
+    watchClip: "Lihat video",
+    watchSnap: "Lihat foto",
+    fallAlertShort: "Laporan jatuh",
+    dailyMoveShort: "Postur rendah / bungkuk",
+    jumpToTime: "Lompat ke detik itu",
     notifiedShort: "Diberitahu", recordOnlyShort: "Tercatat",
     notEscalated: "Tidak dilaporkan",
     resolveWithSupersede: (n) => `Selesai; ${n} peristiwa terkait diarsipkan`,
@@ -846,7 +886,7 @@ const UI_TEXT = {
     rangeWeek: "7 hari", rangeThisWeek: "Minggu ini", rangeMonth: "Bulan ini", rangeCustom: "Kustom",
     statsToggleShow: "Tampilkan tren", statsToggleHide: "Sembunyikan tren",
     weekSummary: "Minggu ini", statsSos: "Panggil", statsDotsTitle: "Yang terjadi minggu ini",
-    chipFall: "Laporan jatuh", chipDaily: "Jongkok / bungkuk", chipSos: "Panggil",
+    chipFall: "Laporan jatuh", chipDaily: "Postur rendah / bungkuk", chipSos: "Panggil",
     barCompare: "Bandingkan laporan vs rutin",
     calendarLegendAlerts: "Pilih tanggal mulai, lalu akhir; hari sama = hari itu saja",
     calendarDone: "Selesai", calendarRetap: "Pilih ulang",
@@ -860,7 +900,7 @@ const UI_TEXT = {
     statsAlert: "Dilaporkan", statsDaily: "Rutin", statsResolved: "Selesai",
     statsAvg: "Rata-rata", statsDelta: "vs sebelumnya", statsMinutes: "mnt",
     statsBarTitle: "Minggu ini: merah = dilaporkan | abu = rutin",
-    statsHint: "Merah = jatuh   Abu = jongkok / bungkuk (tidak perlu tindakan)",
+    statsHint: "Merah = jatuh   Abu = postur rendah / bungkuk (tidak perlu tindakan)",
     statsNoFall: "Tidak ada laporan jatuh di periode ini",
     statsFallCount: "{n} laporan jatuh di periode ini",
     statsResolvedHint: "{n} sudah dilihat",
@@ -879,7 +919,7 @@ const UI_TEXT = {
     familyReadonlyHint: "Keluarga hanya melihat. Pengasuh yang menindak.",
     plannedTitle: "Segera hadir",
     plannedDesc: "Fitur ini belum aktif. Gunakan tekanan darah, peringatan, SOS, pengingat, dan chat.",
-    completeReminder: "Tandai selesai", reminderDone: "Selesai", reminderPending: "Belum",
+    completeReminder: "Tandai selesai", reminderDone: "Selesai", reminderPending: "Tertunda",
     resolveFalseAlarm: "Alarm palsu", resolveStoodSelf: "Berdiri sendiri",
     resolveHelpedUp: "Dibantu berdiri", resolveHospital: "Dibawa ke rumah sakit", resolveOther: "Lainnya",
   },
@@ -924,10 +964,15 @@ const UI_TEXT = {
     noAlert: "Không có cảnh báo cần xem",
     markHandled: "Đã xử lý",
     resolvePickMethod: "Chọn hoặc ghi cách xử lý",
-    editNote: "Sửa ghi chú", saveNote: "Lưu ghi chú",
+    editNote: "Sửa ghi chú", addNote: "Thêm ghi chú", saveNote: "Lưu ghi chú",
     recordOnlyHint: "Chỉ ghi nhận (không đẩy tin). Không cần xử lý.",
     statusNoAction: "Không cần xử lý",
     expandDetail: "Chi tiết", collapseDetail: "Thu gọn",
+    watchClip: "Xem video",
+    watchSnap: "Xem ảnh",
+    fallAlertShort: "Báo ngã",
+    dailyMoveShort: "Tư thế thấp / cúi",
+    jumpToTime: "Nhảy tới giây đó",
     notifiedShort: "Đã báo", recordOnlyShort: "Chỉ ghi",
     notEscalated: "Chưa báo",
     resolveWithSupersede: (n) => `Đã xử lý; thêm ${n} sự kiện được lưu vào lịch sử`,
@@ -936,7 +981,7 @@ const UI_TEXT = {
     rangeWeek: "7 ngày", rangeThisWeek: "Tuần này", rangeMonth: "Tháng này", rangeCustom: "Tùy chọn",
     statsToggleShow: "Hiện xu hướng", statsToggleHide: "Ẩn xu hướng",
     weekSummary: "Tuần này", statsSos: "Gọi", statsDotsTitle: "Tuần này xảy ra gì",
-    chipFall: "Báo ngã", chipDaily: "Ngồi xổm / cúi", chipSos: "Gọi",
+    chipFall: "Báo ngã", chipDaily: "Tư thế thấp / cúi", chipSos: "Gọi",
     barCompare: "So sánh báo ngã và thường ngày",
     calendarLegendAlerts: "Chọn ngày bắt đầu, rồi ngày kết thúc; cùng ngày = chỉ hôm đó",
     calendarDone: "Xong", calendarRetap: "Chọn lại khoảng",
@@ -950,7 +995,7 @@ const UI_TEXT = {
     statsAlert: "Ngã", statsDaily: "Động tác thường", statsResolved: "Đã xem",
     statsAvg: "Xử lý TB", statsDelta: "so với trước", statsMinutes: "phút",
     statsBarTitle: "Số lần mỗi ngày",
-    statsHint: "Đỏ = ngã   Xám = ngồi xổm / cúi (không cần xử lý)",
+    statsHint: "Đỏ = ngã   Xám = tư thế thấp / cúi (không cần xử lý)",
     statsNoFall: "Không có báo ngã trong kỳ này",
     statsFallCount: "Có {n} lần báo ngã trong kỳ này",
     statsResolvedHint: "Trong đó {n} lần đã xem",
@@ -969,7 +1014,7 @@ const UI_TEXT = {
     familyReadonlyHint: "Gia đình chỉ xem. Người chăm sóc xử lý cảnh báo.",
     plannedTitle: "Sắp có",
     plannedDesc: "Mục này chưa mở. Hãy dùng huyết áp, cảnh báo, SOS, nhắc nhở và chat.",
-    completeReminder: "Đánh dấu xong", reminderDone: "Xong", reminderPending: "Chưa xong",
+    completeReminder: "Đánh dấu xong", reminderDone: "Xong", reminderPending: "Chờ xử lý",
     resolveFalseAlarm: "Báo nhầm", resolveStoodSelf: "Tự đứng dậy",
     resolveHelpedUp: "Được đỡ dậy", resolveHospital: "Đã đưa đi viện", resolveOther: "Khác",
   },
@@ -1014,10 +1059,15 @@ const UI_TEXT = {
     noAlert: "Walang alerto",
     markHandled: "Tapos na",
     resolvePickMethod: "Pumili o i-type kung paano naayos",
-    editNote: "I-edit ang tala", saveNote: "I-save ang tala",
+    editNote: "I-edit ang tala", addNote: "Magdagdag ng tala", saveNote: "I-save ang tala",
     recordOnlyHint: "Naka-log lang (hindi na-push). Walang aksyon.",
     statusNoAction: "Walang kailangang gawin",
     expandDetail: "Detalye", collapseDetail: "Itago",
+    watchClip: "Panoorin ang video",
+    watchSnap: "Tingnan ang larawan",
+    fallAlertShort: "Alerto sa hulog",
+    dailyMoveShort: "Mababang tindig / yuko",
+    jumpToTime: "Tumalon sa segundong iyon",
     notifiedShort: "Naabisuhan", recordOnlyShort: "Naka-log",
     notEscalated: "Hindi naiulat",
     resolveWithSupersede: (n) => `Naayos; ${n} kaugnay na event naka-archive`,
@@ -1026,7 +1076,7 @@ const UI_TEXT = {
     rangeWeek: "7 araw", rangeThisWeek: "Linggong ito", rangeMonth: "Buwan na ito", rangeCustom: "Custom",
     statsToggleShow: "Ipakita ang trend", statsToggleHide: "Itago ang trend",
     weekSummary: "Linggong ito", statsSos: "Tawag", statsDotsTitle: "Ano ang nangyari",
-    chipFall: "Alerto sa hulog", chipDaily: "Squat / yuko", chipSos: "Tawag",
+    chipFall: "Alerto sa hulog", chipDaily: "Mababang tindig / yuko", chipSos: "Tawag",
     barCompare: "Ihambing ang alerto at pang-araw-araw",
     calendarLegendAlerts: "Pumili ng simula, tapos ang dulo; parehong araw = araw na iyon",
     calendarDone: "Tapos", calendarRetap: "I-reset",
@@ -1040,7 +1090,7 @@ const UI_TEXT = {
     statsAlert: "Naiulat", statsDaily: "Pang-araw-araw", statsResolved: "Tapos",
     statsAvg: "Avg.", statsDelta: "vs dati", statsMinutes: "min",
     statsBarTitle: "Linggong ito: pula = naiulat | abo = pang-araw-araw",
-    statsHint: "Pula = hulog   Abo = squat / yuko (walang aksyon)",
+    statsHint: "Pula = hulog   Abo = mababang tindig / yuko (walang aksyon)",
     statsNoFall: "Walang alerto sa hulog sa panahong ito",
     statsFallCount: "{n} alerto sa hulog sa panahong ito",
     statsResolvedHint: "{n} nakita na",
@@ -1059,7 +1109,7 @@ const UI_TEXT = {
     familyReadonlyHint: "Pamilya tumitingin lang. Caregiver ang humahawak.",
     plannedTitle: "Malapit na",
     plannedDesc: "Hindi pa live. Gamitin ang BP, alerto, SOS, paalala, at chat.",
-    completeReminder: "Markahan tapos", reminderDone: "Tapos", reminderPending: "Bukas",
+    completeReminder: "Markahan tapos", reminderDone: "Tapos", reminderPending: "Nakabinbin",
     resolveFalseAlarm: "Maling alarma", resolveStoodSelf: "Tumayo mag-isa",
     resolveHelpedUp: "Tinulungan tumayo", resolveHospital: "Dinala sa ospital", resolveOther: "Iba",
   },
@@ -1104,10 +1154,15 @@ const UI_TEXT = {
     noAlert: "ไม่มีเหตุต้องดู",
     markHandled: "จัดการแล้ว",
     resolvePickMethod: "เลือกหรือพิมพ์วิธีจัดการ",
-    editNote: "แก้หมายเหตุ", saveNote: "บันทึกหมายเหตุ",
+    editNote: "แก้หมายเหตุ", addNote: "เพิ่มหมายเหตุ", saveNote: "บันทึกหมายเหตุ",
     recordOnlyHint: "บันทึกอย่างเดียว (ไม่แจ้ง) ไม่ต้องจัดการ",
     statusNoAction: "ไม่ต้องจัดการ",
     expandDetail: "รายละเอียด", collapseDetail: "ย่อ",
+    watchClip: "ชมวิดีโอ",
+    watchSnap: "ดูรูป",
+    fallAlertShort: "แจ้งล้ม",
+    dailyMoveShort: "ท่าทางต่ำ / ก้ม",
+    jumpToTime: "ไปวินาทีนั้น",
     notifiedShort: "แจ้งแล้ว", recordOnlyShort: "บันทึกอย่างเดียว",
     notEscalated: "ยังไม่แจ้ง",
     resolveWithSupersede: (n) => `จัดการแล้ว เก็บอีก ${n} เหตุการณ์เข้าประวัติ`,
@@ -1116,7 +1171,7 @@ const UI_TEXT = {
     rangeWeek: "7 วัน", rangeThisWeek: "สัปดาห์นี้", rangeMonth: "เดือนนี้", rangeCustom: "กำหนดเอง",
     statsToggleShow: "แสดงแนวโน้ม", statsToggleHide: "ซ่อนแนวโน้ม",
     weekSummary: "สัปดาห์นี้", statsSos: "เรียก", statsDotsTitle: "สัปดาห์นี้เกิดอะไร",
-    chipFall: "แจ้งล้ม", chipDaily: "นั่งยอง / ก้ม", chipSos: "เรียก",
+    chipFall: "แจ้งล้ม", chipDaily: "ท่าทางต่ำ / ก้ม", chipSos: "เรียก",
     barCompare: "เทียบการแจ้งกับประจำวัน",
     calendarLegendAlerts: "เลือกวันเริ่ม แล้ววันสิ้นสุด วันเดียวกัน = ดูแค่วันนั้น",
     calendarDone: "เสร็จ", calendarRetap: "เลือกช่วงใหม่",
@@ -1130,7 +1185,7 @@ const UI_TEXT = {
     statsAlert: "แจ้งแล้ว", statsDaily: "ประจำวัน", statsResolved: "จัดการแล้ว",
     statsAvg: "เฉลี่ย", statsDelta: "เทียบก่อน", statsMinutes: "นาที",
     statsBarTitle: "สัปดาห์นี้: แดง = แจ้ง | เทา = ประจำวัน",
-    statsHint: "แดง = ล้ม   เทา = นั่งยอง / ก้ม (ไม่ต้องจัดการ)",
+    statsHint: "แดง = ล้ม   เทา = ท่าทางต่ำ / ก้ม (ไม่ต้องจัดการ)",
     statsNoFall: "ช่วงนี้ไม่มีแจ้งล้ม",
     statsFallCount: "ช่วงนี้แจ้งล้ม {n} ครั้ง",
     statsResolvedHint: "ดูแล้ว {n} ครั้ง",
@@ -1195,14 +1250,13 @@ function AlertRecordCard({ record, t, alertLifecycle, readOnly, emphasize, apiBa
   const isClaimed = Boolean(record?.claimedByUserId) || record?.status === "Processing"
   const isBusy = canActOnAlert && alertLifecycle.busyId === getRecordId(record)
   const resolveNote = (noteDraft || "").trim() || pickedMethod
-  const isSuperseded = record?.resolveKind === "superseded"
   const activityRow = !emphasize // 歷程＝Tapo 活動列；「現在」大卡另走
 
   const displaySeverity = getDisplaySeverity(record)
   const accentColor = compact ? urgencyAccentColor(record) : null
   const statusValue = recordOnly
     ? (t.statusNoAction || "無需處理")
-    : (isSuperseded ? (t.supersededShort || "覆蓋結案") : getStatusLabel(record?.status, uiLang))
+    : getStatusLabel(record?.status, uiLang)
   const notifyShort = recordOnly
     ? (t.recordOnlyShort || "僅紀錄")
     : (t.notifiedShort || "已通知")
@@ -1213,11 +1267,14 @@ function AlertRecordCard({ record, t, alertLifecycle, readOnly, emphasize, apiBa
     : (t.notEscalated || "未達通報")
   const relative = formatRelativeTime(getRecordTime(record), uiLang)
   const stamp = formatStampParts(getRecordTime(record))
-  const plainTitle = getSourcedTypeLabel(record, uiLang)
+  const plainTitle = ledgerEventTitle(record, t, uiLang)
+  const shownNote = publicEventNote(record, uiLang)
+  const followLine = ledgerFollowLine(record, t, uiLang)
+  const hasWrittenNote = Boolean(String(record?.resolvedNote || "").trim())
   const showMedia = !ledger
   const isVideoEvent = isFallLikeType(record?.type) && !recordOnly
-  const jumpTs = new Date(getRecordTime(record)).getTime()
-  const canSeek = Boolean(onJumpToTime) && Number.isFinite(jumpTs)
+  const jumpTs = eventSeekMs(record)
+  const canSeek = Boolean(onJumpToTime) && Number.isFinite(jumpTs) && jumpTs > 0
   const canJump = canSeek && showMedia && isVideoEvent
   const jumpToEvent = () => {
     if (canSeek) onJumpToTime(jumpTs)
@@ -1250,6 +1307,8 @@ function AlertRecordCard({ record, t, alertLifecycle, readOnly, emphasize, apiBa
 
   const sentry = nightOn && compact && !ledger
   const unread = sentry && !isResolved && !recordOnly
+  const canExpandClip = showMedia && evidenceForUi.length > 0
+  const toggleClip = () => setExpanded((prev) => !prev)
 
   return (
     <View
@@ -1285,6 +1344,8 @@ function AlertRecordCard({ record, t, alertLifecycle, readOnly, emphasize, apiBa
             accessibilityRole="button"
           >
             <Text style={styles.designTypeText} numberOfLines={1}>{plainTitle}</Text>
+            {shownNote ? <Text style={styles.ledgerNote} numberOfLines={2}>{shownNote}</Text> : null}
+            {!shownNote && followLine ? <Text style={styles.ledgerNote} numberOfLines={1}>{followLine}</Text> : null}
             <Pressable onPress={canSeek ? jumpToEvent : undefined} disabled={!canSeek}>
               <Text style={[styles.nightSentryTime, canSeek ? styles.liveTimeLink : null]} numberOfLines={1}>
                 {stamp.timeShort || sentryTimeRange(record)}
@@ -1308,10 +1369,11 @@ function AlertRecordCard({ record, t, alertLifecycle, readOnly, emphasize, apiBa
       ) : sentry ? (
         <View style={styles.nightSentryRow}>
           <Pressable
-            onPress={canJump ? jumpToEvent : () => setExpanded((prev) => !prev)}
+            onPress={canExpandClip ? toggleClip : undefined}
+            disabled={!canExpandClip}
             style={styles.nightSentryThumbHit}
             accessibilityRole="button"
-            accessibilityLabel={canJump ? (t.jumpToTime || "跳到該時段") : (t.expandDetail || "詳情")}
+            accessibilityLabel={canExpandClip ? (hasClip ? (t.watchClip || "查看影片") : (t.watchSnap || "查看截圖")) : undefined}
           >
             {showMedia && thumbUri ? (
               <Image source={{ uri: thumbUri }} style={styles.nightSentryThumb} resizeMode="cover" />
@@ -1324,12 +1386,7 @@ function AlertRecordCard({ record, t, alertLifecycle, readOnly, emphasize, apiBa
               </View>
             ) : null}
           </Pressable>
-          <Pressable
-            onPress={() => setExpanded((prev) => !prev)}
-            style={styles.nightSentryMeta}
-            accessibilityRole="button"
-            accessibilityLabel={detailOpen ? (t.collapseDetail || "收合") : (t.expandDetail || "詳情")}
-          >
+          <View style={styles.nightSentryMeta}>
             <View style={styles.designTypeRow}>
               <View style={[
                 styles.designTypeIcon,
@@ -1344,11 +1401,12 @@ function AlertRecordCard({ record, t, alertLifecycle, readOnly, emphasize, apiBa
               <Text style={styles.nightTagText} numberOfLines={1}>{plainTitle}</Text>
             </View>
             <Text style={styles.nightSentryTitle} numberOfLines={1}>{sentryCardName(record, uiLang)}</Text>
+            {shownNote ? <Text style={styles.ledgerNote} numberOfLines={2}>{shownNote}</Text> : null}
             <Pressable
               onPress={canJump ? jumpToEvent : undefined}
               disabled={!canJump}
               accessibilityRole={canJump ? "button" : undefined}
-              accessibilityLabel={canJump ? (t.jumpToTime || "跳到該時段") : undefined}
+              accessibilityLabel={canJump ? (t.jumpToTime || "跳到該秒") : undefined}
             >
               <Text
                 style={[styles.nightSentryTime, canJump ? styles.liveTimeLink : null]}
@@ -1357,7 +1415,7 @@ function AlertRecordCard({ record, t, alertLifecycle, readOnly, emphasize, apiBa
                 {sentryTimeRange(record)}
               </Text>
             </Pressable>
-          </Pressable>
+          </View>
           {unread ? <View style={styles.nightUnread} /> : null}
         </View>
       ) : activityRow ? (
@@ -1457,9 +1515,6 @@ function AlertRecordCard({ record, t, alertLifecycle, readOnly, emphasize, apiBa
                 <>
                   <Text style={styles.detailLine}>{t.fieldHandler || "處理人"}：{handlerShort}</Text>
                   <Text style={styles.detailLine}>{t.fieldHow || "如何處理"}：{howShort}</Text>
-                  {isSuperseded && record?.supersededByAlertId ? (
-                    <Text style={styles.detailLine}>{t.supersedeSource || lookupI18n(uiLang, "alert.supersedeSource", "覆蓋來源")}：{String(record.supersededByAlertId)}</Text>
-                  ) : null}
                 </>
               ) : null}
               {readOnly && !isResolved && !recordOnly ? (
@@ -1553,16 +1608,20 @@ function AlertRecordCard({ record, t, alertLifecycle, readOnly, emphasize, apiBa
         </>
       ) : null}
 
-      {canActOnAlert || (sentry && canJump) ? (
+      {canActOnAlert || (sentry && (canJump || canExpandClip)) ? (
         <View style={styles.recordActions}>
-          {(sentry && canJump) ? (
+          {(sentry && canExpandClip) ? (
             <Pressable
               style={styles.recordActionBtn}
-              onPress={jumpToEvent}
+              onPress={toggleClip}
               accessibilityRole="button"
             >
               <NeoIcon name="play" size={14} color="#10B981" />
-              <Text style={styles.recordActionText}>{t.watchClip || t.jumpToTime || "查看影片"}</Text>
+              <Text style={styles.recordActionText}>
+                {detailOpen
+                  ? (t.collapseDetail || "收合")
+                  : (hasClip ? (t.watchClip || "查看影片") : (t.watchSnap || "查看截圖"))}
+              </Text>
             </Pressable>
           ) : null}
           {!isResolved && canActOnAlert ? (
@@ -1575,7 +1634,7 @@ function AlertRecordCard({ record, t, alertLifecycle, readOnly, emphasize, apiBa
               <Text style={[styles.recordActionText, styles.recordActionTextPrimary]}>{t.ackAlert || t.claimAlert}</Text>
             </Pressable>
           ) : null}
-          {isResolved && !editingNote && !ledger ? (
+          {isResolved && !editingNote && canActOnAlert ? (
             <Pressable
               style={styles.recordActionBtn}
               onPress={() => {
@@ -1586,7 +1645,9 @@ function AlertRecordCard({ record, t, alertLifecycle, readOnly, emphasize, apiBa
               }}
             >
               <NeoIcon name="edit-2" size={14} color="#FFFFFF" />
-              <Text style={styles.recordActionText}>{t.editNote || "修改說明"}</Text>
+              <Text style={styles.recordActionText}>
+                {hasWrittenNote ? (t.editNote || "修改說明") : (t.addNote || "新增說明")}
+              </Text>
             </Pressable>
           ) : null}
           {isResolved && editingNote ? (
@@ -1963,6 +2024,7 @@ export default function NativeFeatureScreen({
   layout = "full",
   onJumpToTime,
   onCountChange,
+  onRecordsChange,
   skin
 }) {
   const langKey = uiLang || "zh"
@@ -2132,7 +2194,6 @@ export default function NativeFeatureScreen({
   }, [isAlertsFeature, records])
 
   const latestOpenAlert = openAlertsSorted[0] || null
-  const olderOpenCount = Math.max(0, openAlertsSorted.length - 1)
 
   const historyBaseRecords = useMemo(() => {
     if (!isAlertsFeature) return []
@@ -2143,7 +2204,7 @@ export default function NativeFeatureScreen({
     if (!isAlertsFeature) return records
     if (layout === "liveFeed" || layout === "sentryList") {
       return [...records]
-        .filter((record) => isTodayRecord(record))
+        .filter((record) => isRecentRecord(record))
         .sort((a, b) => new Date(getRecordTime(b) || 0) - new Date(getRecordTime(a) || 0))
     }
     if (layout === "history") {
@@ -2187,6 +2248,10 @@ export default function NativeFeatureScreen({
   useEffect(() => {
     if (typeof onCountChange === "function") onCountChange(visibleRecords.length)
   }, [onCountChange, visibleRecords.length])
+
+  useEffect(() => {
+    if (typeof onRecordsChange === "function") onRecordsChange(records)
+  }, [onRecordsChange, records])
 
   const alertFilterCounts = useMemo(() => {
     if (!isAlertsFeature) return null
@@ -2457,12 +2522,7 @@ export default function NativeFeatureScreen({
         token,
         body: { note: ackNote }
       })
-      const n = Number(result?.supersededCount) || 0
-      setMessage(
-        n > 0
-          ? (t.resolveWithSupersede ? t.resolveWithSupersede(n) : `已處理；另有 ${n} 件一併歸入歷程`)
-          : (t.resolveDone || "已處理")
-      )
+      setMessage(t.resolveDone || t.ackAlert || "已查看")
       setAlertFilter("now")
       await loadHistory(true)
     } catch (resolveError) {
@@ -2561,7 +2621,7 @@ export default function NativeFeatureScreen({
     )
   }
 
-  // IA-03／IA-15：即時下方只列今日有檔證據；沒有就不要佔半屏、不要寫「沒有異常」
+  // 即時下方列近 14 日辨識；沒有就不要佔半屏、不要寫「沒有異常」
   if (layout === "liveFeed" && visibleRecords.length === 0) {
     return null
   }
@@ -2801,16 +2861,9 @@ export default function NativeFeatureScreen({
               </View>
             ) : null}
 
-            {layout === "full" && (summary || (isAlertsFeature && alertFilter === "now" && olderOpenCount > 0)) ? (
+            {layout === "full" && summary ? (
               <View style={styles.summaryCard}>
-                {summary ? <Text style={styles.sectionTitle}>{summary}</Text> : null}
-                {isAlertsFeature && alertFilter === "now" && olderOpenCount > 0 ? (
-                  <Text style={styles.nowOthersHint}>
-                    {typeof t.nowOthersHint === "function"
-                      ? t.nowOthersHint(olderOpenCount)
-                      : `另有 ${olderOpenCount} 件未結案，結案最新一筆時將一併歸檔`}
-                  </Text>
-                ) : null}
+                <Text style={styles.sectionTitle}>{summary}</Text>
               </View>
             ) : null}
 
@@ -4377,6 +4430,7 @@ const styles = StyleSheet.create({
   designTypeIconFall: { backgroundColor: "rgba(255,77,77,0.2)" },
   designTypeIconDaily: { backgroundColor: "rgba(16,185,129,0.2)" },
   designTypeText: { color: "#FFFFFF", fontSize: 11, fontWeight: "700", flexShrink: 1 },
+  ledgerNote: { color: "rgba(255,255,255,0.62)", fontSize: 12, fontWeight: "500", marginTop: 2 },
   designRiskPill: {
     flexDirection: "row",
     alignItems: "center",

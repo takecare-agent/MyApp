@@ -1,0 +1,68 @@
+---
+description: TakeCare 專題開工／收工習慣（新對話必遵）
+alwaysApply: true
+---
+
+# TakeCare 工作流（用戶習慣）
+
+## 新對話開場（先做再問）
+
+1. 讀 `~/Desktop/Fall_Detection_Lab/APP_PROGRESS.md` 的 **⭐ 最新狀態**（整段）。
+2. 讀 `~/Desktop/Fall_Detection_Lab/docs/REQUIREMENTS_用戶對接總帳_2026-08-10.md`（對接需求總帳；用戶新需求要補進去）。
+3. 讀 `~/Desktop/Fall_Detection_Lab/docs/PROCESS_驗收與變更紀錄流程.md`（更動→驗收→細項入檔；路線圖）。
+4. 讀 `~/Desktop/00_專題_日常流程.md`；路徑不明再讀 `00_專題_只改這兩個.md`。
+5. 依 ⭐ 的「下一步／開場指令」開工；用戶有貼任務則以當輪任務為準。
+6. 8/5 已拍板勿重問：家屬知情不處理、超時只 App 推播、蹲下每次記不推、High=5s。**異常結案 8/29 改口**：看護一鍵已查看（不必填如何處理）；SOS 仍一鍵已處理。
+7. ⛔ 鏡頭／實摔：用戶未說「可以實測」前**勿催**；用 curl／帳號／既有列表驗。
+8. **驗收改口（2026-09-12 15:33）**：用**真機兩台**（iPhone＋安卓），不再預設開三台模擬器。安卓 USB 必做 `adb reverse`；iPhone 跟 Mac **同一熱點**。電腦離開熱點＝iPhone 會載手機內建舊 JS（白底舊首頁）。三角色同場要測時再登出切，不要預設開模擬器。桌面舊 APK 已封存，禁止裝 Archive 裡的包。
+9. 用戶提出新需求／改口：立刻更新總帳 MD（狀態欄）＋必要時開／改 SPEC。
+10. ⏸ **換皮／U-skin**：用戶未宣布「可以換皮」前，對話與進度**一律勿提**；先做完功能（見總帳 R41／R44）。
+11. 文案：避免同一狀態重複兩次；少寫不必要提示／副標（R66／R67）。
+12. 用戶要求「教授決策」時：查資料／深思後**自行拍板並實作**，勿反覆要用戶選 A/B（重大範圍仍入總帳）。
+13. **全 App 頁面審核**：依 `Fall_Detection_Lab/docs/PROCESS_頁面功能審核與優化_2026-08-10.md` 逐頁（含血壓）；先審再改；每頁填審核表。
+## 可改範圍
+
+- 只改：`~/Desktop/MyApp-main`（`vision-integration`）、`~/Desktop/Fall_Detection_Lab`
+- 勿改：`_Archive_TakeCare_過期勿改/`（含 `desktop_2026-09-12_舊包`）、舊 MyApp 複本、`_Backup_*`
+- App 客戶端主力：`mobile-expo`；影像 demo：`vision-runtime`（非 Lab 副本）
+- 未要求：**不 commit、不 push**
+- **禁止刪用戶資料**：未當輪明講「可以刪某某」前，不得刪聊天、錄音、證據檔、待辦、血壓實測、帳號。留 N 則訊息＝連同錄音檔一起留。清監看影不得動聊天 WAV，禁止 `rm -rf` evidence 整夾。
+
+## Metro（看手機前必查）
+
+改完叫用戶看 App **之前**，先確認 Metro 活著：`curl -sS -m 2 http://127.0.0.1:8081/status` 要回 `packager-status:running`。  
+沒回應就重開（**不要** `npx react-native start`、**不要**亂 `--reset-cache`）：
+
+```
+mkdir -p /tmp/nowatch; printf '%s\n' '#!/bin/sh' 'exit 1' > /tmp/nowatch/watchman; chmod +x /tmp/nowatch/watchman
+cd ~/Desktop/MyApp-main/mobile-expo && ulimit -n 65536 && PATH="/tmp/nowatch:$PATH" node scripts/run-metro.js
+```
+
+`metro.config.js` 的 `InitializeCore` **必須**是專案 `mobile-expo/node_modules/react-native/.../InitializeCore.js`（不可 `require.resolve` 到 Library 副本，否則 iPhone 紅屏 `window`、搖不了）。  
+**禁止**還原 `_Backup_TakeCare_2026-09-12收工`（9/12 04:21，比晚上 APK 舊）。現行存檔 tag：`checkpoint-2026-09-13-iphone-ok`。  
+**禁止**在 8081 掛掉時叫用戶滑掉重開——手機會跑上次 native 舊包，看起來像進度消失。
+
+## 溝通（詳細步驟、零廢話）
+
+- 繁中；短結論優先；不要複述任務、不要長篇背景。
+- **引導要逐步編號**（開哪個資料夾、登哪個帳號、按哪裡、期望看到什麼）。
+- 每段工作結束**固定兩塊**（缺一不可）：
+  1. **怎麼檢查**（3～6 步，可含 curl／三角色帳號）
+  2. **下一步**（下一 Wave／誰做／要不要現在做）
+- 改完更新 `APP_PROGRESS.md` ⭐（結論三行 + 怎麼檢查 + 下一步）。
+- 與 Claude 同步：只寫 ⭐ 三行，勿叫用戶互貼整串聊天。
+
+## 驗收入檔（強制・流程化）
+
+**每一次有更動，且驗收通過後**，必須在  
+`Fall_Detection_Lab/docs/PROCESS_驗收與變更紀錄流程.md` 的「§4 驗收紀錄」**新增一則細項表**  
+（需求 ID、改動摘要、API、畫面、驗收方式／結果、限制、下一刀）。  
+未驗收通過：不要把總帳標 ✅。未寫驗收紀錄：視同未收工。
+
+## 測試帳號（預設）
+
+| 角色 | Email | 長輩 |
+|---|---|---|
+| 受顧者 | patient@test.com | — |
+| 看護 | caregiver@test.com | patient@test.com |
+| 家屬 | family@test.com | patient@test.com |

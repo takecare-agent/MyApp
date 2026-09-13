@@ -12,8 +12,8 @@ import {
   View
 } from "react-native"
 import { useI18n } from "../../i18n/I18nContext"
+import TranslatedUgcText from "../../components/TranslatedUgcText"
 import { creatorLabel, formatGivenAt, iconForTask, nowHhmm, reportKind } from "../../lib/marGroups"
-import { carePresetLabel } from "../../lib/presetResolve"
 import { NeoIcon } from "./NeoIcons"
 import TimePickSheet from "./TimePickSheet"
 
@@ -38,6 +38,8 @@ export default function MarDoseSheet({
   onClose,
   onConfirm,
   submitting,
+  apiBaseUrl,
+  token,
   task,
   slotLabel,
   patientName,
@@ -65,12 +67,7 @@ export default function MarDoseSheet({
   const alreadyDone = Boolean(task?.isCompleted || task?.done)
   const locked = Boolean(readOnly) || (alreadyDone && !allowEdit)
   const icon = iconForTask(task)
-  const baseTitle = carePresetLabel({
-    text: task?.title || task?.content || "",
-    contentKey: task?.contentKey,
-    t
-  })
-  const title = slotLabel ? `${baseTitle} · ${slotLabel}` : baseTitle
+  const titleText = String(task?.content || task?.title || "").trim()
   const scheduled = task?.time || "--:--"
   const metaPatient = patientName
     ? t("mar.metaLine", { time: scheduled, patient: patientName })
@@ -130,7 +127,17 @@ export default function MarDoseSheet({
                 <NeoIcon name={icon} size={22} color="#10B981" />
               </View>
               <View style={styles.headText}>
-                <Text style={styles.title} numberOfLines={2}>{title}</Text>
+                <TranslatedUgcText
+                  text={titleText}
+                  sourceLang={task?.sourceLang}
+                  contentKey={task?.contentKey}
+                  apiBaseUrl={apiBaseUrl}
+                  token={token}
+                  compact
+                  numberOfLines={2}
+                  style={styles.title}
+                />
+                {slotLabel ? <Text style={styles.meta}>{slotLabel}</Text> : null}
                 <Text style={styles.meta}>{metaPatient}</Text>
                 <Text style={styles.meta}>{whoCreated}</Text>
               </View>

@@ -218,9 +218,9 @@ const UI_TEXT = {
     errInvalidPulse: "脈搏需介於 30 到 220 bpm。",
     errFamilySync: "家屬端只讀；同步請在受顧者端或照顧者端執行。",
     errNotAndroid: "Health Connect 同步目前僅支援 Android 實機。",
-    errIosHealth: "iPhone 不能直接連歐姆龍藍牙。請在「歐姆龍連結」把血壓分享到「健康」；本 App 下一版會從蘋果健康匯入。現在請把畫面上的數字打進來。",
-    syncHealth: "從蘋果健康同步",
-    meterHintIos: "歐姆龍量完會進蘋果「健康」。目前 iOS 還要接 HealthKit，先手動輸入。",
+    errIosHealth: "iPhone 未支援藍牙血壓計，請手動輸入。",
+    syncHealth: "iPhone 未支援",
+    meterHintIos: "iPhone 未支援藍牙血壓計，請手動輸入。",
     errNoHCPackage: "尚未載入 Health Connect 套件，請重新安裝原生 App。",
     errHCInitFail: "無法初始化 Health Connect，請確認手機已安裝並啟用 Health Connect。",
     errNoHCPerms: "尚未取得 Health Connect 血壓與心率讀取權限。",
@@ -333,9 +333,9 @@ const UI_TEXT = {
     errInvalidPulse: "Pulse must be between 30 and 220 bpm.",
     errFamilySync: "Family view is read-only. Sync must be done from patient or caregiver app.",
     errNotAndroid: "Health Connect sync is only supported on Android devices.",
-    errIosHealth: "iPhone cannot talk to Omron over Bluetooth. Share BP from Omron connect into Apple Health. This app will import from Health in the next iOS build. For now, type the numbers.",
-    syncHealth: "Sync from Apple Health",
-    meterHintIos: "Omron writes to Apple Health. iOS HealthKit import is next; enter the reading for now.",
+    errIosHealth: "iPhone does not support the Bluetooth blood pressure meter. Enter the reading manually.",
+    syncHealth: "Not supported on iPhone",
+    meterHintIos: "iPhone does not support the Bluetooth blood pressure meter. Enter the reading manually.",
     errNoHCPackage: "Health Connect package not loaded. Please reinstall the native app.",
     errHCInitFail: "Cannot initialize Health Connect. Please confirm it is installed and enabled.",
     errNoHCPerms: "Health Connect blood pressure and heart rate read permission not granted.",
@@ -448,9 +448,9 @@ const UI_TEXT = {
     errInvalidPulse: "Denyut harus antara 30 dan 220 bpm.",
     errFamilySync: "Tampilan keluarga hanya baca. Sinkron dari app pasien atau pengasuh.",
     errNotAndroid: "Sinkron Health Connect hanya didukung di perangkat Android.",
-    errIosHealth: "iPhone tidak bisa Bluetooth langsung ke Omron. Bagikan ke Apple Health. Impor HealthKit menyusul. Untuk sekarang ketik angkanya.",
-    syncHealth: "Sinkron dari Apple Health",
-    meterHintIos: "Omron menulis ke Apple Health. Impor iOS menyusul; ketik dulu.",
+    errIosHealth: "iPhone belum mendukung tensimeter Bluetooth. Masukkan angkanya secara manual.",
+    syncHealth: "Tidak didukung di iPhone",
+    meterHintIos: "iPhone belum mendukung tensimeter Bluetooth. Masukkan angkanya secara manual.",
     errNoHCPackage: "Paket Health Connect belum dimuat. Pasang ulang app native.",
     errHCInitFail: "Tidak dapat menginisialisasi Health Connect. Pastikan sudah diinstal.",
     errNoHCPerms: "Izin baca TD dan detak jantung Health Connect belum diberikan.",
@@ -469,6 +469,9 @@ const UI_TEXT = {
     pulseSourceNote: "Denyut nadi istirahat dipengaruhi oleh mood, stres, aktivitas, dan obat-obatan. Amati bersama TD, mood, dan gejala.",
     recordDays: "Hari Tercatat", highRisk: "Risiko Tinggi", warning: "Peringatan",
     avgPulse: "Denyut Rata-rata", recentPulse: "Denyut Terbaru",
+    logTime: "Waktu", logBp: "Sistol/Diastol", logPulse: "Denyut",
+    logPage: "{page}/{total}",
+    chartSourceNote: "Tabel mengikuti pemantauan TD rumah AHA (tanggal, waktu, sistol, diastol, denyut). Grafik garis hanya bantu. Ambang 130/80 dari pedoman hipertensi AHA/ACC 2025. Bukan diagnosis.",
   },
   vi: {
     back: "Quay Lại", caregiverTitle: "Chăm Sóc HA (Người Chăm)", caregiverSub: "Đồng bộ, nhập thay và công việc chăm sóc hàng ngày.",
@@ -560,9 +563,9 @@ const UI_TEXT = {
     errInvalidPulse: "Mạch phải từ 30 đến 220 bpm.",
     errFamilySync: "Chế độ gia đình chỉ đọc. Đồng bộ từ app người cao tuổi hoặc người chăm.",
     errNotAndroid: "Đồng bộ Health Connect chỉ hỗ trợ thiết bị Android.",
-    errIosHealth: "iPhone không Bluetooth trực tiếp với Omron. Chia sẻ sang Apple Health. Bản sau sẽ nhập HealthKit. Hiện hãy nhập số.",
-    syncHealth: "Đồng bộ từ Apple Health",
-    meterHintIos: "Omron ghi vào Apple Health. HealthKit sẽ có sau; hãy nhập số trước.",
+    errIosHealth: "iPhone chưa hỗ trợ máy đo huyết áp Bluetooth. Hãy nhập số thủ công.",
+    syncHealth: "iPhone chưa hỗ trợ",
+    meterHintIos: "iPhone chưa hỗ trợ máy đo huyết áp Bluetooth. Hãy nhập số thủ công.",
     errNoHCPackage: "Gói Health Connect chưa được tải. Cài lại app native.",
     errHCInitFail: "Không thể khởi tạo Health Connect. Đảm bảo đã cài và bật.",
     errNoHCPerms: "Chưa cấp quyền đọc HA và nhịp tim từ Health Connect.",
@@ -581,6 +584,9 @@ const UI_TEXT = {
     pulseSourceNote: "Nguồn: AHA — mạch lúc nghỉ của hầu hết người lớn 60–100 bpm khi ngồi/nằm, bình tĩnh. Hướng dẫn ACC/AHA/HRS 2018 dùng nhịp xoang <50 kèm triệu chứng để đánh giá, không chẩn đoán chỉ bằng con số.",
     recordDays: "Ngày Có Bản Ghi", highRisk: "Nguy Cơ Cao", warning: "Cảnh Báo",
     avgPulse: "Mạch TB", recentPulse: "Mạch Gần Nhất",
+    logTime: "Thời gian", logBp: "Tâm thu/Tâm trương", logPulse: "Mạch",
+    logPage: "{page}/{total}",
+    chartSourceNote: "Bảng theo nhật ký HA tại nhà của AHA (ngày, giờ, tâm thu, tâm trương, mạch). Biểu đồ đường chỉ phụ. Ngưỡng 130/80 theo hướng dẫn tăng huyết áp AHA/ACC 2025. Không phải chẩn đoán.",
   },
   tl: {
     back: "Bumalik", caregiverTitle: "Pag-aalaga ng BP", caregiverSub: "I-sync, proxy entry, at mga gawain sa pag-aalaga.",
@@ -672,9 +678,9 @@ const UI_TEXT = {
     errInvalidPulse: "Ang pulso ay dapat na nasa pagitan ng 30 at 220 bpm.",
     errFamilySync: "Read-only ang view ng pamilya. I-sync mula sa app ng pasyente o tagapag-alaga.",
     errNotAndroid: "Ang Health Connect sync ay sinusuportahan lamang sa Android.",
-    errIosHealth: "Hindi pwedeng Bluetooth ang iPhone sa Omron. I-share sa Apple Health. HealthKit sa susunod. I-type muna ang numero.",
-    syncHealth: "I-sync mula sa Apple Health",
-    meterHintIos: "Nagsusulat ang Omron sa Apple Health. HealthKit next; i-type muna.",
+    errIosHealth: "Hindi sinusuportahan ng iPhone ang Bluetooth na BP meter. I-type muna ang numero.",
+    syncHealth: "Hindi available sa iPhone",
+    meterHintIos: "Hindi sinusuportahan ng iPhone ang Bluetooth na BP meter. I-type muna ang numero.",
     errNoHCPackage: "Hindi na-load ang pakete ng Health Connect. Muling i-install ang native app.",
     errHCInitFail: "Hindi mapasimulan ang Health Connect. Tiyaking naka-install at naka-enable.",
     errNoHCPerms: "Hindi pa ibinibigay ang pahintulot sa pagbabasa ng BP at heart rate mula sa Health Connect.",
@@ -693,6 +699,9 @@ const UI_TEXT = {
     pulseSourceNote: "Ang pulso sa pahinga ay naaapektuhan ng mood, stress, aktibidad, at gamot. Obserbahin kasama ang BP, mood, at sintomas.",
     recordDays: "Naitala na Mga Araw", highRisk: "Mataas na Panganib", warning: "Babala",
     avgPulse: "Avg na Pulso", recentPulse: "Pinakabagong Pulso",
+    logTime: "Oras", logBp: "Sys/Dia", logPulse: "Pulso",
+    logPage: "{page}/{total}",
+    chartSourceNote: "Ang talaan ay sumusunod sa AHA home BP (petsa, oras, systolic, diastolic, pulso). Ang line chart ay pantulong. Ang 130/80 ay mula sa 2025 AHA/ACC hypertension guideline. Hindi diagnosis.",
   },
   th: {
     back: "กลับ", caregiverTitle: "ดูแลความดันโลหิต (ผู้ดูแล)", caregiverSub: "ซิงค์ บันทึกแทน และงานดูแลรายวัน",
@@ -784,9 +793,9 @@ const UI_TEXT = {
     errInvalidPulse: "ชีพจรต้องอยู่ระหว่าง 30 ถึง 220 bpm",
     errFamilySync: "มุมมองครอบครัวเป็นแบบอ่านอย่างเดียว ซิงค์จากแอปผู้ป่วยหรือผู้ดูแล",
     errNotAndroid: "การซิงค์ Health Connect รองรับเฉพาะ Android เท่านั้น",
-    errIosHealth: "iPhone ต่อ Bluetooth ตรงกับ Omron ไม่ได้ ให้แชร์ไปที่แอปสุขภาพ รอบหน้าจะดึงจาก HealthKit ตอนนี้กรอกตัวเลข",
-    syncHealth: "ซิงค์จาก Apple Health",
-    meterHintIos: "Omron เขียนเข้า Apple Health รอ HealthKit กรอกตัวเลขก่อน",
+    errIosHealth: "iPhone ยังไม่รองรับเครื่องวัดความดัน Bluetooth กรอกตัวเลขเอง",
+    syncHealth: "iPhone ยังไม่รองรับ",
+    meterHintIos: "iPhone ยังไม่รองรับเครื่องวัดความดัน Bluetooth กรอกตัวเลขเอง",
     errNoHCPackage: "แพ็คเกจ Health Connect ยังไม่โหลด ติดตั้งแอป native ใหม่",
     errHCInitFail: "ไม่สามารถเริ่มต้น Health Connect ตรวจสอบว่าติดตั้งและเปิดใช้งานแล้ว",
     errNoHCPerms: "ยังไม่ได้รับอนุญาตอ่านความดันโลหิตและอัตราการเต้นของหัวใจจาก Health Connect",
@@ -805,6 +814,9 @@ const UI_TEXT = {
     pulseSourceNote: "ชีพจรขณะพักได้รับผลจากอารมณ์ ความเครียด กิจกรรม และยา ควรสังเกตร่วมกับความดันโลหิต อารมณ์ และอาการ",
     recordDays: "วันที่มีบันทึก", highRisk: "ความเสี่ยงสูง", warning: "คำเตือน",
     avgPulse: "ชีพจรเฉลี่ย", recentPulse: "ชีพจรล่าสุด",
+    logTime: "เวลา", logBp: "ตัวบน/ตัวล่าง", logPulse: "ชีพจร",
+    logPage: "{page}/{total}",
+    chartSourceNote: "ตารางตามบันทึกความดันที่บ้านของ AHA (วันที่ เวลา ตัวบน ตัวล่าง ชีพจร) กราฟเส้นเป็นแนวโน้มเสริม เกณฑ์ 130/80 ตามแนวทางความดันโลหิตสูง AHA/ACC 2025 ไม่ใช่การวินิจฉัย",
   },
 }
 
@@ -2162,17 +2174,23 @@ export default function BloodPressureScreen({
               <NeoIcon name="link" size={16} color="#10B981" />
               <Text style={styles.sectionTitle}>{t.syncInput}</Text>
             </View>
-            <Pressable style={styles.buttonSecondary} onPress={handleSync} disabled={syncing}>
-              {syncing ? (
-                <ActivityIndicator color="#10B981" />
-              ) : (
-                <>
-                  <NeoIcon name="heart-circle" size={18} color="#10B981" />
-                  <Text style={styles.buttonSecondaryText}>{Platform.OS === "ios" ? (t.syncHealth || t.syncHC) : t.syncHC}</Text>
-                </>
-              )}
-            </Pressable>
-            <Text style={styles.meterHint}>{Platform.OS === "ios" ? (t.meterHintIos || t.meterHint) : (t.meterHint || "量完回到這個頁面會自動同步。")}</Text>
+            {Platform.OS === "ios" ? (
+              <Text style={styles.meterHint}>{t.meterHintIos || "iPhone 未支援藍牙血壓計，請手動輸入。"}</Text>
+            ) : (
+              <>
+                <Pressable style={styles.buttonSecondary} onPress={handleSync} disabled={syncing}>
+                  {syncing ? (
+                    <ActivityIndicator color="#10B981" />
+                  ) : (
+                    <>
+                      <NeoIcon name="heart-circle" size={18} color="#10B981" />
+                      <Text style={styles.buttonSecondaryText}>{t.syncHC}</Text>
+                    </>
+                  )}
+                </Pressable>
+                <Text style={styles.meterHint}>{t.meterHint || "量完回到這個頁面會自動同步。"}</Text>
+              </>
+            )}
 
             <Text style={styles.sectionTitleSpacing}>{t.caregiverAddTitle}</Text>
             <View style={styles.inputGrid}>
@@ -2583,14 +2601,20 @@ export default function BloodPressureScreen({
 
             <View style={styles.formCard}>
               <Text style={styles.sectionTitle}>{t.autoImport}</Text>
-              <Text style={styles.meterHint}>{Platform.OS === "ios" ? (t.meterHintIos || t.meterHint) : (t.meterHint || "量完回到這個頁面會自動同步。")}</Text>
-              <Pressable style={styles.buttonPrimary} onPress={handleSync} disabled={syncing}>
-                {syncing ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.buttonPrimaryText}>{Platform.OS === "ios" ? (t.syncHealth || t.syncHC) : t.syncHC}</Text>
-                )}
-              </Pressable>
+              {Platform.OS === "ios" ? (
+                <Text style={styles.meterHint}>{t.meterHintIos || "iPhone 未支援藍牙血壓計，請手動輸入。"}</Text>
+              ) : (
+                <>
+                  <Text style={styles.meterHint}>{t.meterHint || "量完回到這個頁面會自動同步。"}</Text>
+                  <Pressable style={styles.buttonPrimary} onPress={handleSync} disabled={syncing}>
+                    {syncing ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={styles.buttonPrimaryText}>{t.syncHC}</Text>
+                    )}
+                  </Pressable>
+                </>
+              )}
 
               <Text style={styles.sectionTitleSpacing}>{t.addRecord}</Text>
               <View style={styles.inputGrid}>

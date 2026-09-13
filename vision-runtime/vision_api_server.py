@@ -68,12 +68,14 @@ from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-import cv2
 import numpy as np
+import requests
+# macOS：先 mediapipe 再 cv2，避免 import 卡死。推論只用 TFLite，不載整包 tensorflow。
+print("  載入 MediaPipe／OpenCV（第一次約 1～2 分鐘，請等）", flush=True)
 import mediapipe.python.solutions.pose as mp_pose
 import mediapipe.python.solutions.drawing_utils as mp_drawing
-import requests
-import tensorflow as tf
+import cv2
+from tensorflow.lite.python.interpreter import Interpreter
 
 from evidence_ring import EvidenceRingBuffer, POST_ROLL_SEC, finalize_and_upload_clip, upload_evidence
 from playback_store import PlaybackArchive
@@ -188,19 +190,23 @@ def _publish_playback_meta(force=False):
 
 
 def restore_playback_ring():
-    """索引錄製額度內的檔；RAM 只載最後錄到的近 30 分。"""
-    global _playback_last
+    """先建索引並開服務；近 30 分 JPEG 改背景載，避免擋住鏡頭。"""
     playback_archive.load_index()
+    _publish_playback_meta(force=True)
+    threading.Thread(target=_load_playback_ram, daemon=True).start()
+
+
+def _load_playback_ram():
+    global _playback_last
     frames = playback_archive.load_recent_jpegs(PLAYBACK_RAM_SEC)
     if frames:
         with playback_lock:
             playback_ring.clear()
             playback_ring.extend(frames)
             _playback_last = frames[-1][0]
-        print(f"  ✓ 近 {PLAYBACK_RAM_SEC / 60:.0f} 分已載入 RAM（{len(frames)} 幀）")
+        print(f"  ✓ 近 {PLAYBACK_RAM_SEC / 60:.0f} 分已載入 RAM（{len(frames)} 幀）", flush=True)
     else:
-        print("  回拉：目前沒有可載入的近段畫面（鏡頭開始錄之後才會有）")
-    _publish_playback_meta(force=True)
+        print("  回拉：目前沒有可載入的近段畫面（鏡頭開始錄之後才會有）", flush=True)
 
 
 def push_playback(ts, jpeg):
@@ -240,21 +246,41 @@ def nearest_playback(ts):
     return playback_archive.nearest(ts)
 
 
+def _local_day_bounds(ts):
+    local = time.localtime(ts)
+    start = time.mktime((
+        local.tm_year, local.tm_mon, local.tm_mday,
+        0, 0, 0, local.tm_wday, local.tm_yday, local.tm_isdst,
+    ))
+    return start, start + 86400.0
+
+
 def iter_playback_from(ts):
-    """從 ts 順播：先磁碟 24h，接上 RAM 近段。不一次載入整天。"""
+    """從 ts 順播：只播同一曆日。沒有鄰近幀就停，禁止跨日偷播。"""
     ts = _unix_seconds(ts)
+    _day_start, day_end = _local_day_bounds(ts)
     with playback_lock:
         ram_start = playback_ring[0][0] if playback_ring else None
         ram_items = list(playback_ring) if playback_ring else []
-    until = ram_start
+    archive_until = day_end
+    if ram_start is not None:
+        archive_until = min(ram_start, day_end)
     yielded = False
-    for stamp, data in playback_archive.iter_from(ts, until=until):
+    for stamp, data in playback_archive.iter_from(ts, until=archive_until):
+        if stamp >= day_end:
+            break
+        if not yielded and stamp - ts > 2.0:
+            return
         yielded = True
         yield stamp, data
     ram_from = ts if ram_start is None else max(ts, ram_start)
     for stamp, data in ram_items:
+        if stamp >= day_end:
+            break
         if stamp + 0.05 < ram_from:
             continue
+        if not yielded and stamp - ts > 2.0:
+            return
         yielded = True
         yield stamp, data
     if not yielded:
@@ -506,11 +532,16 @@ class VisionHandler(BaseHTTPRequestHandler):
             pass  # 客戶端關閉連線，正常結束
 
     def stream_playback_mjpeg(self, from_ts):
-        """從指定時間順播，播完接回即時。"""
+        """從指定時間順播；只留在同一曆日。過去日播完就停，不接即時、不跨日。"""
+        from_ts = _unix_seconds(from_ts)
+        today0, _today_end = _local_day_bounds(time.time())
+        is_today = from_ts >= today0
         self._begin_mjpeg()
         try:
             prev = None
+            had = False
             for stamp, data in iter_playback_from(from_ts):
+                had = True
                 self._write_mjpeg_frame(data)
                 if prev is not None:
                     gap = stamp - prev
@@ -519,6 +550,8 @@ class VisionHandler(BaseHTTPRequestHandler):
                     else:
                         time.sleep(0.05)
                 prev = stamp
+            if not had or not is_today:
+                return
             while True:
                 with frame_lock:
                     data = latest_jpeg["data"]
@@ -670,7 +703,16 @@ with open(THRESHOLDS_JSON) as f:
     _t = json.load(f)
 FALL_THRESHOLD = _t["threshold_safe"]
 
-interpreter = tf.lite.Interpreter(model_path=TFLITE_PATH)
+print("  MediaPipe Pose 載入中...", flush=True)
+pose = mp_pose.Pose(
+    static_image_mode=False,
+    model_complexity=0,
+    min_detection_confidence=0.7,
+    min_tracking_confidence=0.7,
+)
+print("  ✓ MediaPipe Pose", flush=True)
+
+interpreter = Interpreter(model_path=TFLITE_PATH)
 interpreter.allocate_tensors()
 in_det = interpreter.get_input_details()
 out_det = interpreter.get_output_details()
@@ -685,22 +727,19 @@ def predict(window):
     return float(interpreter.get_tensor(out_det[0]["index"])[0][0])
 
 
-# ── 先把 HTTP server 開起來（背景執行緒）──────────────────────────────────────
+# ── 先把 HTTP server 綁上 port（主執行緒 bind，避免後面載入卡住時 8000 沒掛）──
 restore_playback_ring()
-threading.Thread(target=start_http_server, daemon=True).start()
+_http = ThreadingHTTPServer(("0.0.0.0", API_PORT), VisionHandler)
+print(f"  🌐 偵測結果 API : http://localhost:{API_PORT}/detect  (POST)", flush=True)
+print(f"  📹 即時影像串流 : http://localhost:{API_PORT}/stream  (GET, 給 App 看)", flush=True)
+threading.Thread(target=_http.serve_forever, daemon=True).start()
 threading.Thread(target=heartbeat_loop, daemon=True).start()
-
-# ── MediaPipe ────────────────────────────────────────────────────────────────
-pose = mp_pose.Pose(
-    static_image_mode=False,
-    model_complexity=0,
-    min_detection_confidence=0.7,
-    min_tracking_confidence=0.7,
-)
+time.sleep(0.2)
 
 # ── 攝影機（禁止自動選：探鏡頭會打亂編號。2026-08-30 實拍：0＝外接房間，1＝Mac 內建）──
-print(f"  攝影機 CAM_INDEX={CAM_INDEX} 開啟中...")
-cap = cv2.VideoCapture(CAM_INDEX)
+print(f"  攝影機 CAM_INDEX={CAM_INDEX} 開啟中...", flush=True)
+_av = getattr(cv2, "CAP_AVFOUNDATION", None)
+cap = cv2.VideoCapture(CAM_INDEX, _av) if _av is not None else cv2.VideoCapture(CAM_INDEX)
 CAM_NAME = f"USB cam {CAM_INDEX}" if CAM_INDEX == 0 else f"cam {CAM_INDEX}"
 if cap is None or not cap.isOpened():
     print("  ❌ 無法開啟攝影機！請改 CAM_INDEX 或接上 USB")

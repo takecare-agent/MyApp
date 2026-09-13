@@ -9,7 +9,6 @@ import {
   Text,
   View
 } from "react-native"
-import CareCircleSearch from "../components/CareCircleSearch"
 import CareDailyRecordsScreen from "./CareDailyRecordsScreen"
 import ReminderCompletedHistory from "./ReminderCompletedHistory"
 import TranslatedUgcText from "../components/TranslatedUgcText"
@@ -21,7 +20,7 @@ import {
   toReminderCatCode
 } from "../lib/reminderPresets"
 import { reminderCatLabel, reminderContentPresetOptions } from "../lib/contentLabels"
-import { resolveCarePresetKey, carePresetLabel } from "../lib/presetResolve"
+import { resolveCarePresetKey } from "../lib/presetResolve"
 import { usePollingRefresh } from "../lib/usePollingRefresh"
 import { useI18n } from "../i18n/I18nContext"
 import { weekdayShortLabels } from "../i18n/dateLocale"
@@ -552,16 +551,6 @@ export default function FamilyRemindersScreen({ apiBaseUrl, token, user }) {
         </Pressable>
         <AvatarMark email={user?.email} size={36} apiBaseUrl={apiBaseUrl} token={token} />
       </View>
-      <CareCircleSearch
-        apiBaseUrl={apiBaseUrl}
-        token={token}
-        role="family"
-        onOpenResult={(item) => {
-          if (item?.type === "daily") setPage("careDaily")
-          else if (item?.type === "alert") return
-          else setPage("today")
-        }}
-      />
       <View style={styles.tabRow}>
         <Pressable
           style={[styles.tab, page === "today" ? styles.tabActive : null]}
@@ -603,16 +592,14 @@ export default function FamilyRemindersScreen({ apiBaseUrl, token, user }) {
             <NewTodoScreen
               tab="today"
               hideTabs
+              apiBaseUrl={apiBaseUrl}
+              token={token}
               todos={todayTodos.map((item) => ({
                 id: item.key,
-                title: carePresetLabel({
-                  text: item.content,
-                  contentKey: item.contentKey || item.raw?.contentKey,
-                  t,
-                  fallback: t("reminders.item")
-                }),
+                title: item.content || t("reminders.item"),
                 content: item.content || "",
                 contentKey: item.contentKey || item.raw?.contentKey || "",
+                sourceLang: item.sourceLang || item.raw?.sourceLang || "",
                 time: item.sortKey || item.timeLabel,
                 done: Boolean(item.isCompleted),
                 isCompleted: Boolean(item.isCompleted),
@@ -637,12 +624,10 @@ export default function FamilyRemindersScreen({ apiBaseUrl, token, user }) {
                 setMarOpen({
                   task: {
                     ...slot,
-                    title: carePresetLabel({
-                      text: group?.title || slot.title || slot.content,
-                      contentKey: slot.contentKey || group?.contentKey,
-                      t
-                    }),
+                    title: group?.content || group?.title || slot.content || slot.title,
+                    content: group?.content || slot.content || slot.title,
                     contentKey: slot.contentKey || group?.contentKey || "",
+                    sourceLang: slot.sourceLang || group?.sourceLang || "",
                     done: slot.done
                   },
                   slotLabel: slot.slotKey && slot.slotKey !== "once" ? t(`mar.${slot.slotKey}`) : ""
@@ -652,11 +637,9 @@ export default function FamilyRemindersScreen({ apiBaseUrl, token, user }) {
                 setMarOpen({
                   task: {
                     ...item,
-                    title: carePresetLabel({
-                      text: item.title || item.content,
-                      contentKey: item.contentKey,
-                      t
-                    }),
+                    title: item.content || item.title,
+                    content: item.content || item.title,
+                    sourceLang: item.sourceLang || "",
                     done: item.done
                   },
                   slotLabel: ""
@@ -717,6 +700,8 @@ export default function FamilyRemindersScreen({ apiBaseUrl, token, user }) {
         patientName={user?.linkedPatientName || user?.activePatientName || user?.patientName || ""}
         submitting={false}
         readOnly
+        apiBaseUrl={apiBaseUrl}
+        token={token}
         onClose={() => setMarOpen(null)}
       />
       </>

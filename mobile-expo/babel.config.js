@@ -1,3 +1,10 @@
+const path = require("path")
+
 module.exports = {
-  presets: ["module:@react-native/babel-preset"]
+  presets: [
+    path.join(
+      process.env.HOME || "",
+      "Library/Application Support/TakeCare/mobile-expo-deps/node_modules/@react-native/babel-preset"
+    ),
+  ],
 }
