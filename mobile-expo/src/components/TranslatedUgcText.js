@@ -36,7 +36,7 @@ const PRESET_I18N_KEYS = {
  * 讀取方顯示：
  * - 系統預設／介面字典 → 本地精翻，不顯示「查看原文」
  * - 手打 UGC／聊天 → 譯成讀者介面語言；來源語不同才可看原文
- * - 失敗仍原文（R63）
+ * - 失敗仍原文
  */
 export default function TranslatedUgcText({
   text,

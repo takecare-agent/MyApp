@@ -80,48 +80,8 @@ export function getProfileFeature(role) {
   }
 }
 
-/** 舊首屏有、主路徑外的功能：全部保留入口（含規劃中）。家屬「事件歷程」與監看·活動重疊，不另開入口。 */
-export function getSettingsExtras(role) {
-  if (role === "caregiver") {
-    return [
-      {
-        id: "care-logs",
-        titleKey: "settings.planned.careLogs",
-        descKey: "settings.planned.careLogsDesc",
-        historyPath: "/caregiver/care-logs/history",
-        planned: true
-      },
-      {
-        id: "system",
-        titleKey: "settings.planned.system",
-        descKey: "settings.planned.systemDesc",
-        historyPath: "/caregiver/system/history",
-        planned: true
-      }
-    ]
-  }
-  if (role === "family") {
-    return [
-      {
-        id: "care-records",
-        titleKey: "settings.planned.careRecords",
-        descKey: "settings.planned.careRecordsDesc",
-        historyPath: "/family/care-records/history",
-        planned: true
-      }
-    ]
-  }
-  if (role === "patient") {
-    return [
-      {
-        id: "wearable",
-        titleKey: "settings.planned.wearable",
-        descKey: "settings.planned.wearableDesc",
-        historyPath: "/patient/wearable/history",
-        planned: true
-      }
-    ]
-  }
+/** 設定頁額外入口。規劃中項目已拿掉。 */
+export function getSettingsExtras(_role) {
   return []
 }
 

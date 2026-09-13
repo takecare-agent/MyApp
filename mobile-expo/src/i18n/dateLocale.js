@@ -1,5 +1,5 @@
 /**
- * 日期／星期／時間顯示跟 uiLang（R82）
+ * 日期／星期／時間顯示跟 uiLang
  */
 export const LOCALE_BY_LANG = {
   zh: "zh-TW",

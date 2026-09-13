@@ -1,53 +1,34 @@
 """
-Fall Detection v8 — HTTP API 包裝
-===================================
-把 v8 即時跌倒偵測（TFLite + MediaPipe + 時序狀態機）包成一個 HTTP 服務，
-讓 TakeCare 後端的 VISION_MODEL_ENDPOINT 可以來「問」目前的偵測狀態。
+Fall Detection v8 — HTTP API
+
+以 MediaPipe 姿態、自訓 LSTM（TFLite）與姿勢狀態機做即時跌倒偵測，
+供 TakeCare 後端與監看畫面使用。
 
 啟動：
-    source infer_env/bin/activate
     python vision_api_server.py
 
-後端 backend/.env 設定：
+後端可設定：
     VISION_MODEL_ENDPOINT=http://localhost:8000/detect
 
-設計：
-    - 主執行緒：開攝影機 + MediaPipe 姿態 + TFLite 推論 + 狀態機（沿用 v8 邏輯）
-      （macOS 的 OpenCV 視窗必須在主執行緒，所以相機迴圈放主執行緒）
-    - 背景執行緒：HTTP server，回應後端的 POST /detect
-    - 兩者共用一份「目前狀態」(latest_state)，用 lock 保護
+主執行緒負責攝影機、骨架、推論與狀態機（macOS 視窗須在主執行緒）。
+背景執行緒提供 HTTP：/detect、/stream、主動回報跌倒。
 
-回傳給後端的對應：
-    state == CONFIRMED → action="DANGER: FALL"（後端判為 High，會自動通知家屬）
-    其他狀態           → action="NORMAL"（Low，代表正在監測、目前正常）
+狀態對應：
+    CONFIRMED → action="DANGER: FALL"
+    其他     → action="NORMAL"
 
-Wave D1（主動推播，App 沒開也會建立警報）：
-    一旦 SUSPECTED → CONFIRMED，背景執行緒會直接 POST 後端 VISION_BACKEND_URL/vision/report
-    （shared token 驗證，不是使用者 JWT），不必等 App 輪詢 /health 才建立 AbnormalEvent。
-    每次 CONFIRMED 事件會產生一組 eventKey，backend 用它防重複寫入；即使 App 同時也在輪詢
-    /health 並嘗試自己補寫，backend 也會用同一組 eventKey 去重，只會留下一筆紀錄。
+確認跌倒時，背景執行緒以共用 token 呼叫後端 POST /vision/report（不必等 App 開啟）。
+同一事件使用唯一 eventKey，後端據此避免重複寫入。
+站起且持續數秒後進入 SUGGEST_DISMISS，並呼叫 /vision/report/standup：
+    五秒內站起 → 不建立高風險警報（仍保留跌倒紀錄與一般通報）
+    五秒未起   → 後端建立高風險警報並推播
 
-Wave D3（自動 DISMISS 改「建議解除」）：
-    站起偵測需連續 STANDUP_SUSTAIN_SEC 秒才算數（避免單幀 pose 雜訊誤判站起），
-    符合後只會進入 SUGGEST_DISMISS（建議解除，本地監測降級但不通知後端關閉），
-    真正解除警報要由看護／家屬在 App「異常事件」頁按下「解除」（Wave C 的 resolve API）。
+事件短片來自記憶體影像環；連續回拉為本機 JPEG，不上傳雲端連續錄影。
 
-Wave G1（高＝確認跌倒後持續未起 ≥5 秒才報）：
-    backend 收到 CONFIRMED 的 /vision/report 後，不會馬上建立高風險 Alert，而是先排一個 5 秒計時器
-    （只記 Event，不推播）。這裡（CONFIRMED → SUGGEST_DISMISS，代表偵測到持續站起）會再呼叫
-    POST /vision/report/standup（同一組 eventKey），backend 收到就取消該計時器：
-      - 5 秒內站起 → 計時器被取消 → 不建立 Alert、不推播（只有 Event）
-      - 5 秒內沒收到站起訊號 → 計時器到期 → backend 自動建立 High Alert + 推播
-    這支呼叫失敗只印警告，不影響本地狀態機（backend 那邊沒收到站起訊號，5 秒到還是會照樣建立 Alert，
-    寧可多報不要漏報）。
-
-Wave M2（事件證據短片）：
-    記憶體 ring buffer 保留無骨架幀；CONFIRMED 時開始 post-roll，組成短片 POST /vision/evidence。
-    連續回拉＝本機循環 24 小時 JPEG（2 fps 落地；RAM 只留最近 30 分高幀）。不上雲端 NVR。
-
-環境變數（可選）：
-    VISION_API_PORT      服務 port（預設 8000，優先權低於 --port）
-    VISION_LOCATION      回報的位置字串（預設「客廳」）
+環境變數：
+    VISION_API_PORT、VISION_BACKEND_URL、VISION_SHARED_TOKEN、VISION_PATIENT_EMAIL
+    VISION_LOCATION  可選位置字串（預設空白；鏡頭無法分辨房間）
+"""
     HEADLESS=1           不開 OpenCV 視窗（純背景跑，適合部署）
     VISION_CAM_INDEX     攝影機編號（預設 0，優先權低於 --cam）
     VISION_BACKEND_URL   後端網址，例如 http://localhost:5000（設了才會主動推播）
@@ -120,11 +101,11 @@ GREEN_LEAD_SEC = 5.0      # 短片從變紅前的綠色 IDLE 往前保留秒數
 
 # ── HTTP / 回報設定 ──────────────────────────────────────────────────────────
 API_PORT      = _args.port if _args.port is not None else int(os.environ.get("VISION_API_PORT", "8000"))
-REPORT_LOCATION = os.environ.get("VISION_LOCATION", "客廳")
+REPORT_LOCATION = os.environ.get("VISION_LOCATION", "")
 HEADLESS      = os.environ.get("HEADLESS", "") == "1"
 MODEL_NAME    = "Fall-Detection-v8"
 
-# Wave D1：CONFIRMED 時主動推播後端，App 沒開也會建立警報（三者皆設才會推播）
+# 確認跌倒時主動回報後端（三者皆設才會送出）
 VISION_BACKEND_URL   = os.environ.get("VISION_BACKEND_URL", "").rstrip("/")
 VISION_SHARED_TOKEN  = os.environ.get("VISION_SHARED_TOKEN", "")
 VISION_PATIENT_EMAIL = os.environ.get("VISION_PATIENT_EMAIL", "")
@@ -194,6 +175,28 @@ def restore_playback_ring():
     playback_archive.load_index()
     _publish_playback_meta(force=True)
     threading.Thread(target=_load_playback_ram, daemon=True).start()
+
+
+def resync_playback_from_disk():
+    """檔案被人手刪後：重掃 JPEG，RAM／藍段跟磁碟一致。"""
+    global _playback_last
+    stamps = playback_archive.load_index()
+    frames = playback_archive.load_recent_jpegs(PLAYBACK_RAM_SEC)
+    with playback_lock:
+        playback_ring.clear()
+        playback_ring.extend(frames)
+        _playback_last = frames[-1][0] if frames else 0.0
+    _publish_playback_meta(force=True)
+    with state_lock:
+        s = dict(latest_state)
+    return {
+        "ok": True,
+        "frames": len(stamps),
+        "spanCount": len(s.get("playbackSpans") or []),
+        "playbackStart": s.get("playbackStart"),
+        "playbackEnd": s.get("playbackEnd"),
+        "playbackSpans": s.get("playbackSpans") or [],
+    }
 
 
 def _load_playback_ram():
@@ -368,8 +371,8 @@ def report_confirmed_fall(event_key, prob, trigger):
 
 
 def report_standup(event_key):
-    """背景執行緒（Wave G1）：CONFIRMED → SUGGEST_DISMISS（持續站起）當下通知後端取消 5 秒觀察窗內的高風險 Alert。
-    失敗只印警告；backend 那邊該計時器沒被取消，5 秒到仍會照樣建立 Alert（寧可多報不漏報）。"""
+    """CONFIRMED → SUGGEST_DISMISS（持續站起）時通知後端取消 5 秒觀察窗內的高風險警報。
+    失敗只印警告；後端計時器若未取消，5 秒到仍會建立警報。"""
     if not VISION_BACKEND_URL or not VISION_SHARED_TOKEN or not VISION_PATIENT_EMAIL:
         return
     try:
@@ -388,7 +391,7 @@ def report_standup(event_key):
 
 
 def send_camera_heartbeat():
-    """R109：每 30s 告訴後端這台鏡頭還在。失敗只印，不影響偵測。"""
+    """每 30 秒告訴後端這台鏡頭還在。失敗只印，不影響偵測。"""
     if not VISION_BACKEND_URL or not VISION_SHARED_TOKEN or not VISION_PATIENT_EMAIL:
         return
     try:
@@ -473,6 +476,8 @@ class VisionHandler(BaseHTTPRequestHandler):
             self._send(200, {"ok": True})
         elif path == "/stream":
             self.stream_mjpeg()
+        elif path == "/playback/resync":
+            self._send(200, resync_playback_from_disk())
         elif path == "/playback":
             try:
                 ts = float((qs.get("t") or ["0"])[0])
@@ -655,8 +660,8 @@ def hip_delta(history, now, sec):
 def classify_posture(coords):
     """stand / squat / bend / lie。對齊 8/30 實測能過的規則，再加文獻特徵。
 
-    8/30（Lab realtime_predict_v8、總帳 R04）：彎腰肩部下壓 ≠ 躺；躺＝髖部接近畫面底部。
-    昨晚「軀幹水平＝躺」會把彎腰當摔倒，已撤回。
+    彎腰肩部下壓 ≠ 躺；躺＝髖部接近畫面底部。
+    「軀幹水平＝躺」會把彎腰當摔倒，已撤回。
 
     文獻補強（OpenPose 摔倒論文 / URFD·Le2i 常用）：
     - 倒地：骨架外框寬≥高，且腿沒有像彎腰那樣垂在髖部下方
@@ -747,13 +752,13 @@ if cap is None or not cap.isOpened():
 latest_state["camIndex"] = CAM_INDEX
 latest_state["camName"] = CAM_NAME
 _frame = None
-for _retry in range(30):
+for _retry in range(80):
     ret, _frame = cap.read()
     if ret:
         break
-    time.sleep(0.1)
+    time.sleep(0.15)
 if _frame is None:
-    print("  ❌ 攝影機無法讀取畫面（重試 30 次失敗）")
+    print("  ❌ 攝影機無法讀取畫面（重試 80 次失敗）")
     raise SystemExit(1)
 _h, _w = _frame.shape[:2]
 disp_scale = min(1.0, DISPLAY_MAX_W / _w) if _w > DISPLAY_MAX_W else 1.0

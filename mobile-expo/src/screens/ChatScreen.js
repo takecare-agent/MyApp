@@ -102,9 +102,9 @@ const ROLE_AVATAR_FG = {
 }
 
 /**
- * 訊息＝照護圈成員對話列表（R84）＋對方個人資料（R89）
+ * 訊息＝照護圈成員對話列表＋對方個人資料
  * - 不手動輸 email；列表／頂欄不以 email 當主顯示
- * - 綁定照護圈後自動出現對方；點頭像進資料 Modal
+ * - 綁定照護圈後自動出現對方；點頭像進資料
  */
 export default function ChatScreen({
   apiBaseUrl,
@@ -143,7 +143,7 @@ export default function ChatScreen({
   const [shortcutEditId, setShortcutEditId] = useState("")
   const [customPhrases, setCustomPhrases] = useState([])
   const [nicknames, setNicknames] = useState({})
-  const [profileModal, setProfileModal] = useState(null) // { email, name, role, draft }
+  const [profileModal, setProfileModal] = useState(null) // { email, name, role, draft, experience }
 
   const socketRef = useRef(null)
   const flatListRef = useRef(null)
@@ -206,8 +206,25 @@ export default function ChatScreen({
       email: key,
       name: String(item.name || "").trim(),
       role: item.role || "",
+      experience: String(item.experience || "").trim(),
       draft: String(nicknames[key] || "")
     })
+    if (!apiBaseUrl || !token) return
+    apiRequest({
+      apiBaseUrl,
+      path: `/mobile/circle-profile?email=${encodeURIComponent(key)}`,
+      token
+    }).then((data) => {
+      setProfileModal((prev) => {
+        if (!prev || prev.email !== key) return prev
+        return {
+          ...prev,
+          name: String(data?.name || prev.name || "").trim(),
+          role: data?.role || prev.role || "",
+          experience: String(data?.experience || "").trim()
+        }
+      })
+    }).catch(() => {})
   }
 
   const persistNickname = async (partnerEmail, nickname) => {
@@ -260,6 +277,7 @@ export default function ChatScreen({
           name: m.name || "",
           role: m.role || "",
           lang: m.lang || "",
+          experience: m.experience || "",
           ...mapThreadBits(byPartner[emailNorm(m.email)])
         }))
       const known = new Set(fromMembers.map((row) => row.email))
@@ -273,6 +291,7 @@ export default function ChatScreen({
           name: row.partnerName || "",
           role: row.partnerRole || "",
           lang: "",
+          experience: row.partnerExperience || "",
           ...mapThreadBits(row)
         }))
       const list = decorateInbox([...fromMembers, ...fromThreads], me)
@@ -902,6 +921,12 @@ export default function ChatScreen({
             <Text style={styles.profileLabel}>{t("chat.accountName")}</Text>
             <Text style={styles.profileValue}>
               {profileModal.name ? profileModal.name : "—"}
+            </Text>
+          </View>
+          <View style={styles.profileField}>
+            <Text style={styles.profileLabel}>{t("profile.experience")}</Text>
+            <Text style={styles.profileValue}>
+              {profileModal.experience ? profileModal.experience : "—"}
             </Text>
           </View>
 

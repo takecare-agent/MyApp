@@ -30,13 +30,21 @@ export default function GlobalEmergencyModal({
   const [page, setPage] = useState("sos")
   const open = Boolean(visible && record)
   const status = record?.status
+  const isFall = record?.kind === "fall"
   const isCaregiver = role === "caregiver"
   const isFamily = role === "family"
-  const openSos = status === "active" || status === "handling"
+  const fallNeedsAck = isFall && (status === "active" || status === "handling")
+  const openSos = !isFall && (status === "active" || status === "handling")
+  const statusLabel = isFall
+    ? (fallNeedsAck
+      ? (record?.severity === "Critical" ? t("alert.severity.Critical") : t("alert.severity.High"))
+      : "")
+    : t("sos.cardStatusNew")
+  const fallMessage = t("fall.cardMessage")
   const hint =
     (actionMsgKey ? t(actionMsgKey) : "") ||
     String(actionMsg || "").trim()
-  const locationLabel = String(record?.locationLabel || "").trim()
+  const locationLabel = isFall ? "" : String(record?.locationLabel || "").trim()
   const elderName = record?.patientName || t("sos.elderFallback")
 
   useEffect(() => {
@@ -61,18 +69,26 @@ export default function GlobalEmergencyModal({
             />
           ) : (
             <>
-              <View style={styles.statusPill}>
-                <View style={styles.statusDot} />
-                <Text style={styles.statusText}>{t("sos.cardStatusNew")}</Text>
+              {statusLabel ? (
+              <View style={[styles.statusPill, isFall && !fallNeedsAck ? styles.fallStatusPill : null]}>
+                <View style={[styles.statusDot, isFall && !fallNeedsAck ? styles.fallStatusDot : null]} />
+                <Text style={[styles.statusText, isFall && !fallNeedsAck ? styles.fallStatusText : null]}>
+                  {statusLabel}
+                </Text>
               </View>
-              <TranslatedUgcText
-                text={record?.message || t("sos.needHelp")}
-                sourceLang={record?.sourceLang}
-                messageKey={record?.messageKey}
-                apiBaseUrl={apiBaseUrl}
-                token={token}
-                style={styles.message}
-              />
+              ) : null}
+              {isFall ? (
+                <Text style={styles.message}>{fallMessage}</Text>
+              ) : (
+                <TranslatedUgcText
+                  text={record?.message || t("sos.needHelp")}
+                  sourceLang={record?.sourceLang}
+                  messageKey={record?.messageKey}
+                  apiBaseUrl={apiBaseUrl}
+                  token={token}
+                  style={styles.message}
+                />
+              )}
               <View style={styles.metaRow}>
                 <AvatarMark
                   email={record?.patientEmail}
@@ -101,7 +117,7 @@ export default function GlobalEmergencyModal({
                   <NeoIcon name="call" size={22} color="#FFFFFF" />
                   <Text style={styles.cta119Text}>119</Text>
                 </Pressable>
-                {isCaregiver && openSos ? (
+                {isCaregiver && (openSos || fallNeedsAck) ? (
                   <Pressable
                     style={[styles.ctaHandled, busy ? styles.disabled : null]}
                     onPress={onResolve}
@@ -111,7 +127,7 @@ export default function GlobalEmergencyModal({
                       <NeoIcon name="check" size={14} color="#10B981" />
                     </View>
                     <Text style={styles.ctaHandledText}>
-                      {busy ? t("sos.busy") : t("sos.markHandled")}
+                      {busy ? t("sos.busy") : (fallNeedsAck ? t("fall.markViewed") : t("sos.markHandled"))}
                     </Text>
                   </Pressable>
                 ) : null}
@@ -137,7 +153,7 @@ export default function GlobalEmergencyModal({
                   <NeoIcon name="chevron-right" size={16} color="#FFFFFF" />
                 </Pressable>
               </View>
-              {!openSos || isFamily ? (
+              {((!openSos && !fallNeedsAck) || isFamily) ? (
                 <Pressable style={styles.dismissBtn} onPress={onDismiss}>
                   <Text style={styles.dismissText}>{t("sos.closeCard")}</Text>
                 </Pressable>
@@ -190,6 +206,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
     color: "#FF5C5C"
+  },
+  fallStatusPill: {
+    backgroundColor: "rgba(245, 158, 11, 0.14)"
+  },
+  fallStatusDot: {
+    backgroundColor: "#F59E0B"
+  },
+  fallStatusText: {
+    color: "#FBBF24"
   },
   message: {
     fontSize: 28,

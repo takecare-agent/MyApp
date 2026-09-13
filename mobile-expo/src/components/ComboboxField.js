@@ -12,7 +12,7 @@ import { colors } from "../screens/new_ui/tokens"
 import { NeoIcon } from "../screens/new_ui/NeoIcons"
 
 /**
- * 內容欄：手打＋▼ 常用；可刪／隱藏用不到的項（R83）
+ * 內容欄：手打＋▼ 常用；可刪／隱藏用不到的項
  * options: string[] 或 { value, id?, kind?: 'builtin'|'custom' }[]
  */
 export default function ComboboxField({

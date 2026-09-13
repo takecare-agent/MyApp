@@ -30,7 +30,7 @@ import { ensureFilled, screenshotPhrases } from "./new_ui/screenshotFill"
 import { chatPresetKeysForRole } from "../lib/chatPresets"
 
 /**
- * R85：面對面翻譯＝說／打一句 → 翻成對方語言 → 可朗讀
+ * 面對面翻譯＝說／打一句 → 翻成對方語言 → 可朗讀
  * 看護舊「語言」頁已併入此頁，不再寫死翻成中文
  */
 export default function PhraseLibraryScreen({

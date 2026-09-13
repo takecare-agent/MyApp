@@ -14,17 +14,15 @@ import { colors } from "./new_ui/tokens"
 export default function VerifyScreen({
   apiBaseUrl,
   email,
-  initialCode = "",
+  initialInfo = "",
   onBack,
   onVerified
 }) {
   const { t } = useI18n()
-  const [code, setCode] = useState(initialCode || "")
+  const [code, setCode] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
-  const [info, setInfo] = useState(
-    initialCode ? t("verify.devCode", { code: initialCode }) : ""
-  )
+  const [info, setInfo] = useState(initialInfo || "")
 
   const handleVerify = async () => {
     const trimmed = code.replace(/\s/g, "")
@@ -54,9 +52,9 @@ export default function VerifyScreen({
     setBusy(true)
     setError("")
     try {
-      const data = await mobileResendVerify({ apiBaseUrl, email })
-      setInfo(data.devCode ? t("verify.resentDev", { code: data.devCode }) : t("verify.resent"))
-      if (data.devCode) setCode(String(data.devCode))
+      await mobileResendVerify({ apiBaseUrl, email })
+      setInfo(t("verify.resent"))
+      setCode("")
     } catch (err) {
       setError(err.message || t("verify.sendFail"))
     } finally {

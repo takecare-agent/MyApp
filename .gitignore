@@ -1,4 +1,58 @@
+# 密鑰／本機設定
 backend/.env
 backend/.env.bak-*
 backend/firebase-service-account.json
+backend/firebase-service-account*.json
+**/.env
+!**/.env.example
+mobile-expo/ios/.xcode.env.local
+
+# 依賴
 node_modules/
+**/node_modules/
+
+# Python
+**/__pycache__/
+*.pyc
+vision-runtime/.venv
+vision-runtime/.venv/
+vision-runtime/venv/
+**/.venv/
+
+# 本機證據／回放（個資＋體積大）
+backend/data/evidence/
+vision-runtime/data/
+vision-runtime/cam_test_*.jpg
+vision-runtime/_experiments/
+
+# Agent／編輯器工具（不進版本庫）
+.agents/
+.claude/
+.cursor/
+skills-lock.json
+
+# 系統／備份
+.DS_Store
+*.bak
+*.bak-*
+*.orig
+*.log
+
+# 建置產物
+*.apk
+*.ipa
+*.aab
+mobile-expo/android/app/build/
+mobile-expo/ios/build/
+mobile-expo/.expo/
+
+# 內部工作備註（非正式專題文件）
+CHECKPOINT*.md
+APP_RELEASE_GUIDE.md
+TOMORROW_PHONE_DEMO.md
+docs/GITHUB_小組上傳分類.md
+scripts/generate_system_doc.py
+
+# 根目錄雜訊
+/package-lock.json
+/系統文件書*.docx.bak*

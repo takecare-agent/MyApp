@@ -1,7 +1,7 @@
 import { AppState, NativeModules, PermissionsAndroid, Platform } from "react-native"
 import { apiRequest } from "./api"
 
-function isFirebaseNativeReady() {
+export function isFirebaseNativeReady() {
   return Boolean(NativeModules?.RNFBAppModule)
 }
 

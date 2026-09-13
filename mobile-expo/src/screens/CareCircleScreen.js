@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,6 +11,7 @@ import {
   View
 } from "react-native"
 import {
+  apiRequest,
   mobileCareCircle,
   mobileCareCircleBind,
   mobileCareCircleDissolve,
@@ -45,6 +47,7 @@ export default function CareCircleScreen({
   const [inviteInput, setInviteInput] = useState("")
   const [emailInput, setEmailInput] = useState("")
   const [showBindForm, setShowBindForm] = useState(false)
+  const [profileMember, setProfileMember] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -204,6 +207,32 @@ export default function CareCircleScreen({
         }
       ]
     )
+  }
+
+  const openMemberProfile = (item) => {
+    if (!item?.email) return
+    const key = String(item.email).toLowerCase()
+    setProfileMember({
+      email: key,
+      name: String(item.name || "").trim(),
+      role: item.role || "",
+      experience: String(item.experience || "").trim()
+    })
+    apiRequest({
+      apiBaseUrl,
+      path: `/mobile/circle-profile?email=${encodeURIComponent(key)}`,
+      token
+    }).then((data) => {
+      setProfileMember((prev) => {
+        if (!prev || prev.email !== key) return prev
+        return {
+          ...prev,
+          name: String(data?.name || prev.name || "").trim(),
+          role: data?.role || prev.role || "",
+          experience: String(data?.experience || "").trim()
+        }
+      })
+    }).catch(() => {})
   }
 
   if (loading) {
@@ -382,7 +411,13 @@ export default function CareCircleScreen({
         ) : (
           others.map(item => (
             <View key={`${item.role}-${item.email}`} style={styles.memberRow}>
-              <AvatarMark email={item.email} size={36} apiBaseUrl={apiBaseUrl} token={token} />
+              <Pressable
+                onPress={() => openMemberProfile(item)}
+                accessibilityRole="button"
+                accessibilityLabel={t("chat.profileTitle")}
+              >
+                <AvatarMark email={item.email} size={36} apiBaseUrl={apiBaseUrl} token={token} />
+              </Pressable>
               <View style={styles.memberTextCol}>
                 <Text style={styles.memberMain} numberOfLines={1}>
                   {t(`roles.${item.role}`) || item.role}　{memberDisplayName(item, t)}
@@ -416,6 +451,37 @@ export default function CareCircleScreen({
       ) : null}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
+
+      <Modal visible={Boolean(profileMember)} transparent animationType="fade" onRequestClose={() => setProfileMember(null)}>
+        <View style={styles.profileMask}>
+          <Pressable style={styles.profileDismiss} onPress={() => setProfileMember(null)} />
+          {profileMember ? (
+            <View style={styles.profileSheet}>
+              <Text style={styles.profileTitle}>{t("chat.profileTitle")}</Text>
+              <View style={styles.profileAvatarRow}>
+                <AvatarMark email={profileMember.email} size={56} apiBaseUrl={apiBaseUrl} token={token} inModal />
+                <View style={styles.profileAvatarMeta}>
+                  <Text style={styles.profileName} numberOfLines={2}>
+                    {memberDisplayName(profileMember, t)}
+                  </Text>
+                  <Text style={styles.profileRole}>
+                    {t(`roles.${profileMember.role}`) || profileMember.role || "—"}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.profileLabel}>{t("chat.profileEmail")}</Text>
+              <Text style={styles.profileValue} selectable>{profileMember.email}</Text>
+              <Text style={styles.profileLabel}>{t("profile.experience")}</Text>
+              <Text style={styles.profileValue}>
+                {profileMember.experience ? profileMember.experience : "—"}
+              </Text>
+              <Pressable style={styles.profileClose} onPress={() => setProfileMember(null)}>
+                <Text style={styles.profileCloseText}>{t("common.close")}</Text>
+              </Pressable>
+            </View>
+          ) : null}
+        </View>
+      </Modal>
     </ScrollView>
   )
 }
@@ -568,5 +634,35 @@ const styles = StyleSheet.create({
   },
   dangerOutlineText: { color: colors.clay, fontWeight: "900" },
   error: { color: colors.clay, fontWeight: "700", textAlign: "center" },
-  disabled: { opacity: 0.65 }
+  disabled: { opacity: 0.65 },
+  profileMask: { flex: 1, justifyContent: "center", padding: 24 },
+  profileDismiss: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.55)"
+  },
+  profileSheet: {
+    backgroundColor: colors.card,
+    borderRadius: 20,
+    borderCurve: "continuous",
+    padding: 20,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)"
+  },
+  profileTitle: { color: colors.text, fontWeight: "800", fontSize: 18, marginBottom: 8 },
+  profileAvatarRow: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 8 },
+  profileAvatarMeta: { flex: 1, gap: 4 },
+  profileName: { color: colors.text, fontWeight: "800", fontSize: 16 },
+  profileRole: { color: colors.textMuted, fontWeight: "600" },
+  profileLabel: { marginTop: 8, color: colors.textMuted, fontWeight: "700", fontSize: 12 },
+  profileValue: { color: colors.text, fontWeight: "600", fontSize: 15, lineHeight: 22 },
+  profileClose: {
+    marginTop: 16,
+    height: 44,
+    borderRadius: 999,
+    backgroundColor: "#10B981",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  profileCloseText: { color: "#000000", fontWeight: "800" }
 })

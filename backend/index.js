@@ -186,7 +186,7 @@ const userSchema = new mongoose.Schema({
   caregiverLanguageCursor: { type: Number, default: 0 },
   caregiverSystemCursor: { type: Number, default: 0 },
   profileCompleted: { type: Boolean, default: false },
-  /** @deprecated R87 W2.5：一律 circle；保留欄位相容舊客戶端 */
+  /** @deprecated 一律通知照護圈雙方；保留欄位以相容舊客戶端 */
   sosAudience: {
     type: String,
     enum: ["caregiver_only", "circle"],
@@ -285,7 +285,7 @@ const sosEventSchema = new mongoose.Schema({
   message: String,
   /** 預設短語代碼 needHelp|fell|comeQuick；有則收訊方走字典不依賴機翻 */
   messageKey: { type: String, default: "" },
-  /** 寫入方介面語言；收訊方依自己的 User.lang 看譯文（R88） */
+  /** 寫入方介面語言；收訊方依自己的 User.lang 看譯文 */
   sourceLang: { type: String, default: "zh" },
   /** W2.5 起一律 circle；保留 enum 相容舊資料 */
   audience: {
@@ -316,7 +316,7 @@ const sosEventSchema = new mongoose.Schema({
 
 const SosEvent = mongoose.model("SosEvent", sosEventSchema)
 
-// G2：High 建立後以 setTimeout 排 2／5／15／35 分升 Critical 並重推；結案清計時器。程序重啟會丟掉尚未觸發的波次。
+// 高風險建立後排 2／5／15／35 分升極高並重推；結案清計時器。程序重啟會丟掉尚未觸發的波次。
 const abnormalEventSchema = new mongoose.Schema({
   eventId: { type: String, required: true, unique: true, index: true },
   patientUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
@@ -422,8 +422,7 @@ const visionDetectionRecordSchema = new mongoose.Schema({
   frameTag: String,
   detectedAt: { type: Date, default: Date.now, index: true },
   source: { type: String, default: "vision-mock" },
-  // G1：這筆事件是否最終建立了 Alert 並推播（給 G3 表格「是否回報」欄位用）。
-  // 跌倒事件建立當下還不知道（要等 5 秒觀察窗），預設 false，計時器觸發建立 Alert 時才補回 true。
+  // 是否已建立警報並推播。跌倒當下尚未可知（須等 5 秒未起），預設 false。
   alertBuilt: { type: Boolean, default: false },
   evidence: [{
     evidenceId: String,
@@ -562,7 +561,7 @@ const CareDailyRecord = mongoose.model("CareDailyRecord", careDailyRecordSchema)
 const BloodPressureRecord = mongoose.model("BloodPressureRecord", bloodPressureRecordSchema)
 const VisionDetectionRecord = mongoose.model("VisionDetectionRecord", visionDetectionRecordSchema)
 
-/** R109：鏡頭在線區間（牆鐘軸用）。RAM ring 重啟會清，session 進 Mongo 才不會讓軸消失。 */
+/** 鏡頭在線區間（牆鐘軸用）。記憶體環重啟會清，session 進 Mongo 才不會讓軸消失。 */
 const cameraSessionSchema = new mongoose.Schema({
   patientUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
   startedAt: { type: Date, required: true, index: true },
@@ -886,7 +885,7 @@ async function claimAbnormalEvent(record, user, role) {
   return record
 }
 
-/** 解除：標記 Done。備註可空，預設「已查看」（R99；不必填如何處理） */
+/** 解除：標記 Done。備註可空，預設「已查看」（不必填如何處理） */
 async function resolveAbnormalEvent(record, user, role, note) {
   const resolvedNote = (typeof note === "string" ? note.trim() : "") || "已查看"
   record.status = "Done"
@@ -1115,7 +1114,67 @@ async function purgeExpiredChatVoiceAssets() {
   return removed
 }
 
-/** G3：異常列表＝Alert（已回報）＋僅紀錄的 Vision Event（alertBuilt=false）；附處理人標籤 */
+function isAudioEvidenceItem(item) {
+  const key = String(item?.objectKey || "").toLowerCase()
+  const ct = String(item?.contentType || "").toLowerCase()
+  return ct.includes("audio") || /\.(wav|m4a|mp3|aac)$/.test(key)
+}
+
+function isVisualEvidenceItem(item) {
+  if (!item?.objectKey || isAudioEvidenceItem(item)) return false
+  const key = String(item.objectKey).toLowerCase()
+  const ct = String(item.contentType || "").toLowerCase()
+  if (item.mediaType === "snapshot" || item.mediaType === "clip") return true
+  if (ct.includes("image") || ct.includes("video") || ct.includes("mp4")) return true
+  return /\.(jpe?g|png|webp|mp4|webm)$/.test(key)
+}
+
+function visualEvidenceFileMissing(item) {
+  return !fs.existsSync(path.join(objectStore.LOCAL_ROOT, item.objectKey))
+}
+
+function shouldDropVisualDoc(evidence) {
+  const visual = (evidence || []).filter(isVisualEvidenceItem)
+  if (!visual.length) return false
+  return visual.every(visualEvidenceFileMissing)
+}
+
+/** 使用者已刪本機 jpg/mp4：連活動／異常紀錄一起刪。不碰聊天 wav、不碰沒有圖片的蹲下記錄。 */
+async function purgeMissingVisualEvents() {
+  const dropAlertIds = []
+  const dropVisionIds = []
+  const tags = new Set()
+  const alerts = await AbnormalEvent.find({ "evidence.0": { $exists: true } })
+  for (const doc of alerts) {
+    if (!shouldDropVisualDoc(doc.evidence)) continue
+    dropAlertIds.push(doc._id)
+    if (doc.sourceEventKey) tags.add(String(doc.sourceEventKey))
+  }
+  const visions = await VisionDetectionRecord.find({ "evidence.0": { $exists: true } })
+  for (const doc of visions) {
+    if (!shouldDropVisualDoc(doc.evidence)) continue
+    dropVisionIds.push(doc._id)
+    if (doc.frameTag) tags.add(String(doc.frameTag))
+  }
+  if (tags.size) {
+    const extraA = await AbnormalEvent.find({ sourceEventKey: { $in: [...tags] } }).select("_id")
+    const extraV = await VisionDetectionRecord.find({ frameTag: { $in: [...tags] } }).select("_id")
+    for (const row of extraA) dropAlertIds.push(row._id)
+    for (const row of extraV) dropVisionIds.push(row._id)
+  }
+  const alertIds = [...new Set(dropAlertIds.map(String))]
+  const visionIds = [...new Set(dropVisionIds.map(String))]
+  const aRes = alertIds.length
+    ? await AbnormalEvent.deleteMany({ _id: { $in: alertIds } })
+    : { deletedCount: 0 }
+  const vRes = visionIds.length
+    ? await VisionDetectionRecord.deleteMany({ _id: { $in: visionIds } })
+    : { deletedCount: 0 }
+  console.log(`visual-events purge: alerts=${aRes.deletedCount} visions=${vRes.deletedCount}`)
+  return { deletedAbnormalEvents: aRes.deletedCount, deletedVisionRecords: vRes.deletedCount }
+}
+
+/** 異常列表＝已回報警報＋僅紀錄的影像事件；附處理人標籤 */
 async function buildAlertsHistoryForPatient(patientUserId, { severity, status, limit } = {}) {
   const alertFilter = { patientUserId }
   if (severity) alertFilter.severity = normalizeSeverity(severity)
@@ -1164,6 +1223,8 @@ async function buildAlertsHistoryForPatient(patientUserId, { severity, status, l
       resolvedNote: "",
       recordKind: "vision-event",
       source: v.source,
+      frameTag: v.frameTag || "",
+      sourceEventKey: v.frameTag || "",
       resolveKind: null,
       supersededByAlertId: null,
       evidence: publicEvidenceViews(v.evidence)
@@ -1442,7 +1503,7 @@ const SOS_NOTIFICATION_CHANNEL_ID = "sos_emergency"
 const ALERT_NOTIFICATION_CHANNEL_ID = "abnormal_alert"
 const CHAT_NOTIFICATION_CHANNEL_ID = "care_chat"
 
-/** 正在看某則對話的人：email → partnerEmail；看著就不推系統通知（R95） */
+/** 正在看某則對話的人：email → partnerEmail；看著就不推系統通知 */
 const chatFocusByEmail = new Map()
 
 /** 找出照護圈成員（含 lang＋tokens），供依收訊方母語推播 */
@@ -2501,6 +2562,35 @@ const ABNORMAL_ALERT_TYPE_LABELS = {
   squat: "蹲下", "bend-over": "彎腰", "sit-down": "坐下", abnormal: "異常行為"
 }
 
+/** 確認跌倒當下推播（含 5 秒內站起）：看護＋家屬。蹲下／彎腰不要走這支。 */
+async function notifyCareCircleFallLogged(patient, detectionRecord) {
+  if (!getApps().length || !patient || !detectionRecord) return
+  const action = String(detectionRecord.action || "")
+  const type = toVisionAlertType(action)
+  if (action !== "DANGER: FALL" && type !== "fall") return
+  const patientEmail = String(patient.email || "").trim().toLowerCase()
+  const tokens = await getCareCircleTokens(patientEmail)
+  if (!tokens.length) {
+    console.log(`Fall logged push skipped: no linked care circle tokens for ${patientEmail}`)
+    return
+  }
+  const patientName = patient.name || "受顧者"
+  await sendCarePush(tokens, {
+    title: "跌倒通報",
+    body: `${patientName} 偵測到跌倒`,
+    data: {
+      type: "fall-logged",
+      eventKey: String(detectionRecord.frameTag || ""),
+      recordId: String(detectionRecord._id || ""),
+      alertType: "fall",
+      patientName: String(patientName || ""),
+      location: "",
+      happenedAt: detectionRecord.detectedAt ? new Date(detectionRecord.detectedAt).toISOString() : ""
+    },
+    channelId: ALERT_NOTIFICATION_CHANNEL_ID
+  })
+}
+
 /** 高風險警報推播：綁定該長輩的 family + caregiver（照護圈），只推 severity=High；找不到綁定就 skip */
 async function notifyCareCircleAlert(record) {
   if (!getApps().length || !record) return
@@ -2514,12 +2604,15 @@ async function notifyCareCircleAlert(record) {
     return
   }
 
-  const location = String(record.location || "").trim()
   const patientName = patient.name || "受顧者"
   const typeLabel = ABNORMAL_ALERT_TYPE_LABELS[record.type] || record.type || "異常事件"
+  const isFallAlert = record.type === "fall"
+  const location = isFallAlert ? "" : String(record.location || "").trim()
   await sendCarePush(tokens, {
-    title: record.severity === "Critical" ? "極高風險警報" : "高風險警報",
-    body: `${patientName} 偵測到${typeLabel}${location ? `，位置：${location}` : ""}`,
+    title: isFallAlert ? "跌倒通報" : (record.severity === "Critical" ? "極高風險警報" : "高風險警報"),
+    body: isFallAlert
+      ? `${patientName} 偵測到跌倒`
+      : `${patientName} 偵測到${typeLabel}${location ? `，位置：${location}` : ""}`,
     data: {
       type: "alert",
       eventId: String(record.eventId || ""),
@@ -2527,7 +2620,7 @@ async function notifyCareCircleAlert(record) {
       severity: String(record.severity || ""),
       alertType: String(record.type || ""),
       patientName: String(patientName || ""),
-      location: String(record.location || ""),
+      location,
       happenedAt: record.happenedAt ? new Date(record.happenedAt).toISOString() : ""
     },
     channelId: ALERT_NOTIFICATION_CHANNEL_ID
@@ -2615,7 +2708,7 @@ function normalizeVisionAction(value) {
   if (text.includes("FALL")) return "DANGER: FALL"
   if (text.includes("SOS") || text.includes("WAV")) return "CRITICAL SOS: WAVING"
   if (text.includes("OFF_BED") || text.includes("BED EXIT") || text.includes("BED_EXIT")) return "OFF_BED"
-  // G1：蹲下／彎腰／坐下等非確認跌倒動作 → 一律 Low，只記 Event、不建 Alert（教授要求每次都記，不可合併）
+  // 蹲下／彎腰／坐下：只記事件、不建警報（每次獨立記錄）
   if (text.includes("SQUAT") || text.includes("CROUCH") || text.includes("蹲")) return "SQUAT"
   if (text.includes("BEND") || text.includes("STOOP") || text.includes("彎腰")) return "BEND_OVER"
   if (text.includes("SIT") || text.includes("坐下")) return "SIT_DOWN"
@@ -2715,7 +2808,7 @@ function buildConfirmedFallDetection(body = {}) {
     action: "DANGER: FALL",
     severity: "High",
     confidence: Math.max(prob, 0.9),
-    location: typeof body.location === "string" && body.location.trim() ? body.location.trim() : "客廳",
+    location: typeof body.location === "string" && body.location.trim() ? body.location.trim() : "",
     description: customDescription || `App 健康輪詢確認跌倒${trigger ? `（觸發 ${trigger}）` : ""}`,
     frameTag: typeof body.frameTag === "string" && body.frameTag.trim() ? body.frameTag.trim() : "health-confirmed",
     modelName: "Fall-Detection-v8"
@@ -2741,9 +2834,9 @@ async function requestVisionModelResult(payload = {}) {
   } catch { return null }
 }
 
-// G1：高＝「確認跌倒後持續未起 ≥5 秒」。跌倒事件先只記 Event，5 秒後仍未收到站起訊號才建立 Alert + 推播；
-// 5 秒內收到站起（/vision/report/standup，同一組 eventKey）就取消，不建 Alert、不推播。
-// G2：極高重推（2 / 5 / 15 / 35 分，自確認跌倒 happenedAt 起算）。程序重啟會丟掉尚未觸發的計時器。
+// 確認跌倒當下記事件並推「跌倒通報」；5 秒後仍未站起才建高風險警報。
+// 5 秒內站起只取消高風險警報，已送的跌倒通報不收回。
+// 高風險之後於 2／5／15／35 分再推極高；程序重啟會丟掉尚未觸發的計時器。
 const FALL_ALERT_CONFIRM_DELAY_MS = 5000
 const pendingFallAlerts = new Map() // key: `${patientUserId}:${eventKey}` → { timer }
 const CRITICAL_ESCALATION_OFFSETS_MS = [
@@ -2885,8 +2978,7 @@ async function createVisionAlertIfNeeded({ patientUserId, reporterUserId, report
   return buildAndNotifyVisionAlert({ patientUserId, reporterUserId, reporterRole, detectionRecord })
 }
 
-/** Wave D 防重複寫入：vision-runtime 主動推播與 App 輪詢備援共用同一組 eventKey（存成 frameTag），
- *  兩邊誰先到就誰建立，晚到的一律回傳既有紀錄，不再重複建立 VisionDetectionRecord/AbnormalEvent。 */
+/** 攝影機主動回報與 App 輪詢共用 eventKey（存成 frameTag），先到者建立、後到者回傳既有紀錄。 */
 async function findExistingVisionRecordByFrameTag(patientUserId, frameTag) {
   const tag = typeof frameTag === "string" ? frameTag.trim() : ""
   if (!tag) return null
@@ -3172,9 +3264,8 @@ app.post("/patient/vision/sync", async (req, res) => {
   res.status(201).json({ message: "OK", sampleIndex: s.sampleIndex, nextCursor: s.nextCursor, record, linkedAlert })
 })
 
-// ================= VISION-RUNTIME 主動推播（Wave D1，shared token，非使用者 JWT）=================
-// vision-runtime 在 CONFIRMED 當下背景執行緒呼叫這支，App 沒開也會建立 AbnormalEvent +（High）FCM。
-// eventKey 由 vision-runtime 產生、每次跌倒事件唯一，存成 frameTag 做防重複寫入（見 findExistingVisionRecordByFrameTag）。
+// ================= 攝影機主動回報（shared token，非使用者 JWT）=================
+// 確認跌倒時由辨識服務呼叫；App 未開也會寫入事件。eventKey 存成 frameTag 避免重複。
 app.post("/vision/report", async (req, res) => {
   if (!verifyVisionSharedToken(req)) return res.status(401).json({ message: "Invalid vision token" })
 
@@ -3221,6 +3312,11 @@ app.post("/vision/report", async (req, res) => {
   const fresh = eventKey
     ? await VisionDetectionRecord.findOne({ patientUserId: patient._id, frameTag: eventKey })
     : record
+  if (action === "DANGER: FALL") {
+    notifyCareCircleFallLogged(patient, fresh || record).catch(error => {
+      console.log("Fall logged push failed:", error.message)
+    })
+  }
   const linkedAlert = await createVisionAlertIfNeeded({
     patientUserId: patient._id,
     reporterUserId: patient._id,
@@ -3230,9 +3326,7 @@ app.post("/vision/report", async (req, res) => {
   res.status(201).json({ message: "OK", record: fresh || record, linkedAlert })
 })
 
-// G1：站起取消（shared token）。vision-runtime 偵測到 CONFIRMED 後持續站起（SUGGEST_DISMISS）就呼叫這支，
-// 用同一組 eventKey 取消尚未建立的 High Alert（5 秒觀察窗內）。找不到排程中的計時器就靜默回 cancelled:false
-//（代表已經建立過或已逾時，不需要也不能再取消）。
+// 持續站起時取消尚未建立的高風險警報（5 秒觀察窗內）。找不到計時器則 cancelled:false。
 app.post("/vision/report/standup", async (req, res) => {
   if (!verifyVisionSharedToken(req)) return res.status(401).json({ message: "Invalid vision token" })
 
@@ -3248,7 +3342,7 @@ app.post("/vision/report/standup", async (req, res) => {
   res.json({ message: cancelled ? "已取消排程中的高風險警報（5 秒內站起）" : "找不到排程中的警報（可能已建立或已逾時）", cancelled })
 })
 
-/** R109：vision 每 30s 心跳；超過 90s 沒來則該段標 offline。 */
+/** 辨識服務每 30 秒心跳；超過 90 秒沒來則該段標 offline。 */
 app.post("/vision/heartbeat", async (req, res) => {
   if (!verifyVisionSharedToken(req)) return res.status(401).json({ message: "Invalid vision token" })
   const patientEmail = normalizeLinkedPatientEmail(req.body?.patientEmail)
@@ -3365,7 +3459,7 @@ app.post("/patient/sos/trigger", async (req, res) => {
   if (!decoded) return res.status(401).json({ message: "Invalid token" })
   const user = await User.findOne({ email: decoded.email })
   const { message, locationLabel, latitude, longitude, patientPhone, sourceLang: bodySourceLang, messageKey: bodyMessageKey } = req.body || {}
-  // R87 W2.5：一律通知照護圈雙方（忽略 body.audience／profile.sosAudience）
+  // 一律通知照護圈雙方（忽略 body.audience／profile.sosAudience）
   const audience = "circle"
   const lat = Number(latitude), lng = Number(longitude)
   const normalizedPhone = typeof patientPhone === "string" ? patientPhone.trim() : ""
@@ -3582,12 +3676,12 @@ app.patch("/family/alerts/:id/status", async (req, res) => {
 })
 
 app.post("/family/alerts/:id/claim", async (_req, res) => {
-  // G3：家屬唯讀監看，不可認領（看護才是處理者）
+  // 家屬唯讀監看，不可認領（看護才是處理者）
   return res.status(403).json({ message: "家屬無法認領異常事件，請由看護處理" })
 })
 
 app.post("/family/alerts/:id/resolve", async (_req, res) => {
-  // G3：家屬唯讀監看，不可結案
+  // 家屬唯讀監看，不可結案
   return res.status(403).json({ message: "家屬無法結案異常事件，請由看護處理" })
 })
 
@@ -3686,7 +3780,7 @@ app.get("/family/sos/history", async (req, res) => {
   }
 })
 
-/** R91：看護／家屬跨所有照護圈的進行中 SOS（避免只看目前圈漏通知） */
+/** 看護／家屬跨所有照護圈的進行中 SOS（避免只看目前圈漏通知） */
 app.get("/mobile/sos/inbox", async (req, res) => {
   try {
     const decoded = verifyToken(req)
@@ -4519,7 +4613,18 @@ app.post("/caregiver/alerts/:id/evidence", async (req, res) => {
   }
 })
 
-/** M1/M2：vision-runtime 以 shared token 上傳事件證據（掛 eventKey／alert） */
+/** 本機 jpg/mp4 已刪：清掉對應活動／異常紀錄（不刪聊天 wav） */
+app.post("/vision/purge-missing-visual-events", async (req, res) => {
+  try {
+    if (!verifyVisionSharedToken(req)) return res.status(401).json({ message: "Invalid vision token" })
+    const result = await purgeMissingVisualEvents()
+    res.json({ ok: true, ...result })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+/** 辨識服務以上傳證據短片（掛 eventKey／alert） */
 app.post("/vision/evidence", async (req, res) => {
   try {
     if (!verifyVisionSharedToken(req)) return res.status(401).json({ message: "Invalid vision token" })
@@ -4628,7 +4733,7 @@ app.get("/media/evidence/:evidenceId", async (req, res) => {
   }
 })
 
-/** G3：看護可事後修改「如何處理」說明（不重開狀態、不重推播） */
+/** 看護可事後修改「如何處理」說明（不重開狀態、不重推播） */
 app.patch("/caregiver/alerts/:id/note", async (req, res) => {
   try {
     const decoded = verifyToken(req)
@@ -5760,7 +5865,7 @@ app.post("/caregiver/setup", async (req, res) => {
   let user = await User.findOne({ email: decoded.email })
   if (!user) user = await User.create({ email: decoded.email, role: "caregiver", profileCompleted: false })
   user.name = normalizedName
-  if (normalizedExperience) user.experience = normalizedExperience
+  user.experience = normalizedExperience
   if (normalizedPhone) user.phone = normalizedPhone
   if (!user.role) user.role = "caregiver"
   user.profileCompleted = true
@@ -5803,7 +5908,7 @@ app.post("/stt-polish", async (req, res) => {
   return res.json({ text: out, polished: out !== text })
 })
 
-/** R98：把口述對到既有狀況。不准發明急救步驟。 */
+/** 把口述對到既有狀況。不准發明急救步驟。 */
 const AID_ROUTE_IDS = [
   "cpr", "choke", "chest", "fast", "foam", "seizure", "sugar",
   "bleed", "burn", "poison", "allergy", "heat", "drown", "fall", "unsure"
@@ -6014,7 +6119,7 @@ app.get("/chat-inbox", async (req, res) => {
 
     const partnerEmails = [...lastByPartner.keys()]
     const partnerUsers = partnerEmails.length
-      ? await User.find({ email: { $in: partnerEmails } }).select("email name role avatarData").lean()
+      ? await User.find({ email: { $in: partnerEmails } }).select("email name role avatarData experience").lean()
       : []
     const partnerByEmail = Object.fromEntries(
       partnerUsers.map((u) => [String(u.email || "").toLowerCase(), u])
@@ -6035,6 +6140,7 @@ app.get("/chat-inbox", async (req, res) => {
         partnerEmail: partner,
         partnerName: partnerUser.name || "",
         partnerRole: partnerUser.role || "",
+        partnerExperience: partnerUser.experience || "",
         avatarData: partnerUser.avatarData || "",
         lastKind: last.kind || "text",
         lastSourceLang: last.sourceLang || "",

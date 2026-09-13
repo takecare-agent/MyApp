@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react"
 import {
   ActivityIndicator,
+  Image,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,12 +12,11 @@ import {
 } from "react-native"
 import {
   ApiError,
-  TEST_ACCOUNT_PASSWORD,
   mobileLogin,
   mobileMe,
   mobileRegister
 } from "../lib/api"
-import { signInWithApple, signInWithGoogle } from "../lib/socialAuth"
+import { signInWithGoogle } from "../lib/socialAuth"
 import GoogleAuthSheet from "../components/GoogleAuthSheet"
 import { LANG_OPTIONS, LANG_SHORT, DEFAULT_LANG } from "../i18n/languages"
 import { useI18n } from "../i18n/I18nContext"
@@ -30,12 +29,17 @@ function errorText(err, t, fallbackKey) {
   return msg || t(fallbackKey)
 }
 
+function isValidEmail(email) {
+  const text = String(email || "").trim().toLowerCase()
+  if (!text || text.length > 254) return false
+  return /^[a-z0-9._%+-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i.test(text)
+}
+
 export default function AuthScreen({
   defaultApiBaseUrl,
   defaultLang,
   onAuthenticated,
   onNeedsVerify,
-  onOpenDevRoleSelect,
   onRegisterLangChange
 }) {
   const { t } = useI18n()
@@ -45,19 +49,12 @@ export default function AuthScreen({
   const [name, setName] = useState("")
   const [password, setPassword] = useState("")
   const [registerLang, setRegisterLang] = useState(defaultLang || DEFAULT_LANG)
-  const [showAdvanced, setShowAdvanced] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const [info, setInfo] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [googleUrl, setGoogleUrl] = useState("")
   const [langOpen, setLangOpen] = useState(false)
-
-  const quickAccounts = [
-    { email: "patient@test.com", name: "受顧者測試", label: t("auth.quickPatient") },
-    { email: "caregiver@test.com", name: "看護測試", label: t("auth.quickCaregiver") },
-    { email: "family@test.com", name: "家屬測試", label: t("auth.quickFamily") }
-  ]
 
   useEffect(() => {
     if (defaultApiBaseUrl) setApiBaseUrl(defaultApiBaseUrl)
@@ -82,8 +79,8 @@ export default function AuthScreen({
       setError(t("auth.needApi"))
       return
     }
-    if (!normalizedEmail) {
-      setError(t("auth.needEmail"))
+    if (!isValidEmail(normalizedEmail)) {
+      setError(t("auth.needValidEmail"))
       return
     }
     if (normalizedPassword.length < 8) {
@@ -109,7 +106,8 @@ export default function AuthScreen({
           name: normalizedName,
           password: normalizedPassword,
           lang: registerLang,
-          devCode: data.devCode || ""
+          mailHint: data.message || "",
+          mailSent: data.mailSent !== false
         })
         return
       }
@@ -135,7 +133,8 @@ export default function AuthScreen({
           name: normalizedName,
           password: normalizedPassword,
           lang: registerLang,
-          devCode: err.data.devCode || ""
+          mailHint: err.data?.message || "",
+          mailSent: err.data?.mailSent !== false
         })
         return
       }
@@ -199,22 +198,6 @@ export default function AuthScreen({
     }
   }
 
-  const handleApple = async () => {
-    setBusy(true)
-    setError("")
-    setInfo("")
-    try {
-      const result = await signInWithApple({
-        apiBaseUrl: apiBaseUrl.trim() || defaultApiBaseUrl
-      })
-      finishSocial(result)
-    } catch (err) {
-      setError(errorText(err, t, "auth.appleFail"))
-    } finally {
-      setBusy(false)
-    }
-  }
-
   return (
     <>
     <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
@@ -225,9 +208,7 @@ export default function AuthScreen({
         </Pressable>
       </View>
       <View style={styles.brandBlock}>
-        <View style={styles.logoMark}>
-          <Text style={styles.logoMarkText}>T</Text>
-        </View>
+        <Image source={require("../assets/takecare-logo.png")} style={styles.logoImage} resizeMode="contain" />
         <Text style={styles.brand}>TakeCare</Text>
         <Text style={styles.tagline}>
           {mode === "login" ? t("auth.loginTitle") : t("auth.registerTitle")}
@@ -321,66 +302,6 @@ export default function AuthScreen({
         </View>
       </Pressable>
 
-      {Platform.OS === "ios" ? (
-        <Pressable style={[styles.socialBtn, busy && styles.btnDisabled]} onPress={handleApple} disabled={busy}>
-          <View style={styles.socialInner}>
-            <Text style={styles.appleMark}>{"\uF8FF"}</Text>
-            <Text style={styles.socialText}>{t("auth.apple")}</Text>
-          </View>
-        </Pressable>
-      ) : (
-        <Text style={styles.appleHint}>{t("auth.appleHint")}</Text>
-      )}
-
-      <Text style={styles.quickTitle}>{t("auth.quickTitle")}</Text>
-      <Text style={styles.quickHint}>{t("auth.quickPassword", { password: TEST_ACCOUNT_PASSWORD })}</Text>
-      <View style={styles.quickRow}>
-        {quickAccounts.map(item => (
-          <Pressable
-            key={item.email}
-            style={styles.quickChip}
-            onPress={() => {
-              setMode("login")
-              setEmail(item.email)
-              setName(item.name)
-              setPassword(TEST_ACCOUNT_PASSWORD)
-            }}
-          >
-            <Text style={styles.quickChipText}>{item.label}</Text>
-          </Pressable>
-        ))}
-      </View>
-
-      <Pressable
-        style={styles.devBtn}
-        onPress={() => onOpenDevRoleSelect({
-          apiBaseUrl: apiBaseUrl.trim() || defaultApiBaseUrl,
-          email: email.trim().toLowerCase() || "patient@test.com",
-          name: name.trim() || "Dev"
-        })}
-      >
-        <Text style={styles.devBtnText}>{t("auth.devBypass")}</Text>
-      </Pressable>
-
-      <Pressable onPress={() => setShowAdvanced(prev => !prev)} style={styles.advancedToggle}>
-        <Text style={styles.advancedToggleText}>
-          {showAdvanced ? t("auth.advancedHide") : t("auth.advancedShow")}
-        </Text>
-      </Pressable>
-      {showAdvanced ? (
-        <View style={styles.advancedBox}>
-          <Text style={styles.label}>API Base URL</Text>
-          <TextInput
-            style={styles.input}
-            value={apiBaseUrl}
-            onChangeText={setApiBaseUrl}
-            autoCapitalize="none"
-            placeholder="http://localhost:5000"
-            placeholderTextColor={colors.textMuted}
-          />
-        </View>
-      ) : null}
-
       <Modal visible={langOpen} transparent animationType="fade" onRequestClose={() => setLangOpen(false)}>
         <Pressable style={styles.langMask} onPress={() => setLangOpen(false)}>
           <View style={styles.langPicker}>
@@ -427,16 +348,7 @@ const styles = StyleSheet.create({
     gap: 4
   },
   brandBlock: { alignItems: "center", marginBottom: 20, gap: 6 },
-  logoMark: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    borderCurve: "continuous",
-    backgroundColor: "#10B981",
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  logoMarkText: { color: "#000000", fontSize: 28, fontWeight: "900" },
+  logoImage: { width: 148, height: 122 },
   brand: { marginTop: 8, fontSize: 24, fontWeight: "900", color: "#FFFFFF" },
   tagline: { marginTop: 6, color: colors.textMuted, fontWeight: "600", textAlign: "center" },
   modeTrack: {
@@ -586,38 +498,5 @@ const styles = StyleSheet.create({
     justifyContent: "center"
   },
   googleGBlue: { color: "#4285F4", fontWeight: "900", fontSize: 22 },
-  appleMark: { color: "#FFFFFF", fontSize: 32, width: 36, textAlign: "center", lineHeight: 34 },
-  socialText: { color: "#FFFFFF", fontWeight: "700", fontSize: 15 },
-  appleHint: {
-    textAlign: "center",
-    color: colors.textMuted,
-    fontWeight: "600",
-    fontSize: 12,
-    marginBottom: 8
-  },
-  quickTitle: { marginTop: 20, color: colors.textMuted, fontWeight: "800", fontSize: 12 },
-  quickHint: { marginTop: 4, color: colors.textMuted, fontSize: 12 },
-  quickRow: { flexDirection: "row", gap: 8, marginTop: 8 },
-  quickChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 20,
-    backgroundColor: colors.mintSoft,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  quickChipText: { color: colors.mint, fontWeight: "800" },
-  devBtn: { marginTop: 16, alignItems: "center", padding: 10 },
-  devBtnText: { color: colors.textMuted, fontWeight: "700", fontSize: 12 },
-  advancedToggle: { marginTop: 8, alignItems: "center", padding: 8 },
-  advancedToggleText: { color: colors.mint, fontWeight: "800" },
-  advancedBox: {
-    marginTop: 4,
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    borderCurve: "continuous",
-    padding: 14,
-    borderWidth: 1,
-    borderColor: colors.border
-  }
+  socialText: { color: "#FFFFFF", fontWeight: "700", fontSize: 15 }
 })

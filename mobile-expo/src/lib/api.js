@@ -292,7 +292,7 @@ export function mobileMe({ apiBaseUrl, token }) {
   })
 }
 
-/** @deprecated W2.5 起固定 circle；保留呼叫相容 */
+/** @deprecated  SOS 固定通知照護圈雙方；保留呼叫相容 */
 export function patientSetSosAudience({ apiBaseUrl, token, sosAudience }) {
   return apiRequest({
     apiBaseUrl,

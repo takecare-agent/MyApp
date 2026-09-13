@@ -18,7 +18,7 @@ import { Button } from "./new_ui/ui/kit"
 
 const HEALTH_POLL_MS = 2000   // 每 2 秒問一次影像服務目前狀態
 const HISTORY_POLL_MS = 3000  // 每 3 秒自動刷新歷史紀錄（跌倒後較快看到新資料）
-const PUSH_GRACE_MS = 4000    // 等影像服務主動推播多久，逾時才由 App 端補寫（備援，Wave D2）
+const PUSH_GRACE_MS = 4000    // 等辨識服務主動回報多久，逾時才由 App 補寫
 const CONTROLS_HIDE_MS = 4000 // 點畫面喚醒 ±10／時間軸，閒置後收合
 
 // 由 apiBaseUrl 推導影像服務網址（把後端 port 換成影像服務的 8000）
@@ -895,9 +895,9 @@ export default function VisionScreen({ role, apiBaseUrl, token, uiLang, onBack, 
     }
   }, [apiBaseUrl, apiPrefix, token, loadHistory, t.writeFail])
 
-  // 輪詢影像服務狀態：只用來更新橫幅顯示；寫入紀錄改為備援 —
-  // 影像服務 CONFIRMED 當下會自己主動推播後端（Wave D1，App 沒開也會建立警報），
-  // App 這裡只在等不到主動推播（data.reported 逾時仍為 false）或舊版服務沒有 eventKey 時才補寫，避免重複寫入。
+  // 輪詢影像服務狀態：只用來更新橫幅；寫入紀錄為備援 —
+  // 確認跌倒時辨識服務會自己回報後端（App 沒開也會建立警報），
+  // 這裡只在等不到回報（data.reported 逾時仍為 false）或舊版沒有 eventKey 時才補寫。
   useEffect(() => {
     if (!healthUrl) return undefined
     let alive = true

@@ -202,7 +202,7 @@ function HomePanel({
     try {
       const tasks = [
         apiRequest({ apiBaseUrl, path: `${prefix}/blood-pressure/history?limit=21`, token }),
-        apiRequest({ apiBaseUrl, path: `${prefix}/reminders`, token })
+        apiRequest({ apiBaseUrl, path: `${prefix}/reminders?limit=100`, token })
       ]
       if (role === "caregiver" || role === "patient") {
         tasks.push(apiRequest({
@@ -239,24 +239,24 @@ function HomePanel({
       const remList = Array.isArray(remData?.records)
         ? remData.records
         : (Array.isArray(remData?.reminders) ? remData.reminders : (Array.isArray(remData) ? remData : []))
-      const openOnce = remList.filter((r) =>
-        !r?.isCompleted &&
+      const todayOnce = remList.filter((r) =>
         !isTemplateReminderSource(r?.source) &&
         isSameLocalDay(r?.time)
       )
       const tplRaw = Array.isArray(tplData?.records) ? tplData.records : []
-      const openTpl = tplRaw
-        .filter((t) => !t?.isCompleted)
-        .map((t) => ({
-          _id: `tpl-${t._id}`,
-          category: t.category,
-          content: t.content,
-          contentKey: t.contentKey,
-          sourceLang: t.sourceLang,
-          time: t.time,
-          isCompleted: false
-        }))
-      setReminders([...openOnce, ...openTpl].slice(0, 5))
+      const todayTpl = tplRaw.map((t) => ({
+        _id: t.slot ? `tpl-${t._id}::${t.slot}` : `tpl-${t._id}`,
+        category: t.category,
+        content: t.content,
+        contentKey: t.contentKey,
+        sourceLang: t.sourceLang,
+        time: t.time,
+        isCompleted: Boolean(t.isCompleted)
+      }))
+      const allToday = [...todayOnce, ...todayTpl].sort(
+        (a, b) => Number(Boolean(a.isCompleted)) - Number(Boolean(b.isCompleted))
+      )
+      setReminders(allToday)
 
       const alertList = Array.isArray(alertData?.records) ? alertData.records : []
       setPendingCount(alertList.filter(isPendingAlert).length)
@@ -1003,7 +1003,7 @@ export default function MainTabShell({
 
   const openSos = () => {
     if (role === "patient") {
-      // R87：首頁第一次按 SOS＝本頁字卡，不 push 獨立 SOS 頁再二次確認
+      // 首頁第一次按 SOS＝本頁字卡，不另開獨立 SOS 頁再確認
       if (!patientSosModalVisible) setPatientSosModalVisible(true)
       return
     }

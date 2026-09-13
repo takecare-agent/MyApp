@@ -1,6 +1,6 @@
 """
-M2：事件證據 ring buffer（骨架渲染幀）
-- 記憶體保留最近 PRE_ROLL_SEC 秒 **無骨架** JPEG
+事件證據 ring buffer（骨架渲染幀）
+- 記憶體保留最近 PRE_ROLL_SEC 秒無骨架 JPEG
 - 短片從綠色 IDLE 起（begin_clip from_ts）到 CONFIRMED 後 POST_ROLL_SEC
 """
 import base64

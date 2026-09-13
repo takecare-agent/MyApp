@@ -1,5 +1,6 @@
 const bcrypt = require("bcryptjs")
 const crypto = require("crypto")
+const { resolveMx } = require("dns").promises
 const jwt = require("jsonwebtoken")
 const nodemailer = require("nodemailer")
 const {
@@ -80,6 +81,12 @@ async function verifyPassword(password, passwordHash) {
   return bcrypt.compare(String(password), passwordHash)
 }
 
+function isValidEmail(email) {
+  const text = String(email || "").trim().toLowerCase()
+  if (!text || text.length > 254) return false
+  return /^[a-z0-9._%+-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i.test(text)
+}
+
 function generateVerifyCode() {
   return String(Math.floor(100000 + Math.random() * 900000))
 }
@@ -93,35 +100,65 @@ async function matchVerifyCode(code, codeHash) {
   return bcrypt.compare(String(code), codeHash)
 }
 
+function verifyMailContent(code) {
+  return {
+    subject: "TakeCare 電子郵件驗證碼",
+    text: `您的 TakeCare 驗證碼是：${code}\n\n15 分鐘內有效。若非本人操作請忽略。`,
+    html: `<p>您的 TakeCare 驗證碼是：</p><p style="font-size:24px;font-weight:700;letter-spacing:4px">${code}</p><p>15 分鐘內有效。若非本人操作請忽略。</p>`
+  }
+}
+
+async function sendVerifyMail(host, email, code, options = {}) {
+  const transporter = nodemailer.createTransport({
+    host,
+    port: Number(options.port || 25),
+    secure: Boolean(options.secure),
+    auth: options.auth,
+    connectionTimeout: 12000,
+    greetingTimeout: 12000,
+    socketTimeout: 15000,
+    tls: { rejectUnauthorized: false }
+  })
+  const from = process.env.SMTP_FROM || process.env.SMTP_USER || "TakeCare <noreply@takecare.app>"
+  await transporter.sendMail({
+    from,
+    to: email,
+    ...verifyMailContent(code)
+  })
+}
+
 async function deliverVerifyCode(email, code) {
-  const host = process.env.SMTP_HOST
-  if (host) {
-    const transporter = nodemailer.createTransport({
-      host,
+  const smtpHost = String(process.env.SMTP_HOST || "").trim()
+  if (smtpHost) {
+    await sendVerifyMail(smtpHost, email, code, {
       port: Number(process.env.SMTP_PORT || 587),
       secure: String(process.env.SMTP_SECURE || "").toLowerCase() === "true",
       auth: process.env.SMTP_USER
         ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS || "" }
         : undefined
     })
-    const from = process.env.SMTP_FROM || process.env.SMTP_USER || "noreply@takecare.local"
-    await transporter.sendMail({
-      from,
-      to: email,
-      subject: "TakeCare 電子郵件驗證碼",
-      text: `您的 TakeCare 驗證碼是：${code}\n\n15 分鐘內有效。若非本人操作請忽略。`,
-      html: `<p>您的 TakeCare 驗證碼是：</p><p style="font-size:24px;font-weight:700;letter-spacing:4px">${code}</p><p>15 分鐘內有效。</p>`
-    })
     return { via: "smtp" }
   }
 
-  console.log(`[TakeCare email verify] to=${email} code=${code}`)
-  return { via: "console" }
+  const domain = String(email || "").split("@")[1]
+  if (!domain) throw new Error("MAIL_UNAVAILABLE")
+  const mxRecords = await resolveMx(domain)
+  mxRecords.sort((a, b) => a.priority - b.priority)
+  let lastError = null
+  for (const row of mxRecords.slice(0, 3)) {
+    try {
+      await sendVerifyMail(row.exchange, email, code, { port: 25, secure: false })
+      return { via: "mx" }
+    } catch (err) {
+      lastError = err
+      console.log(`[verify mail] MX ${row.exchange} failed: ${err.message}`)
+    }
+  }
+  throw lastError || new Error("MAIL_UNAVAILABLE")
 }
 
 function exposeCodes() {
   return String(process.env.AUTH_EXPOSE_CODES || "").toLowerCase() === "true"
-    || !process.env.SMTP_HOST
 }
 
 const {
@@ -153,9 +190,22 @@ function mountMobileAuth(app, {
     user.emailVerifyExpires = new Date(Date.now() + CODE_TTL_MS)
     await user.save()
     const delivery = await deliverVerifyCode(user.email, code)
-    const payload = { via: delivery.via, expiresInSec: Math.floor(CODE_TTL_MS / 1000) }
+    const payload = { via: delivery.via, expiresInSec: Math.floor(CODE_TTL_MS / 1000), mailSent: true }
     if (exposeCodes()) payload.devCode = code
     return payload
+  }
+
+  async function issueVerifyCodeSafe(user) {
+    try {
+      return await issueVerifyCode(user)
+    } catch (err) {
+      console.log("[verify mail] send failed:", err.message)
+      return {
+        mailSent: false,
+        via: "failed",
+        message: "驗證信寄出失敗，請按重新寄送，並檢查垃圾郵件"
+      }
+    }
   }
 
   app.post("/mobile/register", async (req, res) => {
@@ -167,7 +217,7 @@ function mountMobileAuth(app, {
       const lang = allowedLang.has(String(req.body?.lang || "").trim())
         ? String(req.body.lang).trim()
         : "zh"
-      if (!email || !email.includes("@")) {
+      if (!isValidEmail(email)) {
         return res.status(400).json({ message: "請輸入有效的電子郵件" })
       }
       if (password.length < 8) {
@@ -180,9 +230,9 @@ function mountMobileAuth(app, {
       if (existing?.passwordHash && !existing.emailVerified) {
         existing.lang = lang
         await existing.save()
-        const delivery = await issueVerifyCode(existing)
+        const delivery = await issueVerifyCodeSafe(existing)
         return res.status(200).json({
-          message: "帳號尚未驗證，已重新寄送驗證碼",
+          message: delivery.mailSent ? "帳號尚未驗證，已重新寄送驗證碼" : (delivery.message || "帳號尚未驗證，驗證信寄出失敗"),
           needsVerification: true,
           email,
           ...delivery
@@ -209,9 +259,9 @@ function mountMobileAuth(app, {
         await user.save()
       }
 
-      const delivery = await issueVerifyCode(user)
+      const delivery = await issueVerifyCodeSafe(user)
       return res.status(201).json({
-        message: "註冊成功，請驗證電子郵件",
+        message: delivery.mailSent ? "註冊成功，請至信箱收取驗證碼" : (delivery.message || "帳號已建立，驗證信寄出失敗"),
         needsVerification: true,
         email: user.email,
         ...delivery
@@ -228,8 +278,11 @@ function mountMobileAuth(app, {
       const user = await User.findOne({ email })
       if (!user) return res.status(404).json({ message: "找不到此帳號" })
       if (user.emailVerified) return res.status(400).json({ message: "此帳號已驗證" })
-      const delivery = await issueVerifyCode(user)
-      return res.json({ message: "驗證碼已寄出", email, ...delivery })
+      const delivery = await issueVerifyCodeSafe(user)
+      if (!delivery.mailSent) {
+        return res.status(502).json({ message: delivery.message || "驗證信寄出失敗", email })
+      }
+      return res.json({ message: "驗證碼已寄出，請查收信箱（含垃圾郵件）", email, ...delivery })
     } catch (err) {
       return res.status(500).json({ message: "寄送失敗" })
     }
@@ -280,7 +333,7 @@ function mountMobileAuth(app, {
     try {
       const email = String(req.body?.email || "").trim().toLowerCase()
       const password = String(req.body?.password || "")
-      if (!email || !password) {
+      if (!isValidEmail(email) || !password) {
         return res.status(400).json({ message: "請輸入電子郵件與密碼" })
       }
       const user = await User.findOne({ email })
@@ -293,9 +346,9 @@ function mountMobileAuth(app, {
       const ok = await verifyPassword(password, user.passwordHash)
       if (!ok) return res.status(401).json({ message: "帳號或密碼錯誤" })
       if (!user.emailVerified) {
-        const delivery = await issueVerifyCode(user)
+        const delivery = await issueVerifyCodeSafe(user)
         return res.status(403).json({
-          message: "請先完成電子郵件驗證",
+          message: delivery.mailSent ? "請先完成電子郵件驗證" : (delivery.message || "請先完成電子郵件驗證"),
           needsVerification: true,
           email,
           ...delivery
@@ -333,6 +386,46 @@ function mountMobileAuth(app, {
       })
     } catch (err) {
       return res.status(401).json({ message: "登入已失效" })
+    }
+  })
+
+  app.get("/mobile/circle-profile", async (req, res) => {
+    try {
+      const decoded = verifyToken(req)
+      if (!decoded?.email) return res.status(401).json({ message: "請先登入" })
+      const me = await User.findOne({ email: decoded.email })
+      if (!me) return res.status(404).json({ message: "找不到使用者" })
+      const targetEmail = normalizeEmail(req.query?.email)
+      if (!targetEmail) return res.status(400).json({ message: "缺少電子郵件" })
+      const target = await User.findOne({ email: targetEmail }).select("email name role experience").lean()
+      if (!target) return res.status(404).json({ message: "找不到此成員" })
+
+      const samePerson = normalizeEmail(me.email) === targetEmail
+      let allowed = samePerson
+      if (!allowed && CareCircleMember) {
+        const patientEmails = me.role === "patient"
+          ? [normalizeEmail(me.email)]
+          : (await listCirclesForMember(CareCircleMember, User, me.email)).map((c) => c.patientEmail)
+        const extra = normalizeEmail(me.linkedPatientEmail || me.activePatientEmail)
+        const check = extra && !patientEmails.includes(extra) ? [...patientEmails, extra] : patientEmails
+        for (const pe of check) {
+          const members = await listMembersForPatient(CareCircleMember, User, pe)
+          if (members.some((m) => normalizeEmail(m.email) === targetEmail)) {
+            allowed = true
+            break
+          }
+        }
+      }
+      if (!allowed) return res.status(403).json({ message: "只能查看照護圈成員" })
+
+      return res.json({
+        email: target.email,
+        name: target.name || "",
+        role: target.role || "",
+        experience: target.experience || ""
+      })
+    } catch (err) {
+      return res.status(500).json({ message: "讀取失敗" })
     }
   })
 

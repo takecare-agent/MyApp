@@ -1,4 +1,4 @@
-/** 健康卡短摘要（R87：卡上不塞長指引）。完整選答樹見 firstAidTree.js */
+/** 健康卡短摘要（卡上不塞長指引）。完整選答樹見 firstAidTree.js */
 export const FIRST_AID_STEPS = [
   {
     title: "步驟 1：確認安全並呼叫患者",

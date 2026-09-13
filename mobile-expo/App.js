@@ -69,6 +69,36 @@ function isOpenSosStatus(status) {
   return status === "active" || status === "handling"
 }
 
+function isFallHistoryRow(record) {
+  const key = String(record?.type || "").trim().toLowerCase()
+  if (String(record?.eventId || "").startsWith("SOS")) return false
+  if (record?.recordKind === "sos") return false
+  return key === "fall" || key.includes("fall") || key.includes("跌倒")
+}
+
+function fallRowId(record) {
+  return String(record?._id || record?.eventId || "")
+}
+
+function toFallEmergency(row, user) {
+  const recordOnly = row?.recordKind === "vision-event" || row?.alertBuilt === false
+  const done = String(row?.status || "") === "Done"
+  const high = !recordOnly && !done && (row?.severity === "High" || row?.severity === "Critical")
+  return {
+    kind: "fall",
+    _id: row?._id,
+    eventId: row?.eventId,
+    sourceEventKey: String(row?.sourceEventKey || row?.frameTag || ""),
+    status: high ? (row?.status === "Processing" ? "handling" : "active") : "logged",
+    severity: row?.severity,
+    patientName: user?.linkedPatientName || user?.activePatientName || user?.patientName || "",
+    patientEmail: String(user?.linkedPatientEmail || user?.activePatientEmail || "").trim().toLowerCase(),
+    triggeredAt: row?.happenedAt || row?.detectedAt,
+    locationLabel: "",
+    sourceLang: "zh"
+  }
+}
+
 function openPhone(phone) {
   const normalized = String(phone || "").trim()
   if (normalized) Linking.openURL(`tel:${normalized}`)
@@ -257,20 +287,29 @@ export default function App() {
     setEmergencyActionMsg("")
     setEmergencyActionMsgKey("")
     try {
-      await caregiverSosResolve({
-        apiBaseUrl: session.apiBaseUrl,
-        token: session.token,
-        id
-      })
-      setEmergencyActionMsgKey("sos.resolvedHint")
+      if (globalEmergency?.kind === "fall") {
+        await apiRequest({
+          apiBaseUrl: session.apiBaseUrl,
+          token: session.token,
+          path: `/caregiver/alerts/${encodeURIComponent(id)}/resolve`,
+          method: "POST",
+          body: { note: "已查看" }
+        })
+      } else {
+        await caregiverSosResolve({
+          apiBaseUrl: session.apiBaseUrl,
+          token: session.token,
+          id
+        })
+        setEmergencyActionMsgKey("sos.resolvedHint")
+      }
       stopEmergencyVibration()
-      // 立即關卡；家屬端靠 inbox 輪詢＋resolved 推播同步清掉
       setGlobalEmergency(null)
       setEmergencyActionMsg("")
       setEmergencyActionMsgKey("")
     } catch (err) {
       setEmergencyActionMsg(err.message || "")
-      setEmergencyActionMsgKey("sos.resolveFail")
+      setEmergencyActionMsgKey(globalEmergency?.kind === "fall" ? "fall.resolveFail" : "sos.resolveFail")
     } finally {
       setEmergencyBusy(false)
     }
@@ -371,6 +410,7 @@ export default function App() {
         const eventId = getSosRecordId(activeRecord)
         if (!activeRecord) {
           setGlobalEmergency(prev => {
+            if (prev?.kind === "fall") return prev
             if (prev) stopEmergencyVibration()
             return null
           })
@@ -408,6 +448,68 @@ export default function App() {
       stopEmergencyVibration()
     }
   }, [careSosReady, lastCareSosId, session?.apiBaseUrl, session?.role, session?.token])
+
+  useEffect(() => {
+    const role = session?.role
+    if ((role !== "family" && role !== "caregiver") || !session?.token || !session?.apiBaseUrl) {
+      return undefined
+    }
+
+    let stopped = false
+    let baselined = false
+    const seenIds = new Set()
+    const historyPath = role === "family"
+      ? "/family/alerts/history?limit=40"
+      : "/caregiver/alerts/history?limit=40"
+
+    function presentFall(row) {
+      if (!row || String(row.status || "") === "Done") return
+      const card = toFallEmergency(row, session.user)
+      setGlobalEmergency(prev => {
+        if (prev && prev.kind !== "fall" && isOpenSosStatus(prev.status)) return prev
+        return card
+      })
+      if (card.status === "active" || card.status === "handling") startEmergencyVibration()
+    }
+
+    async function pollFallInbox() {
+      try {
+        const data = await apiRequest({
+          apiBaseUrl: session.apiBaseUrl,
+          token: session.token,
+          path: historyPath
+        })
+        if (stopped) return
+        const rows = Array.isArray(data?.records) ? data.records : []
+        const falls = rows.filter(isFallHistoryRow)
+        const ids = falls.map(fallRowId).filter(Boolean)
+        if (!baselined) {
+          baselined = true
+          ids.forEach((id) => seenIds.add(id))
+          const newest = falls[0]
+          const at = newest ? new Date(newest.happenedAt || newest.detectedAt || 0).getTime() : 0
+          if (newest && Number.isFinite(at) && Date.now() - at < 120000) presentFall(newest)
+          return
+        }
+        const freshRows = falls.filter((row) => {
+          const id = fallRowId(row)
+          return id && !seenIds.has(id)
+        })
+        ids.forEach((id) => seenIds.add(id))
+        const prefer = freshRows.find((row) => row.alertBuilt !== false) || freshRows[0]
+        if (prefer) presentFall(prefer)
+      } catch {
+        // 輪詢失敗保持安靜
+      }
+    }
+
+    pollFallInbox()
+    const timer = setInterval(pollFallInbox, 3000)
+    return () => {
+      stopped = true
+      clearInterval(timer)
+    }
+  }, [session?.apiBaseUrl, session?.role, session?.token, session?.user])
 
   useEffect(() => {
     const canRegisterPush =
@@ -505,22 +607,11 @@ export default function App() {
       apiBaseUrl,
       email: String(draftInput.email || "").trim().toLowerCase(),
       name: String(draftInput.name || "").trim(),
-      initialCode: draftInput.devCode || "",
+      mailHint: String(draftInput.mailHint || "").trim(),
       mode: "auth",
       intent: "register"
     })
     setActiveScreen("verify")
-  }
-
-  const handleOpenDevRoleSelect = async draftInput => {
-    const apiBaseUrl = await persistApiBase(draftInput.apiBaseUrl || settings.apiBaseUrl)
-    setLoginDraft({
-      apiBaseUrl,
-      email: String(draftInput.email || "patient@test.com").trim().toLowerCase(),
-      name: String(draftInput.name || "Dev").trim(),
-      mode: "dev"
-    })
-    setActiveScreen("role-select")
   }
 
   const handleVerified = async payload => {
@@ -619,7 +710,7 @@ export default function App() {
           <VerifyScreen
             apiBaseUrl={loginDraft?.apiBaseUrl || settings.apiBaseUrl}
             email={loginDraft?.email}
-            initialCode={loginDraft?.initialCode || ""}
+            initialInfo={loginDraft?.mailHint || ""}
             onBack={() => setActiveScreen("auth")}
             onVerified={handleVerified}
           />
@@ -629,7 +720,6 @@ export default function App() {
             defaultLang={uiLang}
             onAuthenticated={handleAuthenticated}
             onNeedsVerify={handleNeedsVerify}
-            onOpenDevRoleSelect={handleOpenDevRoleSelect}
             onRegisterLangChange={async (code) => {
               setUiLang(code)
               await saveSettings({ ...settings, uiLang: code })

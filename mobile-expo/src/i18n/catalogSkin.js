@@ -1,4 +1,4 @@
-/** 換皮後硬編碼中文補回六語（R82） */
+/** 硬編碼中文介面字串補回六語 */
 export const catalogSkin = {
   zh: {
     "greet.morning": "早安，祝您愉快！",

@@ -298,7 +298,7 @@ function detectNoteForType(record, lang) {
     return lookupI18n(lang, "alert.detect.bendOver", "偵測到彎腰（僅記錄、不推播）")
   }
   if (isFallLikeType(record?.type)) {
-    return lookupI18n(lang, "alert.detect.fallRecordOnly", "偵測到跌倒（僅記錄、不推播）")
+    return lookupI18n(lang, "alert.detect.fallRecordOnly", "偵測到跌倒（已通知看護／家屬）")
   }
   return lookupI18n(lang, "alert.detect.recordOnly", "僅記錄、不推播")
 }
@@ -1257,7 +1257,7 @@ function AlertRecordCard({ record, t, alertLifecycle, readOnly, emphasize, apiBa
   const statusValue = recordOnly
     ? (t.statusNoAction || "無需處理")
     : getStatusLabel(record?.status, uiLang)
-  const notifyShort = recordOnly
+  const notifyShort = recordOnly && !isFallLikeType(record?.type)
     ? (t.recordOnlyShort || "僅紀錄")
     : (t.notifiedShort || "已通知")
   const howShort = getResolveNoteLabel(record)
@@ -1275,7 +1275,7 @@ function AlertRecordCard({ record, t, alertLifecycle, readOnly, emphasize, apiBa
   const isVideoEvent = isFallLikeType(record?.type) && !recordOnly
   const jumpTs = eventSeekMs(record)
   const canSeek = Boolean(onJumpToTime) && Number.isFinite(jumpTs) && jumpTs > 0
-  const canJump = canSeek && showMedia && isVideoEvent
+  const canJump = canSeek && isFallLikeType(record?.type)
   const jumpToEvent = () => {
     if (canSeek) onJumpToTime(jumpTs)
   }
@@ -2180,7 +2180,7 @@ export default function NativeFeatureScreen({
       } else {
         setPhoneDraft("")
       }
-      // R87：MVP 不強制綁手機／簡訊，不自動跳出手機 Modal
+      // 不強制綁手機／簡訊，不自動跳出手機輸入框
     })
 
     return () => { mounted = false }
@@ -2325,7 +2325,7 @@ export default function NativeFeatureScreen({
       return visibleRecords.length ? t.recordCount(visibleRecords.length) : ""
     }
     if (isAlertsFeature) return t.recordCount(visibleRecords.length)
-    // 空列表不顯示「0 筆紀錄」，只留下方 emptyText（R66）
+    // 空列表不顯示「0 筆紀錄」，只留下方 emptyText
     if (!records.length) return ""
     return t.recordCount(records.length)
   }, [alertFilter, customRangeReady, feature?.singleRecord, historyCustomFrom, historyCustomTo, historyRange, isAlertsFeature, latestOpenAlert, records.length, t, visibleRecords.length])

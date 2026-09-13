@@ -265,7 +265,7 @@
 				DEVELOPMENT_TEAM = JT9D8G9FZA;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = TakeCareMobile/Info.plist;
-				CODE_SIGN_ENTITLEMENTS = TakeCareMobile/TakeCareMobile.entitlements;
+				CODE_SIGN_ENTITLEMENTS = TakeCareMobile/TakeCareMobile.Debug.entitlements;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

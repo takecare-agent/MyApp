@@ -1,5 +1,5 @@
 /**
- * R91 多照護圈：成員關係＋目前圈輔助
+ * 多照護圈：成員關係＋目前圈輔助
  * 過渡期與 User.linkedPatientEmail 雙寫（linked＝目前操作長輩）
  */
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000
@@ -64,7 +64,7 @@ async function listCirclesForMember(CareCircleMember, User, memberEmail) {
 
 async function listMembersForPatient(CareCircleMember, User, patientEmail) {
   const email = normalizeEmail(patientEmail)
-  const patient = await User.findOne({ email, role: "patient" }).select("email name role lang avatarData").lean()
+  const patient = await User.findOne({ email, role: "patient" }).select("email name role lang avatarData experience").lean()
   const members = []
   if (patient) {
     members.push({
@@ -72,13 +72,14 @@ async function listMembersForPatient(CareCircleMember, User, patientEmail) {
       name: patient.name || "",
       role: "patient",
       lang: patient.lang || "zh",
-      avatarData: patient.avatarData || ""
+      avatarData: patient.avatarData || "",
+      experience: patient.experience || ""
     })
   }
   const rows = await CareCircleMember.find({ patientEmail: email }).lean()
   if (rows.length) {
     const emails = rows.map(r => r.memberEmail)
-    const users = await User.find({ email: { $in: emails } }).select("email name role lang avatarData").lean()
+    const users = await User.find({ email: { $in: emails } }).select("email name role lang avatarData experience").lean()
     const byEmail = Object.fromEntries(users.map(u => [normalizeEmail(u.email), u]))
     for (const row of rows) {
       const u = byEmail[row.memberEmail]
@@ -87,7 +88,8 @@ async function listMembersForPatient(CareCircleMember, User, patientEmail) {
         name: u?.name || "",
         role: row.roleInCircle || u?.role || "family",
         lang: u?.lang || "zh",
-        avatarData: u?.avatarData || ""
+        avatarData: u?.avatarData || "",
+        experience: u?.experience || ""
       })
     }
   } else {
@@ -96,7 +98,7 @@ async function listMembersForPatient(CareCircleMember, User, patientEmail) {
       role: { $in: ["family", "caregiver"] },
       linkedPatientEmail: email
     })
-      .select("email name role lang avatarData")
+      .select("email name role lang avatarData experience")
       .lean()
     for (const item of legacy) {
       members.push({
@@ -104,7 +106,8 @@ async function listMembersForPatient(CareCircleMember, User, patientEmail) {
         name: item.name || "",
         role: item.role,
         lang: item.lang || "zh",
-        avatarData: item.avatarData || ""
+        avatarData: item.avatarData || "",
+        experience: item.experience || ""
       })
     }
   }
