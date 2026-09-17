@@ -17,6 +17,7 @@ export function getAlertsFeature(role) {
       historyPath: "/family/alerts/history"
     }
   }
+  // 受顧者不開「活動」帳本；即時下方列表由 WatchPanel liveFeedFeature 接 /patient/alerts/history
   return null
 }
 

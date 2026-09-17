@@ -2,6 +2,84 @@ function trimTrailingSlash(value) {
   return String(value || "").replace(/\/+$/, "")
 }
 
+export function socketOriginFromApiBase(apiBaseUrl) {
+  return trimTrailingSlash(String(apiBaseUrl || "").replace(/\/__takecare_api\/?$/, ""))
+}
+
+function metroProxy(host) {
+  const h = String(host || "").trim()
+  return h ? `http://${h}:8081/__takecare_api` : ""
+}
+
+function optionalDevHosts() {
+  if (typeof __DEV__ === "undefined" || !__DEV__) {
+    return { usb: "", wifi: "", tunnel: "" }
+  }
+  try {
+    return require("./devHosts.generated")
+  } catch {
+    return { usb: "", wifi: "", tunnel: "" }
+  }
+}
+
+export function listDevApiCandidates(preferred) {
+  const hosts = optionalDevHosts()
+  return [
+    ...new Set(
+      [
+        trimTrailingSlash(preferred),
+        trimTrailingSlash(hosts.tunnel),
+        metroProxy(hosts.usb),
+        metroProxy(hosts.wifi),
+        hosts.wifi ? `http://${hosts.wifi}:5000` : "",
+        "http://172.20.10.5:5000",
+        "http://192.168.1.100:5000",
+        "http://192.168.0.10:5000",
+        "http://10.0.2.2:5000",
+        "http://localhost:5000",
+        "http://127.0.0.1:5000"
+      ].filter(Boolean)
+    )
+  ]
+}
+
+async function probeApiBase(apiBaseUrl) {
+  const base = trimTrailingSlash(apiBaseUrl)
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 3500)
+  try {
+    const response = await fetch(`${base}/mobile/auth/config`, {
+      method: "GET",
+      signal: ctrl.signal
+    })
+    if (!response.ok) throw new Error(`probe ${response.status}`)
+    return base
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+export async function pickReachableApiBase(preferred) {
+  const list = listDevApiCandidates(preferred)
+  if (list.length === 1) return list[0]
+  if (typeof Promise.any === "function") {
+    try {
+      return await Promise.any(list.map((base) => probeApiBase(base)))
+    } catch {
+      throw new TypeError("Network request failed")
+    }
+  }
+  let lastErr
+  for (const base of list) {
+    try {
+      return await probeApiBase(base)
+    } catch (err) {
+      lastErr = err
+    }
+  }
+  throw lastErr || new TypeError("Network request failed")
+}
+
 export class ApiError extends Error {
   constructor(message, { status, data, path } = {}) {
     super(message)
@@ -38,11 +116,17 @@ export async function apiRequest({
   if (body !== undefined) headers["Content-Type"] = "application/json"
   if (token) headers.Authorization = `Bearer ${token}`
 
-  const response = await fetch(url, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined
-  })
+  let response
+  try {
+    response = await fetch(url, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined
+    })
+  } catch (err) {
+    console.log("[api] network", method, url, String(err?.message || err))
+    throw err
+  }
 
   const raw = await response.text()
   let data = {}

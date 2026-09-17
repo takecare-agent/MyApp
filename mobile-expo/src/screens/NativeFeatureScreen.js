@@ -1219,23 +1219,84 @@ function evidenceFileUrl(apiBaseUrl, urlPath, token) {
   return `${url}${url.includes("?") ? "&" : "?"}access_token=${encodeURIComponent(token)}`
 }
 
+function evidencePlainUrl(apiBaseUrl, urlPath) {
+  const base = String(apiBaseUrl || "").replace(/\/+$/, "")
+  let path = String(urlPath || "")
+  if (!base || !path) return ""
+  if (path.endsWith("/thumb")) path = `${path}.jpg`
+  else if (!/\.(jpe?g|png|webp|gif)(\?|$)/i.test(path)) path = `${path}.jpg`
+  return `${base}${path}`
+}
+
+function bytesToJpegDataUri(buf) {
+  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf)
+  let binary = ""
+  const step = 0x8000
+  for (let i = 0; i < bytes.length; i += step) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + step))
+  }
+  const b64 = typeof btoa === "function" ? btoa(binary) : ""
+  return b64 ? `data:image/jpeg;base64,${b64}` : ""
+}
+
+function EvidencePhoto({ uri, token, style, resizeMode = "cover" }) {
+  const [source, setSource] = useState(() => evidenceImageSource(uri, token))
+  useEffect(() => {
+    let dead = false
+    const initial = evidenceImageSource(uri, token)
+    setSource(initial)
+    if (!uri || /^(file|data|content|asset):/i.test(uri)) return undefined
+    const ctrl = new AbortController()
+    ;(async () => {
+      try {
+        const res = await fetch(uri, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          signal: ctrl.signal
+        })
+        if (!res.ok) return
+        const dataUri = bytesToJpegDataUri(await res.arrayBuffer())
+        if (!dead && dataUri) setSource({ uri: dataUri })
+      } catch {
+        /* 保留 Image + query token */
+      }
+    })()
+    return () => {
+      dead = true
+      ctrl.abort()
+    }
+  }, [uri, token])
+  if (!source) return <View style={style} />
+  return <Image source={source} style={style} resizeMode={resizeMode} />
+}
+
+function evidenceImageSource(uri, token) {
+  if (!uri) return null
+  if (/^(file|content|asset|data):/i.test(uri)) return { uri }
+  if (!token) return { uri }
+  const joiner = uri.includes("?") ? "&" : "?"
+  return {
+    uri: `${uri}${joiner}access_token=${encodeURIComponent(token)}`,
+    headers: { Authorization: `Bearer ${token}` }
+  }
+}
+
+function evidenceThumbUrl(apiBaseUrl, evidenceList) {
+  const list = Array.isArray(evidenceList) ? evidenceList : []
+  const snap = list.find(item => item?.mediaType === "snapshot" && (item.urlPath || item.evidenceId || item.localUri))
+  if (snap?.localUri) return snap.localUri
+  if (snap?.urlPath) return evidencePlainUrl(apiBaseUrl, snap.urlPath)
+  const clip = list.find(item => item?.mediaType === "clip" && (item.urlPath || item.evidenceId || item.localUri))
+  if (clip?.localUri) return clip.localUri
+  if (clip?.urlPath) return evidencePlainUrl(apiBaseUrl, `${clip.urlPath}/thumb`)
+  return ""
+}
+
 function evidenceVideoPage(src) {
   const safe = String(src || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;")
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><style>
 html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden}
 video{width:100%;height:100%;object-fit:contain;background:#000}
-</style></head><body><video controls playsinline webkit-playsinline src="${safe}"></video></body></html>`
-}
-
-function evidenceThumbUrl(apiBaseUrl, evidenceList, token) {
-  const list = Array.isArray(evidenceList) ? evidenceList : []
-  const snap = list.find(item => item?.mediaType === "snapshot" && (item.urlPath || item.evidenceId || item.localUri))
-  if (snap?.localUri) return snap.localUri
-  if (snap?.urlPath) return evidenceFileUrl(apiBaseUrl, snap.urlPath, token)
-  const clip = list.find(item => item?.mediaType === "clip" && (item.urlPath || item.evidenceId || item.localUri))
-  if (clip?.localUri) return clip.localUri
-  if (clip?.urlPath) return evidenceFileUrl(apiBaseUrl, `${clip.urlPath}/thumb`, token)
-  return ""
+</style></head><body><video controls playsinline webkit-playsinline preload="metadata"><source src="${safe}" type="video/mp4"></video></body></html>`
 }
 
 function AlertRecordCard({ record, t, alertLifecycle, readOnly, emphasize, apiBaseUrl, token, uiLang, onJumpToTime, compact, ledger }) {
@@ -1284,7 +1345,7 @@ function AlertRecordCard({ record, t, alertLifecycle, readOnly, emphasize, apiBa
   const evidenceForUi = hasClip
     ? evidenceList.filter(item => item?.mediaType === "clip")
     : evidenceList.filter(item => item?.mediaType === "snapshot")
-  const thumbUri = evidenceThumbUrl(apiBaseUrl, evidenceList, token)
+  const thumbUri = evidenceThumbUrl(apiBaseUrl, evidenceList)
 
   // 活動列一句狀態；大卡可多一點
   const summaryBits = activityRow
@@ -1367,25 +1428,24 @@ function AlertRecordCard({ record, t, alertLifecycle, readOnly, emphasize, apiBa
           </View>
         </View>
       ) : sentry ? (
-        <View style={styles.nightSentryRow}>
+        <View>
+        {showMedia && thumbUri ? (
           <Pressable
             onPress={canExpandClip ? toggleClip : undefined}
             disabled={!canExpandClip}
-            style={styles.nightSentryThumbHit}
+            style={{ alignSelf: "stretch", position: "relative" }}
             accessibilityRole="button"
             accessibilityLabel={canExpandClip ? (hasClip ? (t.watchClip || "查看影片") : (t.watchSnap || "查看截圖")) : undefined}
           >
-            {showMedia && thumbUri ? (
-              <Image source={{ uri: thumbUri }} style={styles.nightSentryThumb} resizeMode="cover" />
-            ) : (
-              <View style={[styles.nightSentryThumb, styles.nightThumbEmpty]} />
-            )}
+            <EvidencePhoto uri={thumbUri} token={token} style={styles.nightSentryPhoto} />
             {isVideoEvent ? (
-              <View style={styles.nightPlay}>
+              <View style={styles.nightPhotoPlay}>
                 <IconPlay size={18} />
               </View>
             ) : null}
           </Pressable>
+        ) : null}
+        <View style={styles.nightSentryRow}>
           <View style={styles.nightSentryMeta}>
             <View style={styles.designTypeRow}>
               <View style={[
@@ -1418,13 +1478,14 @@ function AlertRecordCard({ record, t, alertLifecycle, readOnly, emphasize, apiBa
           </View>
           {unread ? <View style={styles.nightUnread} /> : null}
         </View>
+        </View>
       ) : activityRow ? (
         <View style={styles.activityRow}>
           {showMedia && thumbUri ? (
-            <Image
-              source={{ uri: thumbUri }}
+            <EvidencePhoto
+              uri={thumbUri}
+              token={token}
               style={[styles.activityThumb, nightOn && compact ? styles.nightSentryThumb : null]}
-              resizeMode="cover"
             />
           ) : showMedia && evidenceForUi.length ? (
             <View style={[
@@ -1556,13 +1617,13 @@ function AlertRecordCard({ record, t, alertLifecycle, readOnly, emphasize, apiBa
                   )
                 }
                 if (item.mediaType === "snapshot" && (uri || item.localUri)) {
-                  const imageSrc = item.localUri || evidenceFileUrl(apiBaseUrl, item.urlPath, token)
+                  const imageSrc = item.localUri || evidencePlainUrl(apiBaseUrl, item.urlPath)
                   return (
-                    <Image
+                    <EvidencePhoto
                       key={item.evidenceId}
-                      source={{ uri: imageSrc }}
+                      uri={imageSrc}
+                      token={token}
                       style={styles.evidenceImage}
-                      resizeMode="cover"
                     />
                   )
                 }
@@ -1685,27 +1746,25 @@ function SosRecordCard({ record, t, apiBaseUrl, token, uiLang, onResolve, resolv
   const sosTs = new Date(getRecordTime(record)).getTime()
   const canJumpSos = Number.isFinite(sosTs) && typeof onJumpToTime === "function"
 
-  const sosThumb = evidenceThumbUrl(apiBaseUrl, record?.evidence, token)
+  const sosThumb = evidenceThumbUrl(apiBaseUrl, record?.evidence)
 
   if (sentry) {
     return (
       <View style={[styles.recordCard, styles.activityCard, styles.nightSentryCard]}>
-        <View style={styles.nightSentryRow}>
+        {sosThumb ? (
           <Pressable
             onPress={canJumpSos ? () => onJumpToTime(sosTs) : undefined}
-            style={styles.nightSentryThumbHit}
+            style={{ alignSelf: "stretch", position: "relative" }}
             accessibilityRole={canJumpSos ? "button" : undefined}
             accessibilityLabel={canJumpSos ? (t.jumpToTime || "跳到該時段") : undefined}
           >
-            {sosThumb ? (
-              <Image source={{ uri: sosThumb }} style={styles.nightSentryThumb} resizeMode="cover" />
-            ) : (
-              <View style={[styles.nightSentryThumb, styles.nightThumbEmpty]} />
-            )}
-            <View style={styles.nightPlay}>
+            <EvidencePhoto uri={sosThumb} token={token} style={styles.nightSentryPhoto} />
+            <View style={styles.nightPhotoPlay}>
               <IconPlay size={18} />
             </View>
           </Pressable>
+        ) : null}
+        <View style={styles.nightSentryRow}>
           <View style={styles.nightSentryMeta}>
             <View style={styles.nightTag}>
               <Text style={styles.nightTagText}>{sosTitle}</Text>
@@ -4473,6 +4532,29 @@ const styles = StyleSheet.create({
     padding: 16,
     overflow: "hidden",
     position: "relative"
+  },
+  nightSentryPhoto: {
+    alignSelf: "stretch",
+    width: "100%",
+    height: 168,
+    borderRadius: 12,
+    backgroundColor: "#2A2D36",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.28)",
+    marginBottom: 12
+  },
+  nightPhotoPlay: {
+    position: "absolute",
+    right: 12,
+    bottom: 24,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.25)",
+    alignItems: "center",
+    justifyContent: "center"
   },
   nightSentryRow: {
     flexDirection: "row",

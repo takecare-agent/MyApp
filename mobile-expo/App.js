@@ -24,7 +24,7 @@ import VerifyScreen from "./src/screens/VerifyScreen"
 import VisionScreen from "./src/screens/VisionScreen"
 import CaregiverFirstAidScreen from "./src/screens/CaregiverFirstAidScreen"
 import GlobalEmergencyModal from "./src/components/GlobalEmergencyModal"
-import { apiRequest, mobileMe, mobileSosInbox, caregiverSosResolve, familySosRemind, mobileGetHealthCard } from "./src/lib/api"
+import { apiRequest, mobileMe, mobileSosInbox, caregiverSosResolve, familySosRemind, mobileGetHealthCard, pickReachableApiBase } from "./src/lib/api"
 import {
   clearSession,
   loadLastSeenSosEvent,
@@ -43,18 +43,27 @@ import {
 import { I18nProvider } from "./src/i18n/I18nContext"
 import { colors } from "./src/screens/new_ui/tokens"
 
-// 模擬器／adb reverse：localhost:5000。真機 Metro 從哪裡載 JS，API 就跟那個 host。
+const API_PROXY_PATH = "/__takecare_api"
+const RELEASE_API_BASE_URL = "http://172.20.10.5:5000"
 const LEGACY_API_BASE_URLS = [
   "http://192.168.1.100:5000",
   "http://192.168.0.10:5000"
 ]
 function defaultApiBaseUrl() {
-  const scriptURL = String(NativeModules.SourceCode?.scriptURL || "")
-  const host = scriptURL.match(/^https?:\/\/([^/:]+)/)?.[1] || ""
-  if (host && host !== "localhost" && host !== "127.0.0.1") {
-    return `http://${host}:5000`
+  if (typeof __DEV__ !== "undefined" && !__DEV__) {
+    return RELEASE_API_BASE_URL
   }
-  return "http://localhost:5000"
+  const scriptURL = String(NativeModules.SourceCode?.scriptURL || "")
+  const match = scriptURL.match(/^(https?):\/\/([^/:]+)(?::(\d+))?/)
+  const host = match?.[2] || ""
+  if (host && host !== "localhost" && host !== "127.0.0.1") {
+    return `${match[1]}://${host}:${match[3] || "8081"}${API_PROXY_PATH}`
+  }
+  return `http://localhost:8081${API_PROXY_PATH}`
+}
+function looksLikeDirectBackend(url) {
+  if (typeof __DEV__ !== "undefined" && !__DEV__) return false
+  return /^https?:\/\/[^/]+:5000\/?$/.test(String(url || "").trim())
 }
 const DEFAULT_API_BASE_URL = defaultApiBaseUrl()
 const FAMILY_SOS_SCOPE = "family"
@@ -136,9 +145,10 @@ function trimTrailingSlash(value) {
 
 function normalizeSettings(rawSettings) {
   const requestedApiBaseUrl = trimTrailingSlash(rawSettings?.apiBaseUrl || DEFAULT_API_BASE_URL)
-  const apiBaseUrl = LEGACY_API_BASE_URLS.includes(requestedApiBaseUrl)
-    ? DEFAULT_API_BASE_URL
-    : requestedApiBaseUrl
+  const apiBaseUrl =
+    LEGACY_API_BASE_URLS.includes(requestedApiBaseUrl) || looksLikeDirectBackend(requestedApiBaseUrl)
+      ? DEFAULT_API_BASE_URL
+      : requestedApiBaseUrl
   const uiLang = rawSettings?.uiLang || "zh"
   return { apiBaseUrl, uiLang }
 }
@@ -186,6 +196,16 @@ export default function App() {
         if (!mounted) return
 
         const mergedSettings = normalizeSettings(savedSettings)
+        console.log("[TakeCare] scriptURL", NativeModules.SourceCode?.scriptURL)
+        console.log("[TakeCare] defaultApi", DEFAULT_API_BASE_URL)
+        let apiBaseUrl = mergedSettings.apiBaseUrl
+        try {
+          apiBaseUrl = await pickReachableApiBase(mergedSettings.apiBaseUrl)
+          console.log("[TakeCare] reachableApi", apiBaseUrl)
+        } catch (err) {
+          console.log("[TakeCare] api probe fail", String(err?.message || err))
+        }
+        mergedSettings.apiBaseUrl = apiBaseUrl
         setSettings(mergedSettings)
         setUiLang(mergedSettings.uiLang)
 
@@ -193,9 +213,10 @@ export default function App() {
           const sessionApiBaseUrl = trimTrailingSlash(savedSession.apiBaseUrl || "")
           const nextSession = {
             ...savedSession,
-            apiBaseUrl: LEGACY_API_BASE_URLS.includes(sessionApiBaseUrl)
-              ? mergedSettings.apiBaseUrl
-              : sessionApiBaseUrl || mergedSettings.apiBaseUrl
+            apiBaseUrl:
+              LEGACY_API_BASE_URLS.includes(sessionApiBaseUrl) || looksLikeDirectBackend(sessionApiBaseUrl)
+                ? mergedSettings.apiBaseUrl
+                : sessionApiBaseUrl || mergedSettings.apiBaseUrl
           }
           setSession(nextSession)
           if (!nextSession.role) {
@@ -608,6 +629,8 @@ export default function App() {
       email: String(draftInput.email || "").trim().toLowerCase(),
       name: String(draftInput.name || "").trim(),
       mailHint: String(draftInput.mailHint || "").trim(),
+      devCode: String(draftInput.devCode || "").trim(),
+      mailSent: draftInput.mailSent !== false,
       mode: "auth",
       intent: "register"
     })
@@ -711,6 +734,8 @@ export default function App() {
             apiBaseUrl={loginDraft?.apiBaseUrl || settings.apiBaseUrl}
             email={loginDraft?.email}
             initialInfo={loginDraft?.mailHint || ""}
+            initialDevCode={loginDraft?.devCode || ""}
+            mailSent={loginDraft?.mailSent !== false}
             onBack={() => setActiveScreen("auth")}
             onVerified={handleVerified}
           />

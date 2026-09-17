@@ -1025,7 +1025,7 @@ async function attachEvidenceToTargets({ patientUserId, alertId, eventKey, media
 }
 
 async function findEvidenceById(evidenceId) {
-  const id = String(evidenceId || "").trim()
+  const id = String(evidenceId || "").trim().replace(/\.jpe?g$/i, "")
   if (!id) return null
   const alert = await AbnormalEvent.findOne({ "evidence.evidenceId": id }).lean()
   if (alert) {
@@ -1179,7 +1179,8 @@ async function buildAlertsHistoryForPatient(patientUserId, { severity, status, l
   const alertFilter = { patientUserId }
   if (severity) alertFilter.severity = normalizeSeverity(severity)
   if (status) alertFilter.status = normalizeAlertStatus(status)
-  const alerts = await AbnormalEvent.find(alertFilter).sort({ happenedAt: -1, _id: -1 }).limit(limit).lean()
+  const fetchLimit = Math.max(Number(limit) || 40, 40) * 4
+  const alerts = await AbnormalEvent.find(alertFilter).sort({ happenedAt: -1, _id: -1 }).limit(fetchLimit).lean()
 
   const claimerIds = [...new Set(alerts.map(a => a.claimedByUserId).filter(Boolean).map(String))]
   const claimers = claimerIds.length
@@ -1187,7 +1188,13 @@ async function buildAlertsHistoryForPatient(patientUserId, { severity, status, l
     : []
   const claimerMap = Object.fromEntries(claimers.map(u => [String(u._id), u]))
 
-  const alertRows = alerts.map(a => {
+  const alertRows = alerts.filter((a) => {
+    const type = String(a.type || "").toLowerCase()
+    if (type === "sos" || type.includes("sos")) return true
+    const visual = (a.evidence || []).filter(isVisualEvidenceItem)
+    if (!visual.length) return false
+    return visual.some((item) => !visualEvidenceFileMissing(item))
+  }).map(a => {
     const claimer = a.claimedByUserId ? claimerMap[String(a.claimedByUserId)] : null
     const emailPrefix = claimer?.email ? String(claimer.email).split("@")[0] : ""
     const roleLabel = a.claimedByRole === "caregiver" ? "看護" : a.claimedByRole === "family" ? "家屬" : ""
@@ -1208,8 +1215,12 @@ async function buildAlertsHistoryForPatient(patientUserId, { severity, status, l
   if (!statusNorm || statusNorm === "Pending") {
     const visionFilter = { patientUserId, alertBuilt: { $ne: true } }
     if (severity) visionFilter.severity = normalizeSeverity(severity)
-    const visions = await VisionDetectionRecord.find(visionFilter).sort({ detectedAt: -1, _id: -1 }).limit(limit).lean()
-    visionRows = visions.map(v => ({
+    const visions = await VisionDetectionRecord.find(visionFilter).sort({ detectedAt: -1, _id: -1 }).limit(fetchLimit).lean()
+    visionRows = visions.filter((v) => {
+      const visual = (v.evidence || []).filter(isVisualEvidenceItem)
+      if (!visual.length) return false
+      return visual.some((item) => !visualEvidenceFileMissing(item))
+    }).map(v => ({
       _id: v._id,
       eventId: `EV-${String(v._id).slice(-8)}`,
       type: toVisionAlertType(v.action),
@@ -3212,6 +3223,26 @@ app.get("/patient/vision/history", async (req, res) => {
   res.json({ records })
 })
 
+/** 長輩監看即時下方：近 14 日辨識（與看護／家屬同一帳本資料，唯讀、不開活動頁） */
+app.get("/patient/alerts/history", async (req, res) => {
+  try {
+    const decoded = verifyToken(req)
+    if (!decoded) return res.status(401).json({ message: "Invalid token" })
+    const user = await User.findOne({ email: decoded.email })
+    if (!user) return res.status(404).json({ message: "User not found" })
+    if (user.role !== "patient") return res.status(403).json({ message: "僅受顧者可查看自己的辨識紀錄" })
+    const limit = normalizeLimit(req.query.limit, 20, 100)
+    const records = await buildAlertsHistoryForPatient(user._id, {
+      severity: req.query.severity,
+      status: req.query.status,
+      limit
+    })
+    res.json({ records })
+  } catch (err) {
+    res.status(err.statusCode || 500).json({ message: err.message })
+  }
+})
+
 app.get("/patient/vision/sessions", async (req, res) => {
   try {
     const decoded = verifyToken(req)
@@ -4663,8 +4694,8 @@ app.post("/vision/evidence", async (req, res) => {
   }
 })
 
-/** 列表縮圖：截圖原圖；短片抽第一幀 */
-app.get("/media/evidence/:evidenceId/thumb", async (req, res) => {
+/** 列表縮圖：截圖原圖；短片抽第一幀。附 .jpg 讓 Android Image 認得出來。 */
+app.get(["/media/evidence/:evidenceId/thumb", "/media/evidence/:evidenceId/thumb.jpg"], async (req, res) => {
   try {
     const decoded = verifyToken(req)
     if (!decoded) return res.status(401).json({ message: "Invalid token" })
@@ -6092,6 +6123,40 @@ app.get("/chat-history", async (req, res) => {
   }
 })
 
+app.post("/chat/message", async (req, res) => {
+  const decoded = verifyToken(req)
+  if (!decoded) return res.status(401).json({ message: "Invalid token" })
+  const from = String(decoded.email || "").trim().toLowerCase()
+  const toEmail = String(req.body?.targetEmail || "").trim().toLowerCase()
+  const original = String(req.body?.text || "").trim()
+  const sourceLang = String(req.body?.sourceLang || "")
+  const phraseKey = String(req.body?.phraseKey || "").trim()
+  const clientMsgId = String(req.body?.clientMsgId || "")
+  if (!from || !toEmail || !original) return res.status(400).json({ message: "缺少內容" })
+  try {
+    const saved = await persistAndFanoutChatText({
+      from,
+      toEmail,
+      original,
+      sourceLang,
+      phraseKey,
+      clientMsgId
+    })
+    const row = typeof saved.toObject === "function" ? saved.toObject() : saved
+    res.status(201).json({
+      message: {
+        ...row,
+        kind: "text",
+        clientMsgId,
+        displayText: saved.originalText
+      }
+    })
+  } catch (err) {
+    console.log("POST /chat/message fail:", err.message)
+    res.status(500).json({ message: err.message })
+  }
+})
+
 app.get("/chat-inbox", async (req, res) => {
   const decoded = verifyToken(req)
   if (!decoded) return res.status(401).json({ message: "Invalid token" })
@@ -6154,6 +6219,7 @@ app.get("/chat-inbox", async (req, res) => {
           : (fromMe
             ? (last.originalText || "")
             : (last.translatedText || last.originalText || "")),
+        lastFromMe: fromMe,
         lastAt: last.timestamp,
         unread
       })
@@ -6250,6 +6316,43 @@ function emitSavedChat(saved, clientMsgId = "") {
   }
   chatIo.to(from).emit("new_message", { ...payload, displayText: saved.originalText })
   chatIo.to(toEmail).emit("new_message", { ...payload, displayText: saved.translatedText || saved.originalText })
+}
+
+/** 先落庫＋推送，翻譯在背景補；對方不必等 Gemini 才看得到。 */
+async function persistAndFanoutChatText({ from, toEmail, original, sourceLang, phraseKey, clientMsgId }) {
+  const targetUser = await User.findOne({
+    email: new RegExp(`^${String(toEmail).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i")
+  })
+  const targetLang = targetUser?.lang || "zh"
+  const saved = await ChatMessage.create({
+    senderEmail: from,
+    targetEmail: toEmail,
+    originalText: original,
+    translatedText: original,
+    sourceLang: sourceLang || "",
+    targetLang,
+    phraseKey: String(phraseKey || "").trim(),
+    timestamp: new Date()
+  })
+  emitSavedChat(saved, clientMsgId)
+  notifyChatPush({
+    from,
+    toEmail,
+    preview: original,
+    targetLang
+  }).catch((err) => console.log("chat push skipped:", err.message))
+  Promise.resolve().then(async () => {
+    try {
+      const translatedText = await translateToLang(original, targetLang, { messageKey: phraseKey || "" })
+      if (!translatedText || translatedText === saved.translatedText) return
+      saved.translatedText = translatedText
+      await saved.save()
+      emitSavedChat(saved, clientMsgId)
+    } catch (err) {
+      console.log("chat translate bg fail:", err.message)
+    }
+  })
+  return saved
 }
 
 app.post("/stt", async (req, res) => {
@@ -6417,73 +6520,17 @@ io.on("connection", (socket) => {
     const toEmail = String(targetEmail || "").trim().toLowerCase()
     const original = String(text || "").trim()
     if (!from || !toEmail || !original) return
-
-    let targetLang = "zh"
     try {
-      const targetUser = await User.findOne({ email: new RegExp(`^${toEmail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") })
-      targetLang = targetUser?.lang || "zh"
-      const translatedText = await translateToLang(original, targetLang, { messageKey: phraseKey || "" })
-      const saved = await ChatMessage.create({
-        senderEmail: from,
-        targetEmail: toEmail,
-        originalText: original,
-        translatedText,
-        sourceLang: sourceLang || "",
-        targetLang,
-        phraseKey: String(phraseKey || "").trim(),
-        timestamp: new Date()
-      })
-      const message = {
-        senderEmail: from,
-        targetEmail: toEmail,
-        originalText: original,
-        translatedText,
-        sourceLang: sourceLang || "",
-        targetLang,
-        phraseKey: String(phraseKey || "").trim(),
-        clientMsgId: clientMsgId || "",
-        timestamp: saved.timestamp || new Date().toISOString()
-      }
-      io.to(from).emit("new_message", { ...message, displayText: original })
-      io.to(toEmail).emit("new_message", { ...message, displayText: translatedText })
-      notifyChatPush({
+      await persistAndFanoutChatText({
         from,
         toEmail,
-        preview: translatedText || original,
-        targetLang
-      }).catch((err) => console.log("chat push skipped:", err.message))
-    } catch (e) {
-      console.log("message error (fallback to original):", e.message)
-      let timestamp = new Date()
-      try {
-        const saved = await ChatMessage.create({
-          senderEmail: from,
-          targetEmail: toEmail,
-          originalText: original,
-          translatedText: original,
-          sourceLang,
-          targetLang,
-          phraseKey: String(phraseKey || "").trim(),
-          timestamp
-        })
-        timestamp = saved.timestamp || timestamp
-      } catch (saveErr) {
-        console.log("chat save fallback failed:", saveErr.message)
-      }
-      const message = {
-        senderEmail: from,
-        targetEmail: toEmail,
-        originalText: original,
-        translatedText: original,
+        original,
         sourceLang,
-        targetLang,
-        phraseKey: String(phraseKey || "").trim(),
-        clientMsgId: clientMsgId || "",
-        timestamp,
-        translateFailed: true
-      }
-      io.to(from).emit("new_message", { ...message, displayText: original })
-      io.to(toEmail).emit("new_message", { ...message, displayText: original })
+        phraseKey,
+        clientMsgId
+      })
+    } catch (e) {
+      console.log("send_message fail:", e.message)
     }
   })
 })
@@ -6492,6 +6539,14 @@ io.on("connection", (socket) => {
 const PORT = Number(process.env.PORT) || 5000
 server.listen(PORT, async () => {
   console.log(`Backend running on http://localhost:${PORT}`)
+  const smtpUser = String(process.env.SMTP_USER || "").trim()
+  const smtpPass = String(process.env.SMTP_PASS || "").trim()
+  const smtpHost = String(process.env.SMTP_HOST || "").trim()
+  if (smtpUser && smtpPass && (smtpHost || /gmail\.com$/i.test(smtpUser))) {
+    console.log(`[smtp] 真寄信已開（${smtpUser} → smtp）`)
+  } else {
+    console.log("[smtp] 未設 SMTP：驗證碼只印終端／App 開發碼，不會進信箱")
+  }
   const storeStatus = objectStore.getStoreStatus()
   console.log(`[objectStore] driver=${storeStatus.driver} bucket=${storeStatus.bucket || "-"} local=${storeStatus.localRoot}`)
   if (!process.env.GEMINI_API_KEY) {

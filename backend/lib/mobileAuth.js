@@ -1,6 +1,5 @@
 const bcrypt = require("bcryptjs")
 const crypto = require("crypto")
-const { resolveMx } = require("dns").promises
 const jwt = require("jsonwebtoken")
 const nodemailer = require("nodemailer")
 const {
@@ -108,18 +107,32 @@ function verifyMailContent(code) {
   }
 }
 
-async function sendVerifyMail(host, email, code, options = {}) {
+function smtpAuth() {
+  const user = String(process.env.SMTP_USER || "").trim()
+  const pass = String(process.env.SMTP_PASS || "").trim()
+  if (!user || !pass) return undefined
+  return { user, pass }
+}
+
+async function sendVerifyMail(email, code) {
+  const host = String(process.env.SMTP_HOST || "").trim()
+  const user = String(process.env.SMTP_USER || "").trim()
+  const looksGmail = /gmail\.com$/i.test(user) || /gmail\.com$/i.test(host)
+  const port = Number(process.env.SMTP_PORT || (looksGmail ? 587 : 587))
+  const secureFlag = String(process.env.SMTP_SECURE || "").toLowerCase()
+  const secure = secureFlag === "true" || port === 465
   const transporter = nodemailer.createTransport({
-    host,
-    port: Number(options.port || 25),
-    secure: Boolean(options.secure),
-    auth: options.auth,
+    host: host || (looksGmail ? "smtp.gmail.com" : ""),
+    port,
+    secure,
+    requireTLS: !secure && port === 587,
+    auth: smtpAuth(),
     connectionTimeout: 12000,
     greetingTimeout: 12000,
     socketTimeout: 15000,
     tls: { rejectUnauthorized: false }
   })
-  const from = process.env.SMTP_FROM || process.env.SMTP_USER || "TakeCare <noreply@takecare.app>"
+  const from = process.env.SMTP_FROM || (user ? `TakeCare <${user}>` : "TakeCare <noreply@takecare.app>")
   await transporter.sendMail({
     from,
     to: email,
@@ -128,37 +141,24 @@ async function sendVerifyMail(host, email, code, options = {}) {
 }
 
 async function deliverVerifyCode(email, code) {
-  const smtpHost = String(process.env.SMTP_HOST || "").trim()
-  if (smtpHost) {
-    await sendVerifyMail(smtpHost, email, code, {
-      port: Number(process.env.SMTP_PORT || 587),
-      secure: String(process.env.SMTP_SECURE || "").toLowerCase() === "true",
-      auth: process.env.SMTP_USER
-        ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS || "" }
-        : undefined
-    })
-    return { via: "smtp" }
+  const host = String(process.env.SMTP_HOST || "").trim()
+  const auth = smtpAuth()
+  const canSmtp = Boolean(auth && (host || /gmail\.com$/i.test(auth.user)))
+  if (canSmtp) {
+    await sendVerifyMail(email, code)
+    return { via: "smtp", mailSent: true }
   }
 
-  const domain = String(email || "").split("@")[1]
-  if (!domain) throw new Error("MAIL_UNAVAILABLE")
-  const mxRecords = await resolveMx(domain)
-  mxRecords.sort((a, b) => a.priority - b.priority)
-  let lastError = null
-  for (const row of mxRecords.slice(0, 3)) {
-    try {
-      await sendVerifyMail(row.exchange, email, code, { port: 25, secure: false })
-      return { via: "mx" }
-    } catch (err) {
-      lastError = err
-      console.log(`[verify mail] MX ${row.exchange} failed: ${err.message}`)
-    }
-  }
-  throw lastError || new Error("MAIL_UNAVAILABLE")
+  // Gmail/Yahoo 會拒收未認證的埠 25 MX（550 5.7.26），不再直送。
+  console.log(`[verify mail] ${email} 驗證碼 ${code}（未設 SMTP，未寄信；15 分鐘有效）`)
+  return { via: "console", mailSent: false }
 }
 
 function exposeCodes() {
-  return String(process.env.AUTH_EXPOSE_CODES || "").toLowerCase() === "true"
+  const raw = String(process.env.AUTH_EXPOSE_CODES || "").toLowerCase()
+  if (raw === "true") return true
+  if (raw === "false") return false
+  return !smtpAuth()
 }
 
 const {
@@ -190,8 +190,15 @@ function mountMobileAuth(app, {
     user.emailVerifyExpires = new Date(Date.now() + CODE_TTL_MS)
     await user.save()
     const delivery = await deliverVerifyCode(user.email, code)
-    const payload = { via: delivery.via, expiresInSec: Math.floor(CODE_TTL_MS / 1000), mailSent: true }
-    if (exposeCodes()) payload.devCode = code
+    const payload = {
+      via: delivery.via,
+      expiresInSec: Math.floor(CODE_TTL_MS / 1000),
+      mailSent: delivery.mailSent !== false
+    }
+    if (!payload.mailSent) {
+      payload.message = "驗證信尚未寄出：請在後端終端機看驗證碼，或於 backend/.env 設定 SMTP"
+    }
+    if (exposeCodes() || !payload.mailSent) payload.devCode = code
     return payload
   }
 
@@ -200,10 +207,16 @@ function mountMobileAuth(app, {
       return await issueVerifyCode(user)
     } catch (err) {
       console.log("[verify mail] send failed:", err.message)
+      const code = generateVerifyCode()
+      user.emailVerifyCodeHash = await hashVerifyCode(code)
+      user.emailVerifyExpires = new Date(Date.now() + CODE_TTL_MS)
+      await user.save()
+      console.log(`[verify mail] ${user.email} 驗證碼 ${code}（寄信失敗，改印終端）`)
       return {
         mailSent: false,
         via: "failed",
-        message: "驗證信寄出失敗，請按重新寄送，並檢查垃圾郵件"
+        devCode: code,
+        message: "驗證信寄出失敗。本機可看後端終端機上的 6 位數驗證碼"
       }
     }
   }
@@ -280,7 +293,11 @@ function mountMobileAuth(app, {
       if (user.emailVerified) return res.status(400).json({ message: "此帳號已驗證" })
       const delivery = await issueVerifyCodeSafe(user)
       if (!delivery.mailSent) {
-        return res.status(502).json({ message: delivery.message || "驗證信寄出失敗", email })
+        return res.json({
+          message: delivery.message || "驗證碼已產生，請看後端終端機或畫面提示",
+          email,
+          ...delivery
+        })
       }
       return res.json({ message: "驗證碼已寄出，請查收信箱（含垃圾郵件）", email, ...delivery })
     } catch (err) {

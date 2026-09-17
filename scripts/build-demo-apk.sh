@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# 建置可離線安裝到實機的 Release APK（JS 已打包，不需 Metro）
 set -euo pipefail
 
 APP_DIR="$HOME/Desktop/MyApp-main/mobile-expo"
@@ -13,10 +12,14 @@ source "$NVM_DIR/nvm.sh"
 nvm use 20.20.2
 
 cd "$APP_DIR"
-echo "==> npm install（若已裝過會很快）"
-npm install
+if [ ! -d node_modules ]; then
+  echo "==> npm install"
+  npm install
+fi
 
-echo "==> 建置 Release APK（約 3~8 分鐘）"
+printf '%s\n' 'export const usb = ""' 'export const wifi = ""' 'export const tunnel = ""' > src/lib/devHosts.generated.js
+
+echo "==> 建置 Release APK"
 cd android
 chmod +x gradlew
 ./gradlew assembleRelease

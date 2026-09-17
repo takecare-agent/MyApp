@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<title>系統整體架構</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #fff; font-family: "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif; color: #1b2a4a; }
+  .page { width: 1280px; padding: 28px 32px 24px; }
+  .row { display: flex; align-items: stretch; gap: 14px; justify-content: center; }
+  .box {
+    border-radius: 14px; padding: 14px 16px; min-width: 168px; text-align: center;
+    box-shadow: 0 1px 0 rgba(20,40,80,.08);
+  }
+  .box h3 { margin: 0 0 6px; font-size: 15px; }
+  .box p { margin: 0; font-size: 12px; line-height: 1.45; color: #44566f; }
+  .arr { display: flex; align-items: center; font-size: 22px; color: #4a78c2; font-weight: 700; }
+  .mid {
+    margin: 18px auto 0; width: 920px; border: 2px dashed #8fbf8a; background: #f4fbf3;
+    border-radius: 16px; padding: 12px 16px;
+  }
+  .mid h3 { text-align: center; margin: 0 0 10px; font-size: 15px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .chip { background: #fff; border-radius: 10px; padding: 8px 10px; font-size: 12.5px; }
+  .chip b { display: block; }
+  .chip span { color: #5a6b82; font-size: 11px; }
+  .bottom {
+    margin-top: 16px; border: 2px dashed #e0a85c; background: #fff8e8;
+    border-radius: 16px; padding: 12px 14px;
+  }
+  .bottom h3 { text-align: center; margin: 0 0 10px; font-size: 15px; }
+  .flow { display: flex; gap: 8px; align-items: stretch; }
+  .flow > div { flex: 1; background: #fff; border-radius: 12px; padding: 8px; text-align: center; font-size: 12.5px; }
+  .flow b { display: block; margin-bottom: 2px; }
+  .flow span { color: #5a6b82; font-size: 11px; }
+  .u { background: #e8f1ff; border: 2px solid #7aa7e0; }
+  .app { background: #eaf8ee; border: 2px solid #7ec98a; }
+  .be { background: #eaf8ee; border: 2px solid #6dbf7a; }
+  .db { background: #eee8ff; border: 2px solid #a48ad4; }
+  .vis { background: #faf4ff; border: 2px dashed #c9a0e0; margin-top: 16px; border-radius: 16px; padding: 12px 14px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="row">
+    <div class="box u">
+      <div style="font-size:36px;line-height:1;">👤</div>
+      <h3>使用者</h3>
+      <p>長輩／看護／家屬<br>登入、呼叫、監看、待辦</p>
+    </div>
+    <div class="arr">→</div>
+    <div class="box app">
+      <h3>iOS／Android App</h3>
+      <p>React Native（mobile-expo）<br>畫面、推播、REST 呼叫</p>
+    </div>
+    <div class="arr">JSON<br>REST</div>
+    <div class="box be">
+      <h3>Node.js + Express</h3>
+      <p>本機後端 :5000<br>帳號、SOS、待辦、血壓、訊息</p>
+    </div>
+    <div class="arr">mongoose</div>
+    <div class="box db">
+      <h3>MongoDB</h3>
+      <p>本機資料庫 takecare<br>users、事件、待辦、血壓</p>
+    </div>
+  </div>
+
+  <div class="mid">
+    <h3>後端主要 API</h3>
+    <div class="grid">
+      <div class="chip"><b>/mobile　/auth</b><span>登入、驗證碼、JWT、Google</span></div>
+      <div class="chip"><b>/patient/*</b><span>SOS、血壓、待辦、健康卡</span></div>
+      <div class="chip"><b>/caregiver/*</b><span>異常已查看、監看、急救</span></div>
+      <div class="chip"><b>/family/*</b><span>待辦指派、知情監看</span></div>
+      <div class="chip"><b>/vision/report</b><span>鏡頭事件寫入異常表</span></div>
+      <div class="chip"><b>Socket.IO /chat</b><span>跨語訊息與語音</span></div>
+    </div>
+  </div>
+
+  <div class="vis">
+    <h3 style="text-align:center;margin:0 0 10px;font-size:15px;">跌倒辨識（vision-runtime :8000）</h3>
+    <div class="flow">
+      <div><b>USB cam 0</b><span>OpenCV 取幀</span></div>
+      <div><b>MediaPipe Pose</b><span>33 個關鍵點</span></div>
+      <div><b>v8 TFLite LSTM</b><span>30 幀時序</span></div>
+      <div><b>姿勢閘門／狀態機</b><span>蹲彎不推；確認摔倒</span></div>
+      <div><b>POST /vision/report</b><span>未起 5 秒才推高</span></div>
+    </div>
+  </div>
+
+  <div class="bottom">
+    <h3>通知機制（FCM）</h3>
+    <div class="flow">
+      <div><b>後端判定</b><span>SOS 或高嚴重度跌倒</span></div>
+      <div><b>firebase-admin</b><span>依照護圈找裝置</span></div>
+      <div><b>FCM</b><span>跨 iOS／Android</span></div>
+      <div><b>App 推播</b><span>看護／家屬收到</span></div>
+      <div><b>結案</b><span>SOS 已處理；跌倒已查看</span></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -167,7 +167,7 @@ const UI_TEXT = {
     noAbnormal: "目前沒有異常血壓紀錄。",
     bpLabel: "血壓", fiveDayTrend: "近 5 日趨勢", dailyAlert: "每日警示", avgPrefix: "平均",
     autoImport: "從血壓計同步", addRecord: "對照血壓計手動輸入", saveRecord: "儲存血壓紀錄",
-    meterHint: "量完回到這個頁面會自動同步。若血壓計沒進 Health Connect，把螢幕上的數字打進來即可。",
+    meterHint: "量完先開歐姆龍 App 把這次量測傳到手機，再按同步。若沒進來，把血壓計螢幕上的數字打進來。",
     range1m: "1個月", range3m: "3個月", range6m: "6個月",
     bpDiary: "血壓日記", dateRecordsSuffix: " 的紀錄", emptyDay: "這天沒有血壓紀錄",
     pulsePrefix: "脈搏", moodPrefix: "心情：",
@@ -223,10 +223,13 @@ const UI_TEXT = {
     meterHintIos: "iPhone 未支援藍牙血壓計，請手動輸入。",
     errNoHCPackage: "尚未載入 Health Connect 套件，請重新安裝原生 App。",
     errHCInitFail: "無法初始化 Health Connect，請確認手機已安裝並啟用 Health Connect。",
-    errNoHCPerms: "尚未取得 Health Connect 血壓與心率讀取權限。",
-    hcNoData: "近 30 天 Health Connect 尚無可同步的血壓資料。",
+    errNoHCPerms: "尚未取得 Health Connect 血壓讀取權限。",
+    hcNoData: "近 30 天 Health Connect 尚無可同步的血壓資料。請先開歐姆龍 App 把這次量測傳到手機。",
+    syncBusy: "正在同步…",
     hcSyncDoneFn: (imported, pulse, skipped) => `Health Connect 同步完成：新增 ${imported} 筆，補入脈搏 ${pulse} 筆，略過重複 ${skipped} 筆。`,
-    hcSyncErrFn: (msg) => `${msg}。請確認血壓計 App 已寫入 Health Connect，並授權本 App 讀取血壓與心率。`,
+    hcSyncNoNewFn: (sys, dia, when) => `沒有新筆。Health Connect 最新已是 ${sys}/${dia}（${when}）。若剛量的數字不同，先開歐姆龍 App 傳進手機再同步。`,
+    hcSyncLatestFn: (sys, dia, when) => `最新 ${sys}/${dia}（${when}）`,
+    hcSyncErrFn: (msg) => `${msg}。請確認歐姆龍 App 已把量測寫入 Health Connect，並授權本 App 讀取血壓。`,
     periodStats: (days) => `統計 ${days} 個有紀錄的日期，依每日平均血壓分類。`,
     highRiskDaysFn: (days, pct) => `高血壓風險天數：${days} 天（${pct}%）`,
     warningDaysFn: (days, pct) => `血壓前期/警示天數：${days} 天（${pct}%）`,
@@ -282,7 +285,7 @@ const UI_TEXT = {
     noAbnormal: "No abnormal BP records.",
     bpLabel: "Blood Pressure", fiveDayTrend: "5-Day Trend", dailyAlert: "Daily Alert", avgPrefix: "Avg",
     autoImport: "Auto Import", addRecord: "Add a Record", saveRecord: "Save BP Record",
-    meterHint: "After measuring, return here to sync. If the meter did not write to Health Connect, type the numbers.",
+    meterHint: "Open Omron Connect first so this reading reaches the phone, then tap sync. If it still does not appear, type the numbers from the meter.",
     range1m: "1 Month", range3m: "3 Months", range6m: "6 Months",
     bpDiary: "BP Diary", dateRecordsSuffix: " records", emptyDay: "No BP records for this day",
     pulsePrefix: "Pulse", moodPrefix: "Mood: ",
@@ -338,10 +341,13 @@ const UI_TEXT = {
     meterHintIos: "iPhone does not support the Bluetooth blood pressure meter. Enter the reading manually.",
     errNoHCPackage: "Health Connect package not loaded. Please reinstall the native app.",
     errHCInitFail: "Cannot initialize Health Connect. Please confirm it is installed and enabled.",
-    errNoHCPerms: "Health Connect blood pressure and heart rate read permission not granted.",
-    hcNoData: "No syncable BP data found in Health Connect (last 30 days).",
+    errNoHCPerms: "Health Connect blood pressure read permission not granted.",
+    hcNoData: "No syncable BP data in Health Connect (last 30 days). Open Omron Connect first to transfer this reading.",
+    syncBusy: "Syncing…",
     hcSyncDoneFn: (imported, pulse, skipped) => `Health Connect sync done: added ${imported}, pulse backfilled ${pulse}, skipped ${skipped}.`,
-    hcSyncErrFn: (msg) => `${msg}. Make sure the BP app writes to Health Connect and that this app has permission.`,
+    hcSyncNoNewFn: (sys, dia, when) => `No new rows. Latest Health Connect reading is already ${sys}/${dia} (${when}). If the cuff shows a different number, open Omron Connect first, then sync again.`,
+    hcSyncLatestFn: (sys, dia, when) => `Latest ${sys}/${dia} (${when})`,
+    hcSyncErrFn: (msg) => `${msg}. Make sure Omron Connect wrote this reading to Health Connect and that this app can read blood pressure.`,
     periodStats: (days) => `Stats from ${days} recorded days, by daily avg BP category.`,
     highRiskDaysFn: (days, pct) => `High BP risk days: ${days} (${pct}%)`,
     warningDaysFn: (days, pct) => `Prehypertension/warning days: ${days} (${pct}%)`,
@@ -453,10 +459,13 @@ const UI_TEXT = {
     meterHintIos: "iPhone belum mendukung tensimeter Bluetooth. Masukkan angkanya secara manual.",
     errNoHCPackage: "Paket Health Connect belum dimuat. Pasang ulang app native.",
     errHCInitFail: "Tidak dapat menginisialisasi Health Connect. Pastikan sudah diinstal.",
-    errNoHCPerms: "Izin baca TD dan detak jantung Health Connect belum diberikan.",
-    hcNoData: "Tidak ada data TD yang dapat disinkron di Health Connect (30 hari terakhir).",
+    errNoHCPerms: "Izin baca TD Health Connect belum diberikan.",
+    hcNoData: "Tidak ada data TD yang dapat disinkron di Health Connect (30 hari terakhir). Buka Omron Connect dulu.",
+    syncBusy: "Sedang sinkron…",
     hcSyncDoneFn: (imported, pulse, skipped) => `Sinkron selesai: ditambahkan ${imported}, denyut ${pulse}, dilewati ${skipped}.`,
-    hcSyncErrFn: (msg) => `${msg}. Pastikan app TD menulis ke Health Connect dan izin diberikan.`,
+    hcSyncNoNewFn: (sys, dia, when) => `Tidak ada baris baru. Data Health Connect terbaru sudah ${sys}/${dia} (${when}).`,
+    hcSyncLatestFn: (sys, dia, when) => `Terbaru ${sys}/${dia} (${when})`,
+    hcSyncErrFn: (msg) => `${msg}. Pastikan Omron Connect menulis ke Health Connect dan izin diberikan.`,
     periodStats: (days) => `Statistik dari ${days} hari tercatat, per kategori rata-rata harian.`,
     highRiskDaysFn: (days, pct) => `Hari risiko TD tinggi: ${days} (${pct}%)`,
     warningDaysFn: (days, pct) => `Hari pra-hipertensi/peringatan: ${days} (${pct}%)`,
@@ -568,10 +577,13 @@ const UI_TEXT = {
     meterHintIos: "iPhone chưa hỗ trợ máy đo huyết áp Bluetooth. Hãy nhập số thủ công.",
     errNoHCPackage: "Gói Health Connect chưa được tải. Cài lại app native.",
     errHCInitFail: "Không thể khởi tạo Health Connect. Đảm bảo đã cài và bật.",
-    errNoHCPerms: "Chưa cấp quyền đọc HA và nhịp tim từ Health Connect.",
-    hcNoData: "Không có dữ liệu HA có thể đồng bộ trong Health Connect (30 ngày qua).",
+    errNoHCPerms: "Chưa cấp quyền đọc HA từ Health Connect.",
+    hcNoData: "Không có dữ liệu HA có thể đồng bộ trong Health Connect (30 ngày qua). Hãy mở Omron Connect trước.",
+    syncBusy: "Đang đồng bộ…",
     hcSyncDoneFn: (imported, pulse, skipped) => `Đồng bộ xong: đã thêm ${imported}, mạch ${pulse}, bỏ qua ${skipped}.`,
-    hcSyncErrFn: (msg) => `${msg}. Đảm bảo app HA ghi vào Health Connect và cấp quyền.`,
+    hcSyncNoNewFn: (sys, dia, when) => `Không có dòng mới. Health Connect mới nhất đã là ${sys}/${dia} (${when}).`,
+    hcSyncLatestFn: (sys, dia, when) => `Mới nhất ${sys}/${dia} (${when})`,
+    hcSyncErrFn: (msg) => `${msg}. Đảm bảo Omron Connect ghi vào Health Connect và cấp quyền.`,
     periodStats: (days) => `Thống kê từ ${days} ngày có bản ghi, theo danh mục HA TB hàng ngày.`,
     highRiskDaysFn: (days, pct) => `Ngày nguy cơ HA cao: ${days} (${pct}%)`,
     warningDaysFn: (days, pct) => `Ngày tiền tăng HA/cảnh báo: ${days} (${pct}%)`,
@@ -683,10 +695,13 @@ const UI_TEXT = {
     meterHintIos: "Hindi sinusuportahan ng iPhone ang Bluetooth na BP meter. I-type muna ang numero.",
     errNoHCPackage: "Hindi na-load ang pakete ng Health Connect. Muling i-install ang native app.",
     errHCInitFail: "Hindi mapasimulan ang Health Connect. Tiyaking naka-install at naka-enable.",
-    errNoHCPerms: "Hindi pa ibinibigay ang pahintulot sa pagbabasa ng BP at heart rate mula sa Health Connect.",
-    hcNoData: "Walang data ng BP na maaaring i-sync sa Health Connect (nakalipas na 30 araw).",
+    errNoHCPerms: "Hindi pa ibinibigay ang pahintulot sa pagbabasa ng BP mula sa Health Connect.",
+    hcNoData: "Walang data ng BP na maaaring i-sync sa Health Connect (nakalipas na 30 araw). Buksan muna ang Omron Connect.",
+    syncBusy: "Sini-sync…",
     hcSyncDoneFn: (imported, pulse, skipped) => `Sync tapos na: naidagdag ${imported}, pulso ${pulse}, nilaktawan ${skipped}.`,
-    hcSyncErrFn: (msg) => `${msg}. Tiyaking nagsusulat ang BP app sa Health Connect at may pahintulot.`,
+    hcSyncNoNewFn: (sys, dia, when) => `Walang bagong tala. Pinakabago sa Health Connect ay ${sys}/${dia} (${when}).`,
+    hcSyncLatestFn: (sys, dia, when) => `Pinakabago ${sys}/${dia} (${when})`,
+    hcSyncErrFn: (msg) => `${msg}. Tiyaking nagsusulat ang Omron Connect sa Health Connect at may pahintulot.`,
     periodStats: (days) => `Istatistika mula sa ${days} na naitala na araw, ayon sa kategorya ng avg na BP sa bawat araw.`,
     highRiskDaysFn: (days, pct) => `Mga araw na may mataas na panganib ng BP: ${days} (${pct}%)`,
     warningDaysFn: (days, pct) => `Mga araw ng pre-hypertension/babala: ${days} (${pct}%)`,
@@ -798,10 +813,13 @@ const UI_TEXT = {
     meterHintIos: "iPhone ยังไม่รองรับเครื่องวัดความดัน Bluetooth กรอกตัวเลขเอง",
     errNoHCPackage: "แพ็คเกจ Health Connect ยังไม่โหลด ติดตั้งแอป native ใหม่",
     errHCInitFail: "ไม่สามารถเริ่มต้น Health Connect ตรวจสอบว่าติดตั้งและเปิดใช้งานแล้ว",
-    errNoHCPerms: "ยังไม่ได้รับอนุญาตอ่านความดันโลหิตและอัตราการเต้นของหัวใจจาก Health Connect",
-    hcNoData: "ไม่มีข้อมูลความดันโลหิตที่ซิงค์ได้ใน Health Connect (30 วันที่ผ่านมา)",
+    errNoHCPerms: "ยังไม่ได้รับอนุญาตอ่านความดันโลหิตจาก Health Connect",
+    hcNoData: "ไม่มีข้อมูลความดันโลหิตที่ซิงค์ได้ใน Health Connect (30 วันที่ผ่านมา) เปิด Omron Connect ก่อน",
+    syncBusy: "กำลังซิงค์…",
     hcSyncDoneFn: (imported, pulse, skipped) => `ซิงค์เสร็จ: เพิ่ม ${imported} รายการ ชีพจร ${pulse} รายการ ข้าม ${skipped} รายการ`,
-    hcSyncErrFn: (msg) => `${msg} ตรวจสอบว่าแอปความดันโลหิตเขียนข้อมูลลง Health Connect และมีการอนุญาต`,
+    hcSyncNoNewFn: (sys, dia, when) => `ไม่มีรายการใหม่ ค่าล่าสุดใน Health Connect คือ ${sys}/${dia} (${when})`,
+    hcSyncLatestFn: (sys, dia, when) => `ล่าสุด ${sys}/${dia} (${when})`,
+    hcSyncErrFn: (msg) => `${msg} ตรวจสอบว่า Omron Connect เขียนข้อมูลลง Health Connect และมีการอนุญาต`,
     periodStats: (days) => `สถิติจาก ${days} วันที่มีบันทึก ตามหมวดหมู่ค่าเฉลี่ยรายวัน`,
     highRiskDaysFn: (days, pct) => `วันที่มีความเสี่ยงสูง: ${days} วัน (${pct}%)`,
     warningDaysFn: (days, pct) => `วันก่อนความดันโลหิตสูง/แจ้งเตือน: ${days} วัน (${pct}%)`,
@@ -827,6 +845,34 @@ function getAndroidHealthConnect() {
   } catch {
     return null
   }
+}
+
+function grantedReadTypes(granted) {
+  const list = Array.isArray(granted) ? granted : []
+  return new Set(
+    list
+      .filter(item => !item?.accessType || item.accessType === "read")
+      .map(item => item?.recordType)
+      .filter(Boolean)
+  )
+}
+
+async function readAllHealthConnectRecords(healthConnect, recordType, timeRangeFilter) {
+  const all = []
+  let pageToken
+  for (let i = 0; i < 8; i += 1) {
+    const result = await healthConnect.readRecords(recordType, {
+      timeRangeFilter,
+      ...(pageToken ? { pageToken } : {})
+    })
+    const rows = Array.isArray(result?.records)
+      ? result.records
+      : (Array.isArray(result) ? result : [])
+    all.push(...rows)
+    pageToken = result?.pageToken
+    if (!pageToken) break
+  }
+  return all
 }
 
 function numberOrNull(value) {
@@ -1754,9 +1800,9 @@ export default function BloodPressureScreen({
   const [selectedFamilyRecord, setSelectedFamilyRecord] = useState(null)
   const [summaryMonths, setSummaryMonths] = useState(1)
   const [form, setForm] = useState({
-    sys: "120",
-    dia: "80",
-    pulse: "72",
+    sys: "",
+    dia: "",
+    pulse: "",
     mood: UNMARKED_MOOD
   })
   const syncLock = useRef(false)
@@ -1920,7 +1966,10 @@ export default function BloodPressureScreen({
       if (!silent) setError(t.errIosHealth || t.errNotAndroid)
       return
     }
-    if (syncLock.current) return
+    if (syncLock.current) {
+      if (!silent) setMessage(t.syncBusy || "正在同步…")
+      return
+    }
     syncLock.current = true
 
     setSyncing(true)
@@ -1935,6 +1984,17 @@ export default function BloodPressureScreen({
         return
       }
 
+      const sdk = healthConnect.SdkAvailabilityStatus || { SDK_AVAILABLE: 3 }
+      try {
+        const status = await healthConnect.getSdkStatus?.()
+        if (status != null && status !== sdk.SDK_AVAILABLE) {
+          if (!silent) setError(t.errHCInitFail)
+          return
+        }
+      } catch {
+        /* 部分機型沒有 getSdkStatus，改走 initialize */
+      }
+
       const initialized = await healthConnect.initialize()
       if (!initialized) {
         if (!silent) setError(t.errHCInitFail)
@@ -1943,23 +2003,12 @@ export default function BloodPressureScreen({
 
       let hasPermissions = false
       try {
-        const granted = await healthConnect.getGrantedPermissions?.()
-        const grantedReads = new Set(
-          Array.isArray(granted)
-            ? granted.filter(item => item.accessType === "read").map(item => item.recordType)
-            : []
-        )
-        hasPermissions = HEALTH_CONNECT_PERMISSIONS.every(item => grantedReads.has(item.recordType))
+        hasPermissions = grantedReadTypes(await healthConnect.getGrantedPermissions?.()).has("BloodPressure")
       } catch {}
 
       if (!hasPermissions) {
         const granted = await healthConnect.requestPermission(HEALTH_CONNECT_PERMISSIONS)
-        const grantedReads = new Set(
-          Array.isArray(granted)
-            ? granted.filter(item => item.accessType === "read").map(item => item.recordType)
-            : []
-        )
-        hasPermissions = HEALTH_CONNECT_PERMISSIONS.every(item => grantedReads.has(item.recordType))
+        hasPermissions = grantedReadTypes(granted).has("BloodPressure")
       }
 
       if (!hasPermissions) {
@@ -1975,12 +2024,10 @@ export default function BloodPressureScreen({
         endTime: endTime.toISOString()
       }
 
-      const bpResult = await healthConnect.readRecords("BloodPressure", { timeRangeFilter })
-      const bpRecords = Array.isArray(bpResult?.records) ? bpResult.records : []
+      const bpRecords = await readAllHealthConnectRecords(healthConnect, "BloodPressure", timeRangeFilter)
       let heartRateRecords = []
       try {
-        const heartRateResult = await healthConnect.readRecords("HeartRate", { timeRangeFilter })
-        heartRateRecords = Array.isArray(heartRateResult?.records) ? heartRateResult.records : []
+        heartRateRecords = await readAllHealthConnectRecords(healthConnect, "HeartRate", timeRangeFilter)
       } catch {}
 
       const mappedRecords = mapHealthConnectBloodPressureRecords(bpRecords, heartRateRecords)
@@ -1988,6 +2035,10 @@ export default function BloodPressureScreen({
         if (!silent) setMessage(t.hcNoData)
         return
       }
+      const newest = [...mappedRecords].sort(
+        (a, b) => new Date(b.measuredAt) - new Date(a.measuredAt)
+      )[0]
+      const newestWhen = newest ? formatDateTime(newest.measuredAt, langKey) : ""
 
       const data = await apiRequest({
         apiBaseUrl,
@@ -2000,7 +2051,14 @@ export default function BloodPressureScreen({
       const pulse = data.pulseBackfillCount || 0
       const skipped = data.skippedCount || 0
       if (!silent || imported > 0 || pulse > 0) {
-        setMessage(t.hcSyncDoneFn(imported, pulse, skipped))
+        const latestLine = newest && (t.hcSyncLatestFn || t.hcSyncNoNewFn)
+          ? (imported === 0 && skipped > 0
+            ? (t.hcSyncNoNewFn
+              ? t.hcSyncNoNewFn(newest.sys, newest.dia, newestWhen)
+              : `沒有新筆。Health Connect 最新已是 ${newest.sys}/${newest.dia}（${newestWhen}）。`)
+            : `${t.hcSyncDoneFn(imported, pulse, skipped)} ${t.hcSyncLatestFn ? t.hcSyncLatestFn(newest.sys, newest.dia, newestWhen) : ""}`.trim())
+          : t.hcSyncDoneFn(imported, pulse, skipped)
+        setMessage(latestLine)
         setError("")
       }
       await loadHistory()
@@ -2010,7 +2068,7 @@ export default function BloodPressureScreen({
       setSyncing(false)
       syncLock.current = false
     }
-  }, [readOnly, t.errFamilySync, t.errIosHealth, t.errNotAndroid, t.errNoHCPackage, t.errHCInitFail, t.errNoHCPerms, t.hcNoData, t.hcSyncDoneFn, t.hcSyncErrFn, apiBaseUrl, apiPrefix, token, loadHistory])
+  }, [readOnly, t.errFamilySync, t.errIosHealth, t.errNotAndroid, t.errNoHCPackage, t.errHCInitFail, t.errNoHCPerms, t.hcNoData, t.hcSyncDoneFn, t.hcSyncErrFn, t.hcSyncNoNewFn, t.hcSyncLatestFn, t.syncBusy, apiBaseUrl, apiPrefix, token, loadHistory, langKey])
 
   useEffect(() => {
     if (readOnly || Platform.OS !== "android") return

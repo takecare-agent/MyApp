@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<title>跌倒辨識處理流程</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #fff; font-family: "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif; color: #1b2a4a; }
+  .page { width: 1280px; padding: 24px 28px; }
+  .row { display: flex; gap: 10px; align-items: stretch; margin-bottom: 12px; }
+  .cell {
+    flex: 1; background: #eaf8ee; border: 1.5px solid #8fbf8a; border-radius: 12px;
+    padding: 10px 8px; text-align: center; font-size: 13px;
+  }
+  .cell b { display: block; margin-bottom: 4px; }
+  .cell span { color: #4a5d73; font-size: 11.5px; }
+  .start { background: #dce9ff; border-color: #7aa7e0; flex: 0 0 88px; display: flex; align-items: center; justify-content: center; font-weight: 800; }
+  .dia {
+    background: #fff4d6; border: 1.5px solid #e0b84a; border-radius: 8px;
+    transform: none; padding: 12px 10px; text-align: center; font-size: 13px; font-weight: 700;
+    flex: 0 0 140px;
+  }
+  .band {
+    border: 2px dashed #8fbf8a; background: #f4fbf3; border-radius: 16px; padding: 12px;
+    margin-bottom: 12px;
+  }
+  .band h3 { text-align: center; margin: 0 0 10px; font-size: 15px; }
+  .end { background: #dce9ff; border-color: #7aa7e0; font-weight: 800; }
+  .arr { display: flex; align-items: center; color: #4a78c2; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="row">
+    <div class="cell start">開始</div>
+    <div class="cell"><b>USB cam 0 取幀</b><span>OpenCV 1920×1080</span></div>
+    <div class="cell"><b>MediaPipe Pose</b><span>每幀 33 個關鍵點</span></div>
+    <div class="cell"><b>30 幀緩衝</b><span>每 5 幀推論一次</span></div>
+    <div class="cell"><b>v8 TFLite LSTM</b><span>輸出 fall／normal</span></div>
+  </div>
+
+  <div class="band">
+    <h3>姿勢閘門與狀態機</h3>
+    <div class="row" style="margin:0;">
+      <div class="cell"><b>classify_posture</b><span>stand／squat／bend／lie</span></div>
+      <div class="dia">蹲下或彎腰？</div>
+      <div class="cell"><b>是：低紀錄</b><span>寫入事件，不推播</span></div>
+      <div class="cell"><b>否：疑似／確認</b><span>IDLE → SUSPECTED → CONFIRMED</span></div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="cell"><b>確認摔倒</b><span>存短片（紅前約 5 秒＋紅後約 8 秒）</span></div>
+    <div class="cell"><b>POST /vision/report</b><span>後端寫 abnormalevents</span></div>
+    <div class="dia">未起滿 5 秒？</div>
+    <div class="cell"><b>否</b><span>保留紀錄，不建高警報</span></div>
+    <div class="cell"><b>是：推高</b><span>FCM 通知看護／家屬</span></div>
+  </div>
+
+  <div class="row" style="margin:0;">
+    <div class="cell"><b>看護一鍵已查看</b><span>不必填如何處理</span></div>
+    <div class="cell"><b>家屬知情</b><span>不處理跌倒結案</span></div>
+    <div class="cell"><b>監看回看</b><span>即時 /stream；時間軸本機 JPEG</span></div>
+    <div class="cell end">結束</div>
+  </div>
+</div>
+</body>
+</html>

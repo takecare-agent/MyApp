@@ -12,7 +12,7 @@ import {
   View
 } from "react-native"
 import { io } from "socket.io-client"
-import { apiRequest, mobileGetHealthCard } from "../lib/api"
+import { apiRequest, mobileGetHealthCard, socketOriginFromApiBase } from "../lib/api"
 import { loadActivitySeenAt, saveActivitySeenAt } from "../lib/storage"
 import {
   ROLE_LABELS,
@@ -529,6 +529,14 @@ function WatchPanel({ role, watchSeg, setWatchSeg, ...screenProps }) {
       historyPath: role === "family" ? "/family/alerts/history" : "/caregiver/alerts/history"
     }
   }, [role])
+  // 長輩沒有「活動」帳本（IA-08），但即時下方仍要近 14 日辨識（R110）
+  const liveFeedFeature = useMemo(() => {
+    if (alerts) return alerts
+    if (role === "patient") {
+      return { id: "alerts", historyPath: "/patient/alerts/history" }
+    }
+    return null
+  }, [alerts, role])
   const [activityCount, setActivityCount] = useState(0)
   const seenAtRef = useRef(0)
   const rowsRef = useRef([])
@@ -605,9 +613,9 @@ function WatchPanel({ role, watchSeg, setWatchSeg, ...screenProps }) {
     />
   )
 
-  const liveFeed = alerts ? (
+  const liveFeed = liveFeedFeature ? (
     <NativeFeatureScreen
-      feature={alerts}
+      feature={liveFeedFeature}
       role={role}
       apiBaseUrl={screenProps.apiBaseUrl}
       token={screenProps.token}
@@ -964,7 +972,7 @@ export default function MainTabShell({
   useEffect(() => {
     if (!apiBaseUrl || !token || !user?.email) return undefined
     const me = String(user.email || "").trim().toLowerCase()
-    const socket = io(apiBaseUrl, { transports: ["websocket", "polling"], timeout: 10000, reconnection: true })
+    const socket = io(socketOriginFromApiBase(apiBaseUrl) || apiBaseUrl, { transports: ["polling", "websocket"], timeout: 10000, reconnection: true })
     socket.on("connect", () => {
       socket.emit("join_room", { email: me })
     })

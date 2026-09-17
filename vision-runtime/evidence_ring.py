@@ -5,6 +5,8 @@
 """
 import base64
 import os
+import shutil
+import subprocess
 import threading
 import time
 from collections import deque
@@ -16,6 +18,82 @@ PRE_ROLL_SEC = float(os.environ.get("EVIDENCE_PRE_ROLL_SEC", "20"))
 POST_ROLL_SEC = float(os.environ.get("EVIDENCE_POST_ROLL_SEC", "8"))
 TARGET_FPS = float(os.environ.get("EVIDENCE_FPS", "5"))
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+AVCONVERT_BIN = "/usr/bin/avconvert"
+
+
+def _ffmpeg_bin():
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    for path in ("/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"):
+        if os.path.isfile(path):
+            return path
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return None
+
+
+def _mp4_moov_front(path):
+    try:
+        with open(path, "rb") as handle:
+            head = handle.read(4096)
+        return b"moov" in head
+    except OSError:
+        return False
+
+
+def _make_playable_mp4(src):
+    """OpenCV 寫的 isom＋moov 在檔尾，QuickTime／iPhone 打不開。轉成 mp42 faststart。"""
+    if not src or not os.path.isfile(src):
+        return None
+    dst = src.replace(".mp4", "_play.mp4")
+    ffmpeg_bin = _ffmpeg_bin()
+    if ffmpeg_bin:
+        try:
+            result = subprocess.run(
+                [
+                    ffmpeg_bin, "-y", "-i", src,
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                    "-movflags", "+faststart", "-an", dst,
+                ],
+                capture_output=True,
+                timeout=40,
+                check=False,
+            )
+            if result.returncode == 0 and os.path.isfile(dst) and os.path.getsize(dst) > 1024:
+                return dst
+        except Exception:
+            pass
+        try:
+            os.remove(dst)
+        except OSError:
+            pass
+    if os.path.isfile(AVCONVERT_BIN):
+        try:
+            result = subprocess.run(
+                [
+                    AVCONVERT_BIN,
+                    "--preset", "PresetPassthrough",
+                    "--source", src,
+                    "--output", dst,
+                    "--replace",
+                ],
+                capture_output=True,
+                timeout=60,
+                check=False,
+            )
+            if result.returncode == 0 and os.path.isfile(dst) and os.path.getsize(dst) > 1024:
+                if _mp4_moov_front(dst):
+                    return dst
+        except Exception:
+            pass
+        try:
+            os.remove(dst)
+        except OSError:
+            pass
+    return src if _mp4_moov_front(src) else None
 
 
 class EvidenceRingBuffer:
@@ -117,48 +195,12 @@ class EvidenceRingBuffer:
                 writer.write(img)
         finally:
             writer.release()
-        h264 = tmp.replace(".mp4", "_h264.mp4")
-        try:
-            import shutil
-            import subprocess
-            ffmpeg_bin = shutil.which("ffmpeg") or next(
-                (
-                    path for path in (
-                        "/opt/homebrew/bin/ffmpeg",
-                        "/usr/local/bin/ffmpeg",
-                    ) if os.path.isfile(path)
-                ),
-                None,
-            )
-            if not ffmpeg_bin:
-                try:
-                    import imageio_ffmpeg
-                    ffmpeg_bin = imageio_ffmpeg.get_ffmpeg_exe()
-                except Exception:
-                    ffmpeg_bin = None
-            if ffmpeg_bin:
-                result = subprocess.run(
-                    [
-                        ffmpeg_bin, "-y", "-i", tmp,
-                        "-c:v", "libx264", "-pix_fmt", "yuv420p",
-                        "-movflags", "+faststart", "-an", h264,
-                    ],
-                    capture_output=True,
-                    timeout=40,
-                    check=False,
-                )
-                if result.returncode == 0 and os.path.exists(h264):
-                    tmp_use = h264
-                else:
-                    tmp_use = tmp
-            else:
-                tmp_use = tmp
-        except Exception:
-            tmp_use = tmp
+        playable = _make_playable_mp4(tmp)
+        tmp_use = playable or tmp
         try:
             data = open(tmp_use, "rb").read()
         finally:
-            for path in (tmp, h264):
+            for path in {tmp, tmp_use}:
                 try:
                     os.remove(path)
                 except OSError:

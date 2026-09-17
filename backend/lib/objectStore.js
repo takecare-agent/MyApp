@@ -120,21 +120,21 @@ async function putObject({ patientUserId, mediaType, contentType, buffer }) {
   const evidenceId = createEvidenceId()
   const ext = extFromContentType(contentType, mediaType)
   const objectKey = buildObjectKey({ patientUserId, mediaType, evidenceId, ext })
-  let stored
-  try {
-    if (isRemoteConfigured()) {
-      stored = await putRemote(objectKey, buffer, contentType)
-    } else {
-      stored = await putLocal(objectKey, buffer)
+  // 口試／App 列表以本機為準：遠端成功也一定留本地，否則監看列會沒截圖。
+  const localStored = await putLocal(objectKey, buffer)
+  let driver = localStored.driver
+  if (isRemoteConfigured()) {
+    try {
+      const remote = await putRemote(objectKey, buffer, contentType)
+      driver = remote.driver
+    } catch (err) {
+      console.log("objectStore remote failed, local kept:", err.message)
     }
-  } catch (err) {
-    console.log("objectStore remote failed, fallback local:", err.message)
-    stored = await putLocal(objectKey, buffer)
   }
   return {
     evidenceId,
     objectKey,
-    driver: stored.driver,
+    driver,
     contentType: contentType || "application/octet-stream"
   }
 }
@@ -167,19 +167,20 @@ async function deleteObject(objectKey) {
 }
 
 async function getObjectBuffer(objectKey) {
-  if (isRemoteConfigured()) {
-    try {
-      const { GetObjectCommand } = require("@aws-sdk/client-s3")
-      const client = createS3Client()
-      const out = await client.send(new GetObjectCommand({ Bucket: DEFAULT_BUCKET, Key: objectKey }))
-      const chunks = []
-      for await (const chunk of out.Body) chunks.push(chunk)
-      return Buffer.concat(chunks)
-    } catch (err) {
-      console.log("objectStore remote get failed, try local:", err.message)
-    }
+  const local = await getLocalBuffer(objectKey)
+  if (local) return local
+  if (!isRemoteConfigured()) return null
+  try {
+    const { GetObjectCommand } = require("@aws-sdk/client-s3")
+    const client = createS3Client()
+    const out = await client.send(new GetObjectCommand({ Bucket: DEFAULT_BUCKET, Key: objectKey }))
+    const chunks = []
+    for await (const chunk of out.Body) chunks.push(chunk)
+    return Buffer.concat(chunks)
+  } catch (err) {
+    console.log("objectStore remote get failed:", err.message)
+    return null
   }
-  return getLocalBuffer(objectKey)
 }
 
 module.exports = {

@@ -70,3 +70,6 @@ local.properties
 
 # Bundle artifact
 *.jsbundle
+
+# Debug LAN/USB/tunnel hosts (machine-local)
+src/lib/devHosts.generated.js

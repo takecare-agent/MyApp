@@ -23,9 +23,11 @@ const CONTROLS_HIDE_MS = 4000 // 點畫面喚醒 ±10／時間軸，閒置後收
 
 // 由 apiBaseUrl 推導影像服務網址（把後端 port 換成影像服務的 8000）
 function toServiceUrl(apiBaseUrl, path) {
-  const base = String(apiBaseUrl || "").replace(/\/+$/, "")
-  if (!base) return ""
-  const withPort = /:\d+$/.test(base) ? base.replace(/:\d+$/, ":8000") : `${base}:8000`
+  const raw = String(apiBaseUrl || "").replace(/\/__takecare_api\/?$/, "").replace(/\/+$/, "")
+  if (!raw) return ""
+  const match = raw.match(/^(https?):\/\/([^/:]+)/)
+  if (match) return `${match[1]}://${match[2]}:8000${path}`
+  const withPort = /:\d+$/.test(raw) ? raw.replace(/:\d+$/, ":8000") : `${raw}:8000`
   return `${withPort}${path}`
 }
 

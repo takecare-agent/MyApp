@@ -15,7 +15,7 @@ import {
   View
 } from "react-native"
 import { io } from "socket.io-client"
-import { apiRequest, mobileCareCircle } from "../lib/api"
+import { apiRequest, mobileCareCircle, socketOriginFromApiBase } from "../lib/api"
 import {
   loadChatNicknames,
   saveChatNickname,
@@ -64,8 +64,10 @@ function phraseContentKey(phraseKey) {
 function mapChatMessage(msg, me, i = 0) {
   const fromMe = emailNorm(msg.senderEmail) === me
   const kind = msg.kind === "voice" ? "voice" : "text"
+  const clientMsgId = String(msg.clientMsgId || "")
   return {
-    id: String(msg._id || msg.clientMsgId || `${msg.timestamp || i}`),
+    id: String(msg._id || clientMsgId || `${msg.timestamp || i}`),
+    clientMsgId,
     kind,
     audioUrl: msg.audioUrl || "",
     durationSec: Number(msg.audioDurationSec || msg.durationSec) || 0,
@@ -80,6 +82,32 @@ function mapChatMessage(msg, me, i = 0) {
     phraseKey: msg.phraseKey || "",
     timestamp: msg.timestamp
   }
+}
+
+function upsertChatMessage(prev, incoming, me) {
+  const list = Array.isArray(prev) ? prev : []
+  const mapped = mapChatMessage(incoming, me)
+  const serverId = String(incoming._id || "")
+  const clientId = String(incoming.clientMsgId || mapped.clientMsgId || "")
+  const idx = list.findIndex((m) => {
+    const id = String(m.id || "")
+    return (serverId && id === serverId)
+      || (clientId && (id === clientId || String(m.clientMsgId || "") === clientId))
+  })
+  if (idx < 0) return [...list, mapped]
+  const next = [...list]
+  next[idx] = {
+    ...list[idx],
+    ...mapped,
+    id: serverId || list[idx].id,
+    clientMsgId: clientId || list[idx].clientMsgId
+  }
+  return next
+}
+
+function isLocalPendingId(id) {
+  const s = String(id || "")
+  return s.startsWith("local-") || s.startsWith("voice-")
 }
 
 
@@ -148,6 +176,8 @@ export default function ChatScreen({
   const socketRef = useRef(null)
   const flatListRef = useRef(null)
   const partnerRef = useRef(null)
+  const loadInboxRef = useRef(null)
+  const tokenRef = useRef(token)
   const pendingPhraseKeyRef = useRef("")
   const voiceTranscriptRef = useRef("")
   const iosVoiceSessionRef = useRef(null)
@@ -267,6 +297,7 @@ export default function ChatScreen({
         lastKind: hit.lastKind || "",
         lastSourceLang: hit.lastSourceLang || "",
         lastPhraseKey: hit.lastPhraseKey || "",
+        lastFromMe: Boolean(hit.lastFromMe),
         lastAt: hit.lastAt || null,
         unread: Number(hit.unread || 0)
       })
@@ -319,6 +350,9 @@ export default function ChatScreen({
     }
   }, [apiBaseUrl, token, myEmail, t, onUnreadChange])
 
+  loadInboxRef.current = loadInbox
+  tokenRef.current = token
+
   useEffect(() => {
     setInboxLoading(true)
     loadInbox()
@@ -334,7 +368,7 @@ export default function ChatScreen({
     }
   }, [myEmail])
 
-  const loadHistory = async (pEmail, { silent } = {}) => {
+  const loadHistory = useCallback(async (pEmail, { silent } = {}) => {
     if (!silent) setLoading(true)
     const me = emailNorm(myEmail)
     try {
@@ -344,9 +378,14 @@ export default function ChatScreen({
         token
       })
       const list = ensureFilled(Array.isArray(data) ? data : [], () => screenshotChatMessages(me, pEmail), 3)
-      setMessages(
-        list.map((msg, i) => mapChatMessage(msg, me, i))
-      )
+      const mapped = list.map((msg, i) => mapChatMessage(msg, me, i))
+      setMessages((prev) => {
+        const pending = (Array.isArray(prev) ? prev : []).filter((m) => isLocalPendingId(m.id))
+        const keep = pending.filter((p) => !mapped.some((m) =>
+          m.id === p.id || (p.clientMsgId && m.clientMsgId === p.clientMsgId)
+        ))
+        return keep.length ? [...mapped, ...keep] : mapped
+      })
       requestAnimationFrame(() => {
         try {
           flatListRef.current?.scrollToOffset?.({ offset: 0, animated: false })
@@ -360,7 +399,7 @@ export default function ChatScreen({
     } finally {
       if (!silent) setLoading(false)
     }
-  }
+  }, [apiBaseUrl, token, myEmail])
 
   useEffect(() => {
     if (partner?.email) loadHistory(partner.email)
@@ -380,12 +419,12 @@ export default function ChatScreen({
   }, [partner?.email, loadPhrases])
 
   useEffect(() => {
-    const socket = io(apiBaseUrl, {
-      transports: ["websocket", "polling"],
+    const socket = io(socketOriginFromApiBase(apiBaseUrl) || apiBaseUrl, {
+      transports: ["polling", "websocket"],
       timeout: 10000,
       reconnection: true,
-      reconnectionAttempts: 8,
-      reconnectionDelay: 800,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 500,
       forceNew: true
     })
     socketRef.current = socket
@@ -407,16 +446,7 @@ export default function ChatScreen({
       const current = emailNorm(partnerRef.current?.email)
       const inThisThread = current && ((from === me && to === current) || (from === current && to === me))
       if (inThisThread) {
-        const incomingId = String(msg._id || msg.clientMsgId || "")
-        setMessages((prev) => {
-          if (incomingId && prev.some((m) => m.id === incomingId || (msg.clientMsgId && m.id === msg.clientMsgId))) {
-            return prev
-          }
-          return [
-            ...prev,
-            mapChatMessage({ ...msg, clientMsgId: msg.clientMsgId }, me)
-          ]
-        })
+        setMessages((prev) => upsertChatMessage(prev, { ...msg, clientMsgId: msg.clientMsgId }, me))
         requestAnimationFrame(() => {
           try {
             flatListRef.current?.scrollToOffset?.({ offset: 0, animated: true })
@@ -429,14 +459,14 @@ export default function ChatScreen({
             apiBaseUrl,
             path: "/chat-read",
             method: "POST",
-            token,
+            token: tokenRef.current,
             body: { partnerEmail: from }
           }).catch(() => {})
         }
         return
       }
       if (to === me && from !== me) {
-        loadInbox({ silent: true })
+        loadInboxRef.current?.({ silent: true })
       }
     })
 
@@ -447,7 +477,14 @@ export default function ChatScreen({
       socketRef.current = null
       setConnStatus("disconnected")
     }
-  }, [apiBaseUrl, myEmail, token, loadInbox])
+  }, [apiBaseUrl, myEmail])
+
+  useEffect(() => {
+    if (!partner?.email) return undefined
+    const tick = () => loadHistory(partner.email, { silent: true })
+    const id = setInterval(tick, 2500)
+    return () => clearInterval(id)
+  }, [partner?.email, loadHistory])
 
   const markRead = (partnerEmail) => {
     apiRequest({
@@ -498,11 +535,7 @@ export default function ChatScreen({
 
   const handleSend = () => {
     const text = inputText.trim()
-    if (!text || !partner?.email || !socketRef.current) return
-    if (!socketRef.current.connected) {
-      setVoiceHint(t("chat.connecting"))
-      socketRef.current.connect()
-    }
+    if (!text || !partner?.email) return
     const me = emailNorm(myEmail)
     const them = emailNorm(partner.email)
     const pending = String(pendingPhraseKeyRef.current || "").trim()
@@ -518,6 +551,7 @@ export default function ChatScreen({
       ...prev,
       {
         id: clientMsgId,
+        clientMsgId,
         senderEmail: me,
         targetEmail: them,
         displayText: text,
@@ -527,15 +561,36 @@ export default function ChatScreen({
         timestamp: new Date().toISOString()
       }
     ])
-    socketRef.current.emit("send_message", {
-      senderEmail: me,
-      targetEmail: them,
-      text,
-      sourceLang: lang,
-      phraseKey,
-      clientMsgId
-    })
     setInputText("")
+    apiRequest({
+      apiBaseUrl,
+      path: "/chat/message",
+      method: "POST",
+      token,
+      body: {
+        targetEmail: them,
+        text,
+        sourceLang: lang,
+        phraseKey,
+        clientMsgId
+      }
+    }).then((data) => {
+      const saved = data?.message
+      if (saved) setMessages((prev) => upsertChatMessage(prev, { ...saved, clientMsgId }, me))
+    }).catch(() => {
+      if (!socketRef.current?.connected) {
+        setVoiceHint(t("chat.connecting"))
+        socketRef.current?.connect()
+      }
+      socketRef.current?.emit("send_message", {
+        senderEmail: me,
+        targetEmail: them,
+        text,
+        sourceLang: lang,
+        phraseKey,
+        clientMsgId
+      })
+    })
   }
 
   const openPhrases = () => {
@@ -806,6 +861,7 @@ export default function ChatScreen({
                   apiBaseUrl={apiBaseUrl}
                   token={token}
                   allowOriginal={!isMe}
+                  skipTranslate={isMe}
                   style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}
                 />
               ) : null}
@@ -819,6 +875,7 @@ export default function ChatScreen({
               apiBaseUrl={apiBaseUrl}
               token={token}
               allowOriginal={!isMe}
+              skipTranslate={isMe}
               style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}
             />
           )}
@@ -865,6 +922,7 @@ export default function ChatScreen({
               apiBaseUrl={apiBaseUrl}
               token={token}
               compact
+              skipTranslate={item.lastFromMe}
               numberOfLines={1}
               style={[styles.contactMeta, item.unread ? styles.contactUnread : null]}
             />

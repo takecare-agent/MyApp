@@ -37,10 +37,15 @@
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>TakeCare 需要區網才能連 Mac 上的監看與登入服務。</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_http._tcp</string>
+		<string>_takecare._tcp</string>
+	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
-		<false/>
+		<true/>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>

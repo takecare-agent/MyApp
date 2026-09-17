@@ -15,6 +15,8 @@ export default function VerifyScreen({
   apiBaseUrl,
   email,
   initialInfo = "",
+  initialDevCode = "",
+  mailSent = true,
   onBack,
   onVerified
 }) {
@@ -23,6 +25,7 @@ export default function VerifyScreen({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const [info, setInfo] = useState(initialInfo || "")
+  const [devCode, setDevCode] = useState(initialDevCode || "")
 
   const handleVerify = async () => {
     const trimmed = code.replace(/\s/g, "")
@@ -52,8 +55,9 @@ export default function VerifyScreen({
     setBusy(true)
     setError("")
     try {
-      await mobileResendVerify({ apiBaseUrl, email })
-      setInfo(t("verify.resent"))
+      const data = await mobileResendVerify({ apiBaseUrl, email })
+      setInfo(data.message || t("verify.resent"))
+      if (data.devCode) setDevCode(String(data.devCode))
       setCode("")
     } catch (err) {
       setError(err.message || t("verify.sendFail"))
@@ -74,6 +78,12 @@ export default function VerifyScreen({
         <Text style={styles.email}>{email || ""}</Text>
       </Text>
       {info ? <Text style={styles.info}>{info}</Text> : null}
+      {devCode ? (
+        <Text style={styles.info}>{t("verify.devCode", { code: devCode })}</Text>
+      ) : null}
+      {!mailSent && !devCode ? (
+        <Text style={styles.info}>{t("verify.mailFailHint")}</Text>
+      ) : null}
 
       <Text style={styles.label}>{t("verify.code")}</Text>
       <TextInput

@@ -35,7 +35,8 @@ const PRESET_I18N_KEYS = {
 /**
  * 讀取方顯示：
  * - 系統預設／介面字典 → 本地精翻，不顯示「查看原文」
- * - 手打 UGC／聊天 → 譯成讀者介面語言；來源語不同才可看原文
+ * - 手打 UGC／聊天（對方）→ 譯成讀者介面語言；來源語不同才可看原文
+ * - 自己送出的 → skipTranslate，維持送出時原文，不隨介面語重翻
  * - 失敗仍原文
  */
 export default function TranslatedUgcText({
@@ -49,7 +50,8 @@ export default function TranslatedUgcText({
   notePrefix,
   compact = false,
   numberOfLines,
-  allowOriginal: allowOriginalProp
+  allowOriginal: allowOriginalProp,
+  skipTranslate = false
 }) {
   const { lang, t } = useI18n()
   const original = String(text || "").trim()
@@ -62,6 +64,12 @@ export default function TranslatedUgcText({
     setShowOriginal(false)
     if (!original) {
       setDisplay("")
+      setIsPreset(false)
+      return
+    }
+
+    if (skipTranslate) {
+      setDisplay(original)
       setIsPreset(false)
       return
     }
@@ -116,7 +124,7 @@ export default function TranslatedUgcText({
         setDisplay(original)
       }
     })()
-  }, [original, sourceLang, messageKey, contentKey, lang, apiBaseUrl, token, t])
+  }, [original, sourceLang, messageKey, contentKey, lang, apiBaseUrl, token, t, skipTranslate])
 
   if (!original) return null
 
@@ -126,6 +134,7 @@ export default function TranslatedUgcText({
   const allowOriginal = allowOriginalProp !== false
     && !compact
     && !isPreset
+    && !skipTranslate
     && sourceDiffers
     && translatedAway
 
@@ -176,7 +185,7 @@ export default function TranslatedUgcText({
           </Text>
         )
       ) : null}
-      {!isPreset && !compact && looksMedical(original) ? (
+      {!skipTranslate && !isPreset && !compact && looksMedical(original) ? (
         <Text style={styles.original}>{t("ugc.trustOriginal")}</Text>
       ) : null}
     </View>

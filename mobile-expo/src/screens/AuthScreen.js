@@ -14,7 +14,8 @@ import {
   ApiError,
   mobileLogin,
   mobileMe,
-  mobileRegister
+  mobileRegister,
+  pickReachableApiBase
 } from "../lib/api"
 import { signInWithGoogle } from "../lib/socialAuth"
 import GoogleAuthSheet from "../components/GoogleAuthSheet"
@@ -23,8 +24,15 @@ import { useI18n } from "../i18n/I18nContext"
 import { colors } from "./new_ui/tokens"
 import { NeoIcon } from "./new_ui/NeoIcons"
 
+function isNetworkFail(message) {
+  return /network request failed|failed to connect|failed to fetch|網路連線|网路连线|internet connection appears to be offline|could not connect|the internet connection appears to be offline/i.test(
+    String(message || "")
+  )
+}
+
 function errorText(err, t, fallbackKey) {
   const msg = String(err?.message || "")
+  if (isNetworkFail(msg)) return t("auth.networkFail")
   if (msg.startsWith("auth.")) return t(msg)
   return msg || t(fallbackKey)
 }
@@ -90,10 +98,12 @@ export default function AuthScreen({
 
     setBusy(true)
     setError("")
+    let resolvedApiBaseUrl = normalizedApiBaseUrl
     try {
+      resolvedApiBaseUrl = await pickReachableApiBase(normalizedApiBaseUrl)
       if (mode === "register") {
         const data = await mobileRegister({
-          apiBaseUrl: normalizedApiBaseUrl,
+          apiBaseUrl: resolvedApiBaseUrl,
           email: normalizedEmail,
           name: normalizedName,
           password: normalizedPassword,
@@ -101,25 +111,26 @@ export default function AuthScreen({
         })
         if (onRegisterLangChange) onRegisterLangChange(registerLang)
         onNeedsVerify({
-          apiBaseUrl: normalizedApiBaseUrl,
+          apiBaseUrl: resolvedApiBaseUrl,
           email: normalizedEmail,
           name: normalizedName,
           password: normalizedPassword,
           lang: registerLang,
           mailHint: data.message || "",
-          mailSent: data.mailSent !== false
+          mailSent: data.mailSent !== false,
+          devCode: data.devCode || ""
         })
         return
       }
 
       const data = await mobileLogin({
-        apiBaseUrl: normalizedApiBaseUrl,
+        apiBaseUrl: resolvedApiBaseUrl,
         email: normalizedEmail,
         password: normalizedPassword,
         lang: registerLang
       })
       onAuthenticated({
-        apiBaseUrl: normalizedApiBaseUrl,
+        apiBaseUrl: resolvedApiBaseUrl,
         token: data.token,
         user: data.user,
         role: data.role || data.user?.role || null,
@@ -128,13 +139,14 @@ export default function AuthScreen({
     } catch (err) {
       if (err instanceof ApiError && err.data?.needsVerification) {
         onNeedsVerify({
-          apiBaseUrl: normalizedApiBaseUrl,
+          apiBaseUrl: resolvedApiBaseUrl,
           email: normalizedEmail,
           name: normalizedName,
           password: normalizedPassword,
           lang: registerLang,
           mailHint: err.data?.message || "",
-          mailSent: err.data?.mailSent !== false
+          mailSent: err.data?.mailSent !== false,
+          devCode: err.data?.devCode || ""
         })
         return
       }

@@ -28,7 +28,6 @@ Fall Detection v8 — HTTP API
 環境變數：
     VISION_API_PORT、VISION_BACKEND_URL、VISION_SHARED_TOKEN、VISION_PATIENT_EMAIL
     VISION_LOCATION  可選位置字串（預設空白；鏡頭無法分辨房間）
-"""
     HEADLESS=1           不開 OpenCV 視窗（純背景跑，適合部署）
     VISION_CAM_INDEX     攝影機編號（預設 0，優先權低於 --cam）
     VISION_BACKEND_URL   後端網址，例如 http://localhost:5000（設了才會主動推播）
@@ -769,9 +768,19 @@ print("  ✅ 就緒！背景偵測中  |  q=離開  r=CONFIRMED 時重置")
 print("=" * 58 + "\n")
 
 WIN_NAME = f"Fall Detection  |  {CAM_NAME}  |  q=離開"
-if not HEADLESS:
+
+def ensure_debug_window():
+    """電腦除錯窗。模擬器一多很容易被蓋住；置頂＋移到左上才找得到。"""
     cv2.namedWindow(WIN_NAME, cv2.WINDOW_NORMAL)
     cv2.resizeWindow(WIN_NAME, max(disp_w, 640), max(disp_h, 480))
+    cv2.moveWindow(WIN_NAME, 80, 60)
+    try:
+        cv2.setWindowProperty(WIN_NAME, cv2.WND_PROP_TOPMOST, 1)
+    except cv2.error:
+        pass
+
+if not HEADLESS:
+    ensure_debug_window()
 
 # ── 主迴圈狀態 ────────────────────────────────────────────────────────────────
 buf = deque(maxlen=FRAME_LEN)
@@ -1052,8 +1061,7 @@ try:
             except cv2.error:
                 visible = -1
             if visible < 1:
-                cv2.namedWindow(WIN_NAME, cv2.WINDOW_NORMAL)
-                cv2.resizeWindow(WIN_NAME, max(disp_w, 640), max(disp_h, 480))
+                ensure_debug_window()
             cv2.imshow(WIN_NAME, bgr)
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q"):

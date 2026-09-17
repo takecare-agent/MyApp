@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<title>前後端檔案關聯</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: #fff;
+    font-family: "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+    color: #1b2a4a;
+  }
+  .page {
+    width: 1280px;
+    padding: 22px 36px 20px;
+    margin: 0 auto;
+  }
+  .hub {
+    width: 520px;
+    margin: 0 auto 18px;
+    background: #eaf3ff;
+    border: 2px solid #7aa7e0;
+    border-radius: 18px;
+    padding: 12px 18px;
+    text-align: center;
+    box-shadow: 0 2px 0 #d3e4f8;
+  }
+  .hub .title { font-size: 18px; font-weight: 800; }
+  .hub .url { font-size: 13px; color: #3d5d8c; margin-top: 2px; }
+  .arrows {
+    display: flex;
+    justify-content: center;
+    gap: 280px;
+    margin: -4px 0 8px;
+    font-size: 22px;
+    color: #4a78c2;
+    font-weight: 700;
+  }
+  .cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 22px;
+  }
+  .box {
+    border: 2px dashed #8fbf8a;
+    background: #f4fbf3;
+    border-radius: 16px;
+    padding: 14px 14px 16px;
+  }
+  .box.be {
+    border-color: #7aa7e0;
+    background: #f3f8ff;
+  }
+  .box h2 {
+    text-align: center;
+    margin: 0 0 4px;
+    font-size: 20px;
+    font-weight: 800;
+  }
+  .sub {
+    text-align: center;
+    font-size: 12.5px;
+    color: #44566f;
+    margin: 0 0 12px;
+    line-height: 1.45;
+  }
+  .card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 8px 10px;
+    box-shadow: 0 1px 0 rgba(20,40,80,.08);
+    border: 1px solid rgba(20,40,80,.06);
+  }
+  .card .n { font-weight: 800; font-size: 13.5px; }
+  .card .d { font-size: 11.5px; color: #5a6b82; margin-top: 1px; }
+  .ico {
+    display: inline-flex;
+    width: 22px; height: 22px;
+    border-radius: 6px;
+    align-items: center; justify-content: center;
+    font-size: 13px;
+    margin-right: 6px;
+    vertical-align: -3px;
+  }
+  .row { display: flex; gap: 10px; margin-bottom: 10px; }
+  .row > * { flex: 1; }
+  .stack { display: flex; flex-direction: column; gap: 8px; }
+  .routes {
+    background: #fff8e8;
+    border: 1px dashed #e0c07a;
+    border-radius: 12px;
+    padding: 10px;
+  }
+  .routes h3 {
+    margin: 0 0 8px;
+    font-size: 14px;
+    text-align: center;
+  }
+  .grid6 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .mini {
+    background: #fff;
+    border-radius: 10px;
+    padding: 7px 8px;
+    font-size: 12.5px;
+  }
+  .mini b { display: block; font-size: 13px; }
+  .mini span { color: #5a6b82; font-size: 11px; }
+  .bottom {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 22px;
+    margin-top: 16px;
+  }
+  .vision {
+    border: 2px dashed #c9a0e0;
+    background: #faf4ff;
+    border-radius: 16px;
+    padding: 12px 14px;
+  }
+  .db {
+    border: 2px solid #6aa8d8;
+    background: #eef7ff;
+    border-radius: 16px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .vision h2, .db h2 { margin: 0 0 8px; font-size: 16px; }
+  .arrow-down { text-align: center; color: #4a78c2; font-size: 18px; margin: 2px 0; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="hub">
+    <div class="title">GitHub 專案：MyApp</div>
+    <div class="url">https://github.com/takecare-agent/MyApp.git　分支 vision-integration</div>
+  </div>
+  <div class="arrows"><span>↓</span><span>↓</span></div>
+
+  <div class="cols">
+    <section class="box">
+      <h2>mobile-expo（iOS／Android 前端）</h2>
+      <p class="sub">Expo + React Native<br>負責三角色畫面、推播註冊與 API 呼叫</p>
+
+      <div class="card" style="margin-bottom:10px;text-align:center;background:#e8f8ee;">
+        <div class="n"><span class="ico" style="background:#34c759;">A</span>App.js</div>
+        <div class="d">主控流程：登入 → 驗證 → 分頁殼 → 功能頁</div>
+      </div>
+
+      <div class="row">
+        <div class="card">
+          <div class="n"><span class="ico" style="background:#ffd60a;">鍵</span>AuthScreen.js</div>
+          <div class="d">登入／註冊</div>
+        </div>
+        <div class="card">
+          <div class="n"><span class="ico" style="background:#64d2ff;">驗</span>VerifyScreen.js</div>
+          <div class="d">信箱驗證碼</div>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:10px;text-align:center;">
+        <div class="n"><span class="ico" style="background:#0a84ff;color:#fff;">⌂</span>MainTabShell.js</div>
+        <div class="d">長輩／看護／家屬底部分頁整合</div>
+      </div>
+      <div class="row">
+        <div class="card">
+          <div class="n">NativeFeatureScreen.js</div>
+          <div class="d">待辦、SOS、監看、照護圈</div>
+        </div>
+        <div class="card">
+          <div class="n">BloodPressureScreen.js</div>
+          <div class="d">血壓紀錄與同步</div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="card">
+          <div class="n">ChatScreen.js</div>
+          <div class="d">跨語訊息／語音</div>
+        </div>
+        <div class="card">
+          <div class="n">VisionScreen.js</div>
+          <div class="d">監看即時與時間軸</div>
+        </div>
+      </div>
+      <div class="row" style="margin-bottom:0;">
+        <div class="card">
+          <div class="n"><span class="ico" style="background:#007aff;color:#fff;">API</span>lib/api.js</div>
+          <div class="d">向後端發送 REST 請求</div>
+        </div>
+        <div class="card">
+          <div class="n"><span class="ico" style="background:#ff3b30;color:#fff;">FCM</span>pushNotifications.js</div>
+          <div class="d">SOS／跌倒推播</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="box be">
+      <h2>backend（Node.js 後端）</h2>
+      <p class="sub">Node.js + Express + MongoDB<br>負責 API、業務邏輯、推播與資料庫存取</p>
+
+      <div class="row">
+        <div class="card">
+          <div class="n"><span class="ico" style="background:#5ac8fa;">▶</span>index.js</div>
+          <div class="d">啟動伺服器、schema、全部路由</div>
+        </div>
+        <div class="card">
+          <div class="n"><span class="ico" style="background:#ff375f;color:#fff;">JWT</span>googleAuth.js</div>
+          <div class="d">Google／JWT 驗證</div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="card">
+          <div class="n">lib/mobileAuth.js</div>
+          <div class="d">App 登入、驗證碼、權限</div>
+        </div>
+        <div class="card">
+          <div class="n">lib/careCircle.js</div>
+          <div class="d">照護圈成員關聯</div>
+        </div>
+      </div>
+
+      <div class="routes">
+        <h3>API 路由模組</h3>
+        <div class="grid6">
+          <div class="mini"><b>/auth　/mobile</b><span>登入、驗證碼、推播 token</span></div>
+          <div class="mini"><b>/patient/*</b><span>SOS、血壓、待辦、健康卡</span></div>
+          <div class="mini"><b>/caregiver/*</b><span>異常已查看、監看、急救</span></div>
+          <div class="mini"><b>/family/*</b><span>待辦指派、知情監看</span></div>
+          <div class="mini"><b>/vision/report</b><span>鏡頭事件寫入異常表</span></div>
+          <div class="mini"><b>Socket.IO /chat</b><span>即時訊息與語音檔</span></div>
+        </div>
+      </div>
+
+      <div class="row" style="margin:10px 0 0;">
+        <div class="card">
+          <div class="n">lib/objectStore.js</div>
+          <div class="d">證據圖／短片／語音檔</div>
+        </div>
+        <div class="card">
+          <div class="n">lib/whisperStt.js</div>
+          <div class="d">語音轉文字</div>
+        </div>
+        <div class="card">
+          <div class="n">.env.example</div>
+          <div class="d">環境設定範例</div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="bottom">
+    <section class="vision">
+      <h2>vision-runtime（跌倒辨識服務 :8000）</h2>
+      <div class="row" style="margin:0;">
+        <div class="card">
+          <div class="n">vision_api_server.py</div>
+          <div class="d">cam 0 取幀、姿勢、TFLite</div>
+        </div>
+        <div class="card">
+          <div class="n">evidence_ring.py</div>
+          <div class="d">事件環／截圖</div>
+        </div>
+        <div class="card">
+          <div class="n">playback_store.py</div>
+          <div class="d">監看回拉本機環</div>
+        </div>
+        <div class="card">
+          <div class="n">fall_detection_model_v8.tflite</div>
+          <div class="d">現行權重</div>
+        </div>
+      </div>
+    </section>
+    <section class="db">
+      <div style="font-size:42px;line-height:1;">⛁</div>
+      <div>
+        <h2 style="margin:0;">MongoDB　takecare</h2>
+        <div style="font-size:13px;color:#3d5d8c;margin-top:4px;">本機資料庫</div>
+      </div>
+    </section>
+  </div>
+</div>
+</body>
+</html>
